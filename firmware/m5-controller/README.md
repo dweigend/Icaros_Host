@@ -36,6 +36,24 @@ Then monitor serial output:
 pio device monitor -d firmware/m5-controller --baud 115200 --port /dev/cu.usbserial-...
 ```
 
+## Display Diagnostics
+
+The built-in display is a local diagnostics surface only. It renders a compact
+status view from existing firmware state and does not own WiFi, WebSocket,
+pairing, IMU sampling, or telemetry behavior.
+
+The screen shows:
+
+- a simple pitch/roll level indicator
+- WiFi and WebSocket connection status
+- the controller's local IP address
+- the configured server URL
+
+The display renderer lives in `src/controller_display.cpp` and is connected from
+`src/main.cpp` with a small periodic snapshot update. It uses an offscreen
+M5GFX canvas before pushing frames to the LCD to reduce flicker. Pairing tokens
+in server URLs are redacted before rendering.
+
 ## Serial Protocol
 
 All USB messages are newline-delimited JSON objects at `115200` baud.

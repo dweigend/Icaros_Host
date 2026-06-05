@@ -17,6 +17,8 @@
 #include <cmath>
 #include <cstring>
 
+#include "controller_display.h"
+
 namespace {
 
 constexpr const char *FirmwareVersion = "0.2.1-icaros-minimal";
@@ -29,6 +31,7 @@ constexpr uint32_t WebSocketReconnectIntervalMs = 3000;
 constexpr uint32_t HeartbeatIntervalMs = 2000;
 constexpr uint32_t OrientationIntervalMs = 50;
 constexpr uint32_t SerialOrientationMirrorIntervalMs = 250;
+constexpr uint32_t DisplayIntervalMs = 250;
 constexpr uint32_t StatusIntervalMs = 5000;
 constexpr uint32_t SerialCommandQuietMs = 1000;
 constexpr uint32_t SerialBufferLimit = 768;
@@ -77,6 +80,7 @@ uint32_t lastWebSocketAttemptMs = 0;
 uint32_t lastHeartbeatMs = 0;
 uint32_t lastOrientationMs = 0;
 uint32_t lastSerialOrientationMirrorMs = 0;
+uint32_t lastDisplayMs = 0;
 uint32_t lastStatusMs = 0;
 uint32_t serialQuietUntilMs = 0;
 
@@ -583,6 +587,22 @@ void sendPeriodicStatus(uint32_t nowMs) {
   sendSerialJson(document);
 }
 
+void renderDisplay(uint32_t nowMs) {
+  if (lastDisplayMs != 0 && nowMs - lastDisplayMs < DisplayIntervalMs) {
+    return;
+  }
+
+  lastDisplayMs = nowMs;
+  ControllerDisplayState displayState;
+  displayState.pitch = lastSample.pitch;
+  displayState.roll = lastSample.roll;
+  displayState.wifiConnected = WiFi.status() == WL_CONNECTED;
+  displayState.webSocketConnected = webSocketConnected;
+  displayState.localIp = displayState.wifiConnected ? WiFi.localIP().toString() : "";
+  displayState.serverUrl = config.serverUrl;
+  renderControllerDisplay(displayState);
+}
+
 }  // namespace
 
 void setup() {
@@ -591,6 +611,7 @@ void setup() {
   m5Config.clear_display = true;
   m5Config.internal_imu = true;
   M5.begin(m5Config);
+  beginControllerDisplay();
 
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(false);
@@ -615,6 +636,7 @@ void loop() {
   }
 
   sendTelemetry(nowMs);
+  renderDisplay(nowMs);
   sendPeriodicStatus(nowMs);
   yield();
 }
