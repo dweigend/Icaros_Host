@@ -1,6 +1,6 @@
 /**
- * Purpose: validate operator/API active-experience changes against discovered
- * manifests before station state can redirect a Quest to an installed build.
+ * Purpose: validate single-console active-experience changes against discovered
+ * manifests before station state accepts a new active id.
  */
 import { discoverExperiences } from '$lib/server/experiences';
 

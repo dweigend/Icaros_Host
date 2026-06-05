@@ -21,8 +21,8 @@ reviewable, and learnable for students.
 ## Architecture
 
 - The host is a router, gateway, and translator. It is not an experience.
-- Prefer the simplest explicit route state over orchestration layers. In M1,
-  `/vr` reads `activeExperienceId` and redirects to the active experience.
+- Prefer the simplest explicit state surface over orchestration layers. In the
+  current M1 slice, `/` is the only UI page and owns the operator console.
 - `src/lib` is library code with small, clear responsibilities.
 - `src/routes` is for route composition, screens, debugging, and route-local
   experiments.

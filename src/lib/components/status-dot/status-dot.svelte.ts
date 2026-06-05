@@ -1,8 +1,3 @@
-/**
- * Purpose: shared metadata for the local status-dot primitive.
- */
-export const statusDotFamily = 'status-dot';
-
 export const statusDotToneClassByTone = {
 	default: '',
 	success: 'ui-status-dot--success',

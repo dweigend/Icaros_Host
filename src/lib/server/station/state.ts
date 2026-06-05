@@ -7,7 +7,7 @@ import { STATION_ID, type StationState } from '$lib/protocol';
 
 export type StationStateListener = (state: StationState) => void;
 
-export class StationStateStore {
+class StationStateStore {
 	#state: StationState = { activeExperienceId: null };
 	#listeners = new Set<StationStateListener>();
 

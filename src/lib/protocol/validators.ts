@@ -151,7 +151,7 @@ export function isNonEmptySlug(value: unknown): value is string {
 	return typeof value === 'string' && /^[a-z0-9][a-z0-9-]*$/.test(value);
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 

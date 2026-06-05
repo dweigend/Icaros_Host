@@ -15,7 +15,7 @@ export type ExperienceDiscoveryResult = Readonly<{
 	rootDir: string;
 }>;
 
-export function getExperiencesDir(): string {
+function getExperiencesDir(): string {
 	return process.env.ICAROS_EXPERIENCES_DIR ?? join(process.cwd(), DEFAULT_EXPERIENCES_DIR);
 }
 
