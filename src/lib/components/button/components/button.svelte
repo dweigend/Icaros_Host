@@ -11,6 +11,7 @@
 	let {
 		children,
 		class: className = '',
+		ref = $bindable(null),
 		size = 'md',
 		variant = 'secondary',
 		...restProps
@@ -18,6 +19,7 @@
 </script>
 
 <ButtonPrimitive.Root
+	bind:ref
 	{...restProps}
 	class={joinClassNames('ui-button', `ui-button--${variant}`, size !== 'md' && `ui-button--${size}`, className)}
 >

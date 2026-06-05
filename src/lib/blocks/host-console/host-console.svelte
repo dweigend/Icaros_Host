@@ -3,16 +3,39 @@
 	on data loading while this block owns page-specific presentation and actions.
 -->
 <script lang="ts">
-	import { CircleStop, Play, RefreshCw, Server, Terminal } from '@lucide/svelte';
+	import { ChevronDown, CircleStop, MoreVertical, Play, RefreshCw, Server, Terminal } from '@lucide/svelte';
 
-	import { Button, Kbd, Separator, StatusDot } from '$lib/components';
+	import {
+		Accordion,
+		Button,
+		Collapsible,
+		DropdownMenu,
+		Kbd,
+		ScrollArea,
+		Select,
+		StatusDot,
+		Switch,
+		Tabs
+	} from '$lib/components';
 	import type { HostConsoleProps } from './types';
 
 	let { discovery, station }: HostConsoleProps = $props();
 
+	let activeTab = $state('overview');
+	let compactMode = $state(false);
+	let diagnosticPanels = $state<string[]>(['boundaries']);
+	let networkOpen = $state(true);
+	let selectedExperienceId = $state('');
+
 	const activeExperienceId = $derived(station.activeExperienceId);
 	const installedCount = $derived(discovery.experiences.length);
 	const hasDiscoveryErrors = $derived(discovery.errors.length > 0);
+	const experienceOptions = $derived(
+		discovery.experiences.map((experience) => ({
+			label: `${experience.title} // ${experience.id}`,
+			value: experience.id
+		}))
+	);
 
 	const endpoints = [
 		{
@@ -24,9 +47,15 @@
 			url: 'ws://host-ip:8787/ws/runtime'
 		}
 	] as const;
+
+	$effect(() => {
+		if (selectedExperienceId === '' && station.activeExperienceId !== null) {
+			selectedExperienceId = station.activeExperienceId;
+		}
+	});
 </script>
 
-<main class="host-console">
+<main class="host-console" data-compact={compactMode}>
 	<header class="host-console__header">
 		<div class="host-console__title-block">
 			<p class="host-console__kicker">station-a // local host console</p>
@@ -36,106 +65,187 @@
 			</h1>
 		</div>
 
-		<Button href="/" size="icon" aria-label="Refresh console">
-			<RefreshCw size={18} aria-hidden="true" />
-		</Button>
+		<div class="host-console__header-actions">
+			<Switch
+				bind:checked={compactMode}
+				label="Compact"
+				description="dense operator layout"
+			/>
+
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger class="ui-button ui-button--secondary ui-button--icon" aria-label="Console actions">
+					<MoreVertical size={18} aria-hidden="true" />
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Portal>
+					<DropdownMenu.Content sideOffset={8}>
+						<DropdownMenu.Item textValue="Refresh" onSelect={() => window.location.assign('/')}>
+							<RefreshCw size={15} aria-hidden="true" />
+							Refresh console
+						</DropdownMenu.Item>
+						<DropdownMenu.Item textValue="Open overview" onSelect={() => (activeTab = 'overview')}>
+							<Terminal size={15} aria-hidden="true" />
+							Open overview
+						</DropdownMenu.Item>
+					</DropdownMenu.Content>
+				</DropdownMenu.Portal>
+			</DropdownMenu.Root>
+		</div>
 	</header>
 
-	<section class="host-console__grid" aria-label="Station overview">
-		<article class="host-console__panel host-console__panel--primary">
-			<div class="host-console__panel-head">
-				<span class="host-console__label">active experience</span>
-				<StatusDot
-					tone={activeExperienceId === null ? 'default' : 'success'}
-					label={activeExperienceId === null ? 'No active experience' : 'Experience active'}
-				/>
-			</div>
-			<strong class="host-console__readout">{activeExperienceId ?? 'waiting'}</strong>
-			<p class="host-console__copy">
-				Host owns station state. Experiences only receive normalized controls.
-			</p>
-		</article>
+	<Tabs.Root bind:value={activeTab} activationMode="manual">
+		<Tabs.List aria-label="Console views">
+			<Tabs.Trigger value="overview">Overview</Tabs.Trigger>
+			<Tabs.Trigger value="experiences">Experiences</Tabs.Trigger>
+			<Tabs.Trigger value="diagnostics">Diagnostics</Tabs.Trigger>
+		</Tabs.List>
 
-		<article class="host-console__panel">
-			<span class="host-console__label">installed builds</span>
-			<strong class="host-console__readout">{installedCount}</strong>
-			<p class="host-console__copy">{discovery.rootDir}</p>
-		</article>
+		<Tabs.Content value="overview">
+			<section class="host-console__grid" aria-label="Station overview">
+				<article class="host-console__panel host-console__panel--primary">
+					<div class="host-console__panel-head">
+						<span class="host-console__label">active experience</span>
+						<StatusDot
+							tone={activeExperienceId === null ? 'default' : 'success'}
+							label={activeExperienceId === null ? 'No active experience' : 'Experience active'}
+						/>
+					</div>
+					<strong class="host-console__readout">{activeExperienceId ?? 'waiting'}</strong>
+					<p class="host-console__copy">
+						Host owns station state. Experiences only receive normalized controls.
+					</p>
+				</article>
 
-		<article class="host-console__panel host-console__panel--network">
-			<span class="host-console__label">network endpoints</span>
-			<ul class="host-console__mini-list">
-				{#each endpoints as endpoint (endpoint.url)}
-					<li>
-						<Kbd>{endpoint.url}</Kbd>
-						<span>{endpoint.description}</span>
-					</li>
-				{/each}
-			</ul>
-			<p class="host-console__copy">
-				These are network WebSocket endpoints. They are not local file paths.
-			</p>
-		</article>
-	</section>
+				<article class="host-console__panel">
+					<span class="host-console__label">installed builds</span>
+					<strong class="host-console__readout">{installedCount}</strong>
+					<p class="host-console__copy host-console__token">{discovery.rootDir}</p>
+				</article>
 
-	<Separator />
+				<article class="host-console__panel host-console__panel--network">
+					<Collapsible.Root bind:open={networkOpen}>
+						<Collapsible.Trigger>
+							<span class="host-console__label">network endpoints</span>
+							<ChevronDown size={16} aria-hidden="true" />
+						</Collapsible.Trigger>
+						<Collapsible.Content>
+							<ul class="host-console__mini-list">
+								{#each endpoints as endpoint (endpoint.url)}
+									<li>
+										<Kbd>{endpoint.url}</Kbd>
+										<span>{endpoint.description}</span>
+									</li>
+								{/each}
+							</ul>
+							<p class="host-console__copy">
+								These are network WebSocket endpoints. They are not local file paths.
+							</p>
+						</Collapsible.Content>
+					</Collapsible.Root>
+				</article>
+			</section>
+		</Tabs.Content>
 
-	<section class="host-console__section" aria-labelledby="experience-title">
-		<div class="host-console__section-head">
-			<div>
-				<p class="host-console__kicker">manifest scan</p>
-				<h2 id="experience-title" class="host-console__section-title">Installed Experiences</h2>
-			</div>
+		<Tabs.Content value="experiences">
+			<section class="host-console__section" aria-labelledby="experience-title">
+				<div class="host-console__section-head">
+					<div>
+						<p class="host-console__kicker">manifest scan</p>
+						<h2 id="experience-title" class="host-console__section-title">Installed Experiences</h2>
+					</div>
 
-			<form method="POST" action="?/setActive">
-				<input type="hidden" name="experienceId" value="" />
-				<Button type="submit" variant="ghost">
-					<CircleStop size={16} aria-hidden="true" />
-					Clear
-				</Button>
-			</form>
-		</div>
+					<form class="host-console__actions" method="POST" action="?/setActive">
+						<input type="hidden" name="experienceId" value={selectedExperienceId} />
+						<Select.Field
+							bind:value={selectedExperienceId}
+							ariaLabel="Choose active experience"
+							disabled={installedCount === 0}
+							options={experienceOptions}
+							placeholder={installedCount === 0 ? 'No valid manifests' : 'Choose experience'}
+						/>
+						<Button type="submit" variant="primary" disabled={selectedExperienceId === ''}>
+							<Play size={16} aria-hidden="true" />
+							Start
+						</Button>
+					</form>
 
-		{#if installedCount === 0}
-			<div class="host-console__empty">
-				<Server size={20} aria-hidden="true" />
-				<span>No valid experience manifests found.</span>
-			</div>
-		{:else}
-			<ul class="host-console__list">
-				{#each discovery.experiences as experience (experience.id)}
-					<li class="host-console__row" data-active={experience.id === activeExperienceId}>
-						<div class="host-console__row-main">
-							<strong>{experience.title}</strong>
-							<span>{experience.id} // {experience.mode} // {experience.requiredDevices.join('+')}</span>
+					<form method="POST" action="?/setActive">
+						<input type="hidden" name="experienceId" value="" />
+						<Button type="submit" variant="ghost">
+							<CircleStop size={16} aria-hidden="true" />
+							Clear
+						</Button>
+					</form>
+				</div>
+
+				<ScrollArea class="host-console__scroll-area">
+					{#if installedCount === 0}
+						<div class="host-console__empty">
+							<Server size={20} aria-hidden="true" />
+							<span>No valid experience manifests found.</span>
 						</div>
+					{:else}
+						<ul class="host-console__list">
+							{#each discovery.experiences as experience (experience.id)}
+								<li class="host-console__row" data-active={experience.id === activeExperienceId}>
+									<div class="host-console__row-main">
+										<strong>{experience.title}</strong>
+										<span>{experience.id} // {experience.mode} // {experience.requiredDevices.join('+')}</span>
+									</div>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				</ScrollArea>
+			</section>
+		</Tabs.Content>
 
-						<form method="POST" action="?/setActive">
-							<input type="hidden" name="experienceId" value={experience.id} />
-							<Button type="submit" variant="primary">
-								<Play size={16} aria-hidden="true" />
-								Start
-							</Button>
-						</form>
-					</li>
-				{/each}
-			</ul>
-		{/if}
-	</section>
+		<Tabs.Content value="diagnostics">
+			<section class="host-console__section" aria-labelledby="diagnostics-title">
+				<p class="host-console__kicker">system diagnostics</p>
+				<h2 id="diagnostics-title" class="host-console__section-title">Diagnostics</h2>
 
-	{#if hasDiscoveryErrors}
-		<Separator />
+				<Accordion.Root type="multiple" bind:value={diagnosticPanels}>
+					<Accordion.Item value="scan">
+						<Accordion.Header>
+							<Accordion.Trigger>
+								<span>Scan warnings</span>
+								<StatusDot
+									tone={hasDiscoveryErrors ? 'danger' : 'success'}
+									label={hasDiscoveryErrors ? 'Scan warnings available' : 'No scan warnings'}
+								/>
+							</Accordion.Trigger>
+						</Accordion.Header>
+						<Accordion.Content>
+							<ScrollArea class="host-console__scroll-area">
+								{#if hasDiscoveryErrors}
+									<ul class="host-console__error-list">
+										{#each discovery.errors as error (error)}
+											<li>{error}</li>
+										{/each}
+									</ul>
+								{:else}
+									<p class="host-console__copy">No discovery errors reported.</p>
+								{/if}
+							</ScrollArea>
+						</Accordion.Content>
+					</Accordion.Item>
 
-		<section class="host-console__section" aria-labelledby="errors-title">
-			<p class="host-console__kicker">scan warnings</p>
-			<h2 id="errors-title" class="host-console__section-title">Discovery Errors</h2>
-			<ul class="host-console__error-list">
-				{#each discovery.errors as error (error)}
-					<li>{error}</li>
-				{/each}
-			</ul>
-		</section>
-	{/if}
+					<Accordion.Item value="boundaries">
+						<Accordion.Header>
+							<Accordion.Trigger>Runtime boundaries</Accordion.Trigger>
+						</Accordion.Header>
+						<Accordion.Content>
+							<ul class="host-console__boundary-list">
+								<li>M5 raw frames terminate at the host.</li>
+								<li>Experiences receive normalized controls only.</li>
+								<li>Active state is stored as activeExperienceId for station-a.</li>
+							</ul>
+						</Accordion.Content>
+					</Accordion.Item>
+				</Accordion.Root>
+			</section>
+		</Tabs.Content>
+	</Tabs.Root>
 </main>
 
 <style>
@@ -145,6 +255,7 @@
 		align-content: start;
 		gap: 1rem;
 		padding: 1rem;
+		min-width: 0;
 	}
 
 	.host-console__header,
@@ -152,6 +263,7 @@
 	.host-console__section {
 		width: min(var(--content-max-width), 100%);
 		margin: 0 auto;
+		min-width: 0;
 	}
 
 	.host-console__header {
@@ -160,11 +272,20 @@
 		justify-content: space-between;
 		gap: 1rem;
 		padding-top: 1rem;
+		min-width: 0;
 	}
 
 	.host-console__title-block {
 		display: grid;
 		gap: 0.35rem;
+		min-width: 0;
+	}
+
+	.host-console__header-actions {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 0.75rem;
 		min-width: 0;
 	}
 
@@ -199,7 +320,7 @@
 
 	.host-console__grid {
 		display: grid;
-		grid-template-columns: 1.25fr 0.75fr 1fr;
+		grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr) minmax(0, 1fr);
 		gap: 0.75rem;
 	}
 
@@ -209,6 +330,7 @@
 		border-radius: 0.5rem;
 		background: color-mix(in srgb, var(--color-surface), transparent 4%);
 		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+		min-width: 0;
 	}
 
 	.host-console__panel {
@@ -216,6 +338,7 @@
 		gap: 0.85rem;
 		min-height: 8rem;
 		padding: 1rem;
+		min-width: 0;
 	}
 
 	.host-console__panel--primary {
@@ -236,6 +359,7 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 1rem;
+		min-width: 0;
 	}
 
 	.host-console__readout {
@@ -251,6 +375,12 @@
 		margin: 0;
 		color: var(--color-text-soft);
 		font-size: 0.84rem;
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+
+	.host-console__token {
+		overflow-wrap: anywhere;
 	}
 
 	.host-console__mini-list,
@@ -268,12 +398,18 @@
 	.host-console__mini-list li {
 		display: grid;
 		gap: 0.25rem;
+		min-width: 0;
+	}
+
+	.host-console__mini-list span {
+		overflow-wrap: anywhere;
 	}
 
 	.host-console__section {
 		display: grid;
 		gap: 1rem;
 		padding: 1rem;
+		min-width: 0;
 	}
 
 	.host-console__list,
@@ -288,6 +424,7 @@
 		border: 1px solid var(--color-border);
 		border-radius: 0.4rem;
 		background: var(--color-background);
+		min-width: 0;
 	}
 
 	.host-console__row[data-active='true'] {
@@ -303,6 +440,7 @@
 
 	.host-console__row-main strong {
 		color: var(--color-text-strong);
+		overflow-wrap: anywhere;
 	}
 
 	.host-console__empty {
@@ -311,10 +449,48 @@
 		gap: 0.55rem;
 		min-height: 3rem;
 		color: var(--color-text-soft);
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 
 	.host-console__error-list {
 		color: var(--color-danger);
+		overflow-wrap: anywhere;
+	}
+
+	.host-console__actions {
+		display: grid;
+		grid-template-columns: minmax(12rem, 1fr) auto;
+		gap: 0.5rem;
+		min-width: min(28rem, 100%);
+	}
+
+	:global(.host-console__scroll-area) {
+		max-height: 18rem;
+		min-width: 0;
+	}
+
+	.host-console__boundary-list {
+		display: grid;
+		gap: 0.45rem;
+		margin: 0;
+		padding-left: 1rem;
+		overflow-wrap: anywhere;
+	}
+
+	.host-console[data-compact='true'] {
+		gap: 0.65rem;
+	}
+
+	.host-console[data-compact='true'] .host-console__panel,
+	.host-console[data-compact='true'] .host-console__section {
+		gap: 0.55rem;
+		min-height: auto;
+		padding: 0.75rem;
+	}
+
+	.host-console[data-compact='true'] .host-console__readout {
+		font-size: 1.45rem;
 	}
 
 	@media (max-width: 58rem) {
@@ -333,7 +509,17 @@
 			align-items: flex-start;
 		}
 
-		.host-console__row form,
+		.host-console__header-actions {
+			align-items: stretch;
+			width: 100%;
+		}
+
+		.host-console__actions {
+			grid-template-columns: 1fr;
+			width: 100%;
+			min-width: 0;
+		}
+
 		.host-console__row :global(.ui-button) {
 			width: 100%;
 		}
