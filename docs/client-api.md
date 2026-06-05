@@ -205,7 +205,7 @@ ICAROS_EXPERIENCE_PROTOCOL=https PORT=5183 bun run serve:lan
 
 ## Local Demo Client
 
-The current standalone demo client commonly runs at:
+An intentionally plain desktop-only client can be opened directly at:
 
 ```text
 http://localhost:5174/

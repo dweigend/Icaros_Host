@@ -219,7 +219,7 @@ Standalone VR client:
 | --- | --- | --- |
 | `ICAROS_DEMO_PORT` | `5174` | Demo client port. |
 | `ICAROS_HOST_PORT` | `5183` | Host port used when `ICAROS_HOST_ORIGIN` is unset. |
-| `ICAROS_HOST_ORIGIN` | `http://localhost:5183` | Proxy target for `/ws/runtime`; set `https://localhost:5183` only when the Host really runs HTTPS. |
+| `ICAROS_HOST_ORIGIN` | derived from the client dev server protocol | Proxy target for `/ws/runtime`; use `https://localhost:5183` for Quest/WebXR sessions. |
 
 ## WebSocket Rules
 
