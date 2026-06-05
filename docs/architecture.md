@@ -8,31 +8,35 @@ LAN, HTTPS, and Quest launch setup lives in
 
 ```mermaid
 flowchart TD
-  subgraph Station["Icaros Station: station-a"]
-    Console["Single Console Page\n/"]
-    Host["Host Runtime\nSvelteKit + Bun"]
-    ActiveState["activeExperienceId"]
-    Launch["/launch\nactive experience redirect"]
-    M5Bridge["M5 WebSocket\n/ws/device"]
-    RuntimeWs["Runtime WebSocket\n/ws/runtime"]
+  subgraph Station["ICAROS STATION"]
+    direction TB
+
+    subgraph StationClients["CLIENTS / DEVICES"]
+      direction LR
+      Headset["VR Headset"]
+      M5["M5 Controller"]
+    end
+
+    Host["SERVER<br/>ICAROS Host"]
+
+    Headset -->|"launch request"| Host
+    M5 -->|"raw sensor data"| Host
   end
 
-  subgraph DeviceLayer["Physical / Runtime Clients"]
-    M5["M5 Controller\nraw frames"]
-    Quest["Meta Quest\nHTTPS WebXR browser"]
-    Client["Experience Client\nWebXR/browser app"]
+  Host <-->|"normalized controls +<br/>station state"| ExperienceApp
+
+  subgraph Experience["ICAROS EXPERIENCE"]
+    direction TB
+
+    ExperienceOrigin["SERVER<br/>Experience Origin"]
+    ExperienceApp["CLIENT<br/>ICAROS Experience"]
+    World["Three.js 3D World"]
+
+    ExperienceOrigin -->|"serves app"| ExperienceApp
+    ExperienceApp -->|"renders"| World
   end
 
-  M5 -->|"raw protocol"| M5Bridge
-  M5Bridge -->|"normalize pitch/roll"| Host
-  Host -->|"control.orientation"| RuntimeWs
-
-  Quest -->|"opens HTTPS launch URL"| Launch
-  Launch -->|"307 redirect to external experience URL"| Client
-  Console -->|"set / clear activeExperienceId"| ActiveState
-  ActiveState -->|"station.state"| RuntimeWs
-  Client -->|"client.register experienceId over WSS"| RuntimeWs
-  RuntimeWs -->|"station.state + active controls over WSS"| Client
+  Host -->|"redirect to active<br/>experience"| ExperienceOrigin
 ```
 
 ## Data Flow
