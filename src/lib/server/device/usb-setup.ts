@@ -6,7 +6,7 @@
 
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { readDevicePairingToken, redactDevicePairingToken } from './pairing';
 
@@ -15,6 +15,10 @@ const PAIRING_CONFIG_FILE = resolve(process.cwd(), '.icaros/m5-controller.toml')
 const DEBUG_SNAPSHOT_FILE = resolve(process.cwd(), '.icaros/debug/m5-pairing-debug.json');
 const PAIRING_EVENT_PREFIX = 'PAIRING_EVENT ';
 const WLAN_VERIFY_TIMEOUT_MS = 90_000;
+const STARTUP_DISCOVERY_TIMEOUT_MS = readPositiveIntegerEnv(
+	'ICAROS_CONTROLLER_DISCOVERY_TIMEOUT_MS',
+	15_000
+);
 const MAX_DEBUG_LINES = 300;
 const USB_SETUP_RUNTIME_GLOBAL_KEY = Symbol.for('icaros.host.usbSetupRuntime');
 
@@ -97,6 +101,19 @@ type PairingEvent = Readonly<{
 	usbOk?: boolean;
 	message?: string;
 	error?: string;
+}>;
+
+type SavedControllerConfig = Readonly<{
+	deviceId: string | null;
+	firmwareVersion: string | null;
+	staticIp: string | null;
+	gateway: string | null;
+	subnet: string | null;
+	dns: string | null;
+	pairedUrl: string | null;
+	lastVerifiedAt: string | null;
+	lastFrameAt: string | null;
+	tokenSha256: string | null;
 }>;
 
 export type DeviceUpgradeDiagnostics = Readonly<{
@@ -198,6 +215,7 @@ export function startUsbSetup(serverUrl: string, input: UsbPairingInput): UsbSet
 	}
 
 	resetStatus(serverUrl, input);
+	writeControllerToml();
 	appendDebug('system', `Pairing started for ${redactDevicePairingToken(serverUrl)}.`);
 
 	const child = spawn('python3', buildScriptArgs(), {
@@ -243,6 +261,51 @@ export function startUsbSetup(serverUrl: string, input: UsbPairingInput): UsbSet
 	return getUsbSetupSnapshot();
 }
 
+export function startSavedControllerDiscovery(now: number = Date.now()): UsbSetupSnapshot {
+	if (isPairingBusy(status.state)) {
+		return getUsbSetupSnapshot();
+	}
+
+	const savedConfig = readSavedControllerConfig();
+	if (savedConfig === null) {
+		failStartupDiscovery('Keine gespeicherte Controller-Einrichtung gefunden.');
+		return getUsbSetupSnapshot();
+	}
+
+	const currentTokenHash = hashDevicePairingToken();
+	if (savedConfig.tokenSha256 !== currentTokenHash) {
+		failStartupDiscovery(
+			'Gespeicherter Controller nutzt einen anderen Pairing-Token. Controller bitte neu einrichten.'
+		);
+		return getUsbSetupSnapshot();
+	}
+
+	clearWlanTimeout();
+	status.state = 'wlan_test';
+	status.step = 'Controller im WLAN suchen';
+	status.progress = 70;
+	status.startedAt = now;
+	status.finishedAt = null;
+	status.serverUrl = savedConfig.pairedUrl;
+	status.deviceId = savedConfig.deviceId ?? 'icaros-station-a-m5';
+	status.firmwareVersion = savedConfig.firmwareVersion;
+	status.usbOk = true;
+	status.wlanOk = false;
+	status.lastFrameAt = null;
+	status.message = 'Gespeicherte Controller-Einrichtung geladen. Warte auf WLAN/WebSocket.';
+	status.error = null;
+	status.exitCode = null;
+	status.staticIp = savedConfig.staticIp;
+	status.gateway = savedConfig.gateway;
+	status.subnet = savedConfig.subnet;
+	status.dns = savedConfig.dns;
+	appendDebug('system', 'Startup controller discovery started from saved setup.');
+	startWlanTimeout(STARTUP_DISCOVERY_TIMEOUT_MS);
+	writeDebugSnapshot();
+
+	return getUsbSetupSnapshot();
+}
+
 export function recordPairedDeviceFrame(frame: unknown, receivedAt: number = Date.now()): void {
 	if (!canAcceptPairedDeviceFrame()) {
 		appendDebug('websocket', `Ignoring paired frame while state=${status.state}.`);
@@ -261,8 +324,11 @@ export function recordPairedDeviceFrame(frame: unknown, receivedAt: number = Dat
 	status.step = 'Bereit';
 	status.progress = 100;
 	status.finishedAt = receivedAt;
-	status.message = 'Controller verbunden. USB jetzt trennen.';
+	status.message = status.usbOk
+		? 'Controller verbunden. USB jetzt trennen.'
+		: 'Controller im WLAN gefunden.';
 	status.error = null;
+	status.usbOk = true;
 	clearWlanTimeout();
 	writeControllerToml();
 	writeDebugSnapshot();
@@ -285,11 +351,15 @@ export function recordDeviceSocketUpgrade(details: DeviceUpgradeDiagnostics): vo
 }
 
 function canAcceptPairedDeviceFrame(): boolean {
-	if (status.state === 'idle' || status.state === 'failed') {
+	if (status.state === 'idle') {
 		return false;
 	}
 
-	return status.startedAt !== null;
+	if (status.state !== 'failed') {
+		return status.startedAt !== null;
+	}
+
+	return status.startedAt !== null && status.usbOk && status.serverUrl !== null;
 }
 
 function resetStatus(serverUrl: string, input: UsbPairingInput): void {
@@ -413,13 +483,31 @@ function failPairing(error: string): void {
 	writeDebugSnapshot();
 }
 
-function startWlanTimeout(): void {
+function failStartupDiscovery(error: string): void {
+	clearWlanTimeout();
+	status.state = 'failed';
+	status.step = 'Controller nicht gefunden';
+	status.progress = 0;
+	status.startedAt = Date.now();
+	status.finishedAt = status.startedAt;
+	status.serverUrl = null;
+	status.usbOk = false;
+	status.wlanOk = false;
+	status.lastFrameAt = null;
+	status.message = 'Controller beim Serverstart nicht gefunden.';
+	status.error = error;
+	status.exitCode = null;
+	appendDebug('system', `Startup controller discovery failed: ${error}`);
+	writeDebugSnapshot();
+}
+
+function startWlanTimeout(timeoutMs: number = WLAN_VERIFY_TIMEOUT_MS): void {
 	clearWlanTimeout();
 	runtime.wlanTimer = setTimeout(() => {
 		if (status.state === 'wlan_test') {
 			failPairing('Controller did not connect over WLAN/LAN WebSocket in time.');
 		}
-	}, WLAN_VERIFY_TIMEOUT_MS);
+	}, timeoutMs);
 }
 
 function clearWlanTimeout(): void {
@@ -470,8 +558,9 @@ function writeDebugSnapshot(): void {
 }
 
 function createControllerToml(): string {
-	const tokenHash = createHash('sha256').update(readDevicePairingToken()).digest('hex');
-	const verifiedAt = new Date(status.finishedAt ?? Date.now()).toISOString();
+	const configuredAt = new Date(status.startedAt ?? Date.now()).toISOString();
+	const verifiedAt = status.finishedAt === null ? '' : new Date(status.finishedAt).toISOString();
+	const lastFrameAt = status.lastFrameAt === null ? '' : new Date(status.lastFrameAt).toISOString();
 	return [
 		'# Purpose: non-secret Icaros Host M5 controller pairing metadata.',
 		'# WiFi passwords and cleartext pairing tokens must not be stored here.',
@@ -484,13 +573,80 @@ function createControllerToml(): string {
 		`subnet = "${tomlEscape(status.subnet ?? '')}"`,
 		`dns = "${tomlEscape(status.dns ?? '')}"`,
 		`paired_url = "${tomlEscape(status.serverUrl ?? '')}"`,
+		`configured_at = "${configuredAt}"`,
 		`last_verified_at = "${verifiedAt}"`,
-		`last_frame_at = "${new Date(status.lastFrameAt ?? Date.now()).toISOString()}"`,
+		`last_frame_at = "${lastFrameAt}"`,
 		'',
 		'[pairing]',
-		`token_sha256 = "${tokenHash}"`,
+		`token_sha256 = "${hashDevicePairingToken()}"`,
 		''
 	].join('\n');
+}
+
+function readSavedControllerConfig(): SavedControllerConfig | null {
+	if (!existsSync(PAIRING_CONFIG_FILE)) {
+		return null;
+	}
+
+	const values = parseFlatToml(readFileSync(PAIRING_CONFIG_FILE, 'utf8'));
+	return {
+		deviceId: values.get('controller.device_id') ?? null,
+		firmwareVersion: emptyToNull(values.get('controller.firmware_version')),
+		staticIp: emptyToNull(values.get('controller.static_ip')),
+		gateway: emptyToNull(values.get('controller.gateway')),
+		subnet: emptyToNull(values.get('controller.subnet')),
+		dns: emptyToNull(values.get('controller.dns')),
+		pairedUrl: emptyToNull(values.get('controller.paired_url')),
+		lastVerifiedAt: emptyToNull(values.get('controller.last_verified_at')),
+		lastFrameAt: emptyToNull(values.get('controller.last_frame_at')),
+		tokenSha256: values.get('pairing.token_sha256') ?? null
+	};
+}
+
+function parseFlatToml(input: string): Map<string, string> {
+	const values = new Map<string, string>();
+	let section: string | null = null;
+
+	for (const line of input.split(/\r?\n/)) {
+		const trimmed = line.trim();
+		if (trimmed === '' || trimmed.startsWith('#')) {
+			continue;
+		}
+
+		if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+			section = trimmed.slice(1, -1).trim();
+			continue;
+		}
+
+		const separatorIndex = trimmed.indexOf('=');
+		if (separatorIndex < 0 || section === null) {
+			continue;
+		}
+
+		const key = trimmed.slice(0, separatorIndex).trim();
+		const value = parseTomlString(trimmed.slice(separatorIndex + 1).trim());
+		if (key !== '' && value !== null) {
+			values.set(`${section}.${key}`, value);
+		}
+	}
+
+	return values;
+}
+
+function parseTomlString(value: string): string | null {
+	if (!value.startsWith('"') || !value.endsWith('"')) {
+		return null;
+	}
+
+	return value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+}
+
+function hashDevicePairingToken(): string {
+	return createHash('sha256').update(readDevicePairingToken()).digest('hex');
+}
+
+function emptyToNull(value: string | undefined): string | null {
+	return value === undefined || value === '' ? null : value;
 }
 
 function readStringProperty(value: unknown, key: string): string | null {
@@ -558,4 +714,14 @@ function clampProgress(value: number): number {
 
 function tomlEscape(value: string): string {
 	return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function readPositiveIntegerEnv(name: string, fallback: number): number {
+	const value = process.env[name]?.trim();
+	if (value === undefined || value === '') {
+		return fallback;
+	}
+
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

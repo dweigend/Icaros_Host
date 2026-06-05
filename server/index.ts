@@ -16,7 +16,10 @@ import {
 } from 'node:https';
 
 import { DEFAULT_HTTPS_DEVICE_WS_PORT } from '../src/lib/server/device/pairing';
-import { recordPairedDeviceTcpConnection } from '../src/lib/server/device/usb-setup';
+import {
+	recordPairedDeviceTcpConnection,
+	startSavedControllerDiscovery
+} from '../src/lib/server/device/usb-setup';
 import { resolveServerOpenUrls } from '../src/lib/server/network';
 import { createIcarosWebSocketGateway } from '../src/lib/server/ws';
 
@@ -42,6 +45,14 @@ async function start(): Promise<void> {
 	const { server } = createRuntimeServer(createProtocolAwareHandler(handler, protocol), tlsOptions);
 	const gateway = createIcarosWebSocketGateway();
 	const plainDeviceWsPort = resolvePlainDeviceWsPort(protocol);
+	let pendingListeners = plainDeviceWsPort === null ? 1 : 2;
+	const markListening = (): void => {
+		pendingListeners -= 1;
+		if (pendingListeners === 0) {
+			const discovery = startSavedControllerDiscovery();
+			console.log(`M5 controller startup discovery: ${discovery.state} (${discovery.step})`);
+		}
+	};
 
 	gateway.attach(server);
 	const plainDeviceServer = plainDeviceWsPort === null ? null : createPlainDeviceServer(gateway);
@@ -52,11 +63,14 @@ async function start(): Promise<void> {
 		for (const openUrl of resolveServerOpenUrls(protocol, host, port)) {
 			console.log(`${openUrl.label}: ${openUrl.url}`);
 		}
+
+		markListening();
 	});
 
 	if (plainDeviceServer !== null && plainDeviceWsPort !== null) {
 		plainDeviceServer.listen(plainDeviceWsPort, host, () => {
 			console.log(`M5 plain device WebSocket listening on ws://${host}:${plainDeviceWsPort}`);
+			markListening();
 		});
 	}
 

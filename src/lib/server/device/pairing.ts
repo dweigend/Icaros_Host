@@ -6,12 +6,18 @@
  * URL token; browser/WebXR clients continue to use `/ws/runtime`.
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 
 const DEVICE_PAIRING_QUERY_KEY = 'pairing';
 const DEFAULT_DEVICE_WS_PORT = '5183';
 export const DEFAULT_HTTPS_DEVICE_WS_PORT = '5184';
 const VITE_DEV_PORT = '5173';
 const FALLBACK_TOKEN_BYTES = 18;
+const PERSISTED_PAIRING_TOKEN_FILE = resolve(
+	process.cwd(),
+	'.icaros/secrets/m5-device-pairing-token'
+);
 const DEVICE_PAIRING_TOKEN_GLOBAL_KEY = Symbol.for('icaros.host.devicePairingToken');
 
 const pairingToken = readSharedPairingToken();
@@ -102,9 +108,30 @@ function readSharedPairingToken(): string {
 		return existingToken;
 	}
 
+	const persistedToken = readPersistedToken();
+	if (persistedToken !== null) {
+		globalScope[DEVICE_PAIRING_TOKEN_GLOBAL_KEY] = persistedToken;
+		return persistedToken;
+	}
+
 	const generatedToken = randomBytes(FALLBACK_TOKEN_BYTES).toString('base64url');
+	writePersistedToken(generatedToken);
 	globalScope[DEVICE_PAIRING_TOKEN_GLOBAL_KEY] = generatedToken;
 	return generatedToken;
+}
+
+function readPersistedToken(): string | null {
+	if (!existsSync(PERSISTED_PAIRING_TOKEN_FILE)) {
+		return null;
+	}
+
+	const token = readFileSync(PERSISTED_PAIRING_TOKEN_FILE, 'utf8').trim();
+	return token === '' ? null : token;
+}
+
+function writePersistedToken(token: string): void {
+	mkdirSync(dirname(PERSISTED_PAIRING_TOKEN_FILE), { recursive: true, mode: 0o700 });
+	writeFileSync(PERSISTED_PAIRING_TOKEN_FILE, `${token}\n`, { encoding: 'utf8', mode: 0o600 });
 }
 
 function constantTimeEquals(left: string, right: string): boolean {

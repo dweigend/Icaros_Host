@@ -68,14 +68,28 @@ The Host now shares process-local pairing runtime state through stable
 
 ## Best Practices
 
-Use a stable pairing token for repeatable hardware sessions:
+The Host now keeps its fallback pairing token in a local ignored secret file:
+
+```txt
+.icaros/secrets/m5-device-pairing-token
+```
+
+That makes a USB-configured controller reconnect after a Host restart without
+requiring an environment variable. You can still override the local secret with
+an explicit stable token when an operator workflow needs that:
 
 ```sh
 export ICAROS_DEVICE_PAIRING_TOKEN="<stable-local-token>"
 ```
 
-Keep the token out of logs and shell history where possible. The Host, CLI, and
+Keep tokens out of logs and shell history where possible. The Host, CLI, and
 debug snapshots must only show redacted URLs or short fingerprints.
+
+On Host startup, the saved controller setup in `.icaros/m5-controller.toml` is
+loaded and the Host waits for the controller over WLAN/WebSocket. The console is
+green when a paired frame arrives and red when no saved setup exists, the saved
+token fingerprint is stale, or the controller does not reconnect before the
+startup discovery timeout.
 
 For Quest/WebXR:
 

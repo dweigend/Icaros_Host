@@ -84,12 +84,16 @@ bun run m5:pairing -- health --host-origin "$ICAROS_M5_HOST_ORIGIN"
 bun run m5:pairing -- protocols --host-origin "$ICAROS_M5_HOST_ORIGIN"
 ```
 
-For hardware tests, set one stable `ICAROS_DEVICE_PAIRING_TOKEN` in the Host and
-CLI environment before configuring the controller. Without it, the Host can use
-a process-local random fallback token; a Host restart then makes an already
-stored M5 URL stale. Debug output must never print the clear token. Device
-upgrade logs show only `hasPairing`, a short token fingerprint,
-`Sec-WebSocket-Protocol`, `Origin`, and the accept/reject decision.
+For hardware tests, the Host uses a stable local fallback token from
+`.icaros/secrets/m5-device-pairing-token` unless `ICAROS_DEVICE_PAIRING_TOKEN`
+is explicitly set. This keeps an already configured M5 URL valid after a Host
+restart. Debug output must never print the clear token. Device upgrade logs show
+only `hasPairing`, a short token fingerprint, `Sec-WebSocket-Protocol`,
+`Origin`, and the accept/reject decision.
+
+On Host startup, the server loads `.icaros/m5-controller.toml` and waits for the
+stored controller over WLAN/WebSocket. A found controller turns the M5 setup
+state green; missing setup, stale token fingerprint, or timeout leaves it red.
 
 Use `lan` when USB configuration succeeds but the Host never logs a
 `websocket` debug line. It prints non-secret LAN facts for LLM triage: Host
