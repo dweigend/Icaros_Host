@@ -4,7 +4,6 @@
 <script lang="ts">
 	import { Tabs as TabsPrimitive } from 'bits-ui';
 
-	import { joinClassNames } from '$lib/utils/class-names';
 	import { tabsTriggerClass } from '../tabs.svelte';
 	import type { TabsTriggerProps } from '../types';
 
@@ -14,7 +13,7 @@
 <TabsPrimitive.Trigger
 	bind:ref
 	{...restProps}
-	class={joinClassNames(tabsTriggerClass, className)}
+	class={[tabsTriggerClass, className]}
 />
 
 <style>

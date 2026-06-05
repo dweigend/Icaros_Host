@@ -4,14 +4,13 @@
 <script lang="ts">
 	import { Tabs as TabsPrimitive } from 'bits-ui';
 
-	import { joinClassNames } from '$lib/utils/class-names';
 	import { tabsListClass } from '../tabs.svelte';
 	import type { TabsListProps } from '../types';
 
 	let { ref = $bindable(null), class: className = '', ...restProps }: TabsListProps = $props();
 </script>
 
-<TabsPrimitive.List bind:ref {...restProps} class={joinClassNames(tabsListClass, className)} />
+<TabsPrimitive.List bind:ref {...restProps} class={[tabsListClass, className]} />
 
 <style>
 	:global(.ui-tabs__list) {

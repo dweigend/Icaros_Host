@@ -6,7 +6,6 @@
 	import { Select as SelectPrimitive } from 'bits-ui';
 	import type { Snippet } from 'svelte';
 
-	import { joinClassNames } from '$lib/utils/class-names';
 	import { selectItemClass } from '../select.svelte';
 	import type { SelectItemProps } from '../types';
 
@@ -29,7 +28,7 @@
 	{...restProps}
 	{label}
 	{value}
-	class={joinClassNames(selectItemClass, className)}
+	class={[selectItemClass, className]}
 >
 	{#snippet children(snippetProps)}
 		{#if children}

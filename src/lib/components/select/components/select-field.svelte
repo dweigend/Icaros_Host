@@ -4,7 +4,6 @@
 <script lang="ts">
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 
-	import { joinClassNames } from '$lib/utils/class-names';
 	import type { SelectFieldProps } from '../types';
 	import Content from './select-content.svelte';
 	import Item from './select-item.svelte';
@@ -32,7 +31,7 @@
 	const forwardedOptions = $derived([...options]);
 </script>
 
-<div {...restProps} class={joinClassNames('ui-select-field', className)}>
+<div {...restProps} class={['ui-select-field', className]}>
 	<Root bind:value items={forwardedOptions} type="single" {disabled}>
 		<Trigger aria-label={ariaLabel} class={triggerClass} {disabled}>
 			<span>{selectedLabel}</span>

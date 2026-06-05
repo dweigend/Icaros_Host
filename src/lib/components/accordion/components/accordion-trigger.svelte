@@ -4,7 +4,6 @@
 <script lang="ts">
 	import { Accordion as AccordionPrimitive } from 'bits-ui';
 
-	import { joinClassNames } from '$lib/utils/class-names';
 	import { accordionTriggerClass } from '../accordion.svelte';
 	import type { AccordionTriggerProps } from '../types';
 
@@ -14,7 +13,7 @@
 <AccordionPrimitive.Trigger
 	bind:ref
 	{...restProps}
-	class={joinClassNames(accordionTriggerClass, className)}
+	class={[accordionTriggerClass, className]}
 />
 
 <style>

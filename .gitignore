@@ -10,4 +10,5 @@ test-clients/*/dist
 .env.*
 !.env.example
 .certs
+.icaros
 *.pem

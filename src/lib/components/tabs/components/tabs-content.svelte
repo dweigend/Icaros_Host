@@ -4,7 +4,6 @@
 <script lang="ts">
 	import { Tabs as TabsPrimitive } from 'bits-ui';
 
-	import { joinClassNames } from '$lib/utils/class-names';
 	import { tabsContentClass } from '../tabs.svelte';
 	import type { TabsContentProps } from '../types';
 
@@ -14,7 +13,7 @@
 <TabsPrimitive.Content
 	bind:ref
 	{...restProps}
-	class={joinClassNames(tabsContentClass, className)}
+	class={[tabsContentClass, className]}
 />
 
 <style>

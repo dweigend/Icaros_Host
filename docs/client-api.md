@@ -189,9 +189,10 @@ The browser client builds its WebSocket URL from `window.location.host` plus
 /ws/runtime
 ```
 
-on the experience origin first. During local development, the standalone demo
-client proxies that path back to the host. The Infinite World demo does this in
-`test-clients/infinite-world/vite.config.ts`.
+on the experience origin first. During local development, the standalone client
+proxies that path back to the host. This repository's companion client does
+that in
+`/Users/weigend/Documents/GitHub/Icaros_VR_Client/vite.config.ts`.
 
 The plain host Vite dev server is not enough for end-to-end runtime checks
 because it does not attach the Bun WebSocket gateway. Use the built server entry

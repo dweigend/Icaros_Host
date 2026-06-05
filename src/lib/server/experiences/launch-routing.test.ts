@@ -13,10 +13,7 @@ describe('resolveExperienceLaunchUrl', () => {
 
 	it('maps the active experience to the same LAN host on the default client port', () => {
 		expect(
-			resolveExperienceLaunchUrl(
-				'infinite-world-demo',
-				new URL('https://192.168.50.194:5183/launch')
-			)
+			resolveExperienceLaunchUrl('mountain-flight', new URL('https://192.168.50.194:5183/launch'))
 		).toEqual({
 			ok: true,
 			url: 'https://192.168.50.194:5174/'
@@ -38,10 +35,10 @@ describe('resolveExperienceLaunchUrl', () => {
 		vi.stubEnv('ICAROS_EXPERIENCE_PATH', '/experiences/{experienceId}/');
 
 		expect(
-			resolveExperienceLaunchUrl('infinite-world-demo', new URL('https://host.local:5183/launch'))
+			resolveExperienceLaunchUrl('mountain-flight', new URL('https://host.local:5183/launch'))
 		).toEqual({
 			ok: true,
-			url: 'https://client.local:9443/experiences/infinite-world-demo/'
+			url: 'https://client.local:9443/experiences/mountain-flight/'
 		});
 	});
 });

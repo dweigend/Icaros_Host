@@ -4,7 +4,6 @@
 <script lang="ts">
 	import { Accordion as AccordionPrimitive } from 'bits-ui';
 
-	import { joinClassNames } from '$lib/utils/class-names';
 	import { accordionRootClass } from '../accordion.svelte';
 	import type { AccordionRootProps } from '../types';
 
@@ -40,7 +39,7 @@
 		bind:ref
 		{...forwardedProps}
 		bind:value={getSingleValue, setSingleValue}
-		class={joinClassNames(accordionRootClass, className)}
+		class={[accordionRootClass, className]}
 		type="single"
 	/>
 {:else}
@@ -48,7 +47,7 @@
 		bind:ref
 		{...forwardedProps}
 		bind:value={getMultipleValue, setMultipleValue}
-		class={joinClassNames(accordionRootClass, className)}
+		class={[accordionRootClass, className]}
 		type="multiple"
 	/>
 {/if}

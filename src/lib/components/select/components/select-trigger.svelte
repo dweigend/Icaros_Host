@@ -4,14 +4,13 @@
 <script lang="ts">
 	import { Select as SelectPrimitive } from 'bits-ui';
 
-	import { joinClassNames } from '$lib/utils/class-names';
 	import { selectTriggerClass } from '../select.svelte';
 	import type { SelectTriggerProps } from '../types';
 
 	let { ref = $bindable(null), class: className = '', ...restProps }: SelectTriggerProps = $props();
 </script>
 
-<SelectPrimitive.Trigger bind:ref {...restProps} class={joinClassNames(selectTriggerClass, className)} />
+<SelectPrimitive.Trigger bind:ref {...restProps} class={[selectTriggerClass, className]} />
 
 <style>
 	:global(.ui-select-trigger) {

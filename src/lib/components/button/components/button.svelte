@@ -5,7 +5,6 @@
 <script lang="ts">
 	import { Button as ButtonPrimitive } from 'bits-ui';
 
-	import { joinClassNames } from '$lib/utils/class-names';
 	import type { ButtonProps } from '../types';
 
 	let {
@@ -21,7 +20,7 @@
 <ButtonPrimitive.Root
 	bind:ref
 	{...restProps}
-	class={joinClassNames('ui-button', `ui-button--${variant}`, size !== 'md' && `ui-button--${size}`, className)}
+	class={['ui-button', `ui-button--${variant}`, size !== 'md' && `ui-button--${size}`, className]}
 >
 	{@render children?.()}
 </ButtonPrimitive.Root>

@@ -4,7 +4,6 @@
 <script lang="ts">
 	import { ScrollArea as ScrollAreaPrimitive } from 'bits-ui';
 
-	import { joinClassNames } from '$lib/utils/class-names';
 	import {
 		scrollAreaRootClass,
 		scrollAreaScrollbarClass,
@@ -25,9 +24,9 @@
 <ScrollAreaPrimitive.Root
 	bind:ref
 	{...restProps}
-	class={joinClassNames(scrollAreaRootClass, className)}
+	class={[scrollAreaRootClass, className]}
 >
-	<ScrollAreaPrimitive.Viewport class={joinClassNames(scrollAreaViewportClass, viewportClass)}>
+	<ScrollAreaPrimitive.Viewport class={[scrollAreaViewportClass, viewportClass]}>
 		{@render children?.()}
 	</ScrollAreaPrimitive.Viewport>
 	<ScrollAreaPrimitive.Scrollbar class={scrollAreaScrollbarClass} orientation="vertical">

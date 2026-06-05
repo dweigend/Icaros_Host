@@ -5,7 +5,6 @@
 	import { DropdownMenu as DropdownMenuPrimitive } from 'bits-ui';
 	import type { Snippet } from 'svelte';
 
-	import { joinClassNames } from '$lib/utils/class-names';
 	import { dropdownMenuItemClass } from '../dropdown-menu.svelte';
 	import type { DropdownMenuItemProps } from '../types';
 
@@ -20,7 +19,7 @@
 	bind:ref
 	{...restProps}
 	{textValue}
-	class={joinClassNames(dropdownMenuItemClass, className)}
+	class={[dropdownMenuItemClass, className]}
 >
 	{#if children}
 		{@render children()}

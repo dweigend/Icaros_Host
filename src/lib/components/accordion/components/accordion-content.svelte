@@ -4,7 +4,6 @@
 <script lang="ts">
 	import { Accordion as AccordionPrimitive } from 'bits-ui';
 
-	import { joinClassNames } from '$lib/utils/class-names';
 	import { accordionContentClass } from '../accordion.svelte';
 	import type { AccordionContentProps } from '../types';
 
@@ -14,7 +13,7 @@
 <AccordionPrimitive.Content
 	bind:ref
 	{...restProps}
-	class={joinClassNames(accordionContentClass, className)}
+	class={[accordionContentClass, className]}
 />
 
 <style>

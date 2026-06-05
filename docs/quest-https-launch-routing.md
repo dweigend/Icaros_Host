@@ -47,9 +47,10 @@ Use this built server path for end-to-end runtime checks. The normal SvelteKit
 Vite dev server can render the console, but it does not attach the Bun
 `/ws/runtime` and `/ws/device` gateway.
 
-Run the standalone demo client from `test-clients/infinite-world`:
+Run the standalone VR client from `/Users/weigend/Documents/GitHub/Icaros_VR_Client`:
 
 ```sh
+cd /Users/weigend/Documents/GitHub/Icaros_VR_Client
 ICAROS_HOST_ORIGIN=http://localhost:5183 bun run dev
 ```
 
@@ -97,7 +98,7 @@ PORT=5183 bun run serve:lan
 ```
 
 ```sh
-cd test-clients/infinite-world
+cd /Users/weigend/Documents/GitHub/Icaros_VR_Client
 ICAROS_HOST_ORIGIN=https://localhost:5183 bun run dev
 ```
 
@@ -170,7 +171,7 @@ Host Vite dev server:
 | --- | --- | --- |
 | `ICAROS_DEV_HOST` | `0.0.0.0` | LAN-facing Vite dev bind address. |
 
-Infinite World demo client:
+Standalone VR client:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -185,7 +186,7 @@ The experience client resolves the runtime socket from the current page:
 - `http://...` becomes `ws://.../ws/runtime`.
 - `https://...` becomes `wss://.../ws/runtime`.
 
-The Infinite World demo proxies `/ws/runtime` back to the host during local
+The standalone VR client proxies `/ws/runtime` back to the host during local
 development. That lets the browser experience use the same-origin socket path
 while the host still owns the real runtime gateway.
 
@@ -205,7 +206,7 @@ on Quest is not the Mac. Use `http(s)://<mac-lan-ip>:5174/` or open
 `http(s)://<mac-lan-ip>:5183/launch`.
 
 `/launch` returns `409` when no active experience id is set. Open the console
-and set the id first, for example `infinite-world-demo`.
+and set the id first, for example `mountain-flight`.
 
 The page loads over HTTPS but the socket fails when the experience tries to use
 plain `ws://`. Use the public client API or a same-origin `/ws/runtime` URL so

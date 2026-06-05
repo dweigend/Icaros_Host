@@ -7,7 +7,6 @@
 	import type { Snippet } from 'svelte';
 	import { fly } from 'svelte/transition';
 
-	import { joinClassNames } from '$lib/utils/class-names';
 	import { dropdownMenuContentClass } from '../dropdown-menu.svelte';
 	import type { DropdownMenuContentProps } from '../types';
 
@@ -23,7 +22,7 @@
 		{#if open}
 			<div {...wrapperProps}>
 				<div
-					{...mergeProps(props, { class: joinClassNames(dropdownMenuContentClass, className) })}
+					{...mergeProps(props, { class: [dropdownMenuContentClass, className] })}
 					transition:fly={{ y: -4, duration: 120 }}
 				>
 					{@render children?.()}

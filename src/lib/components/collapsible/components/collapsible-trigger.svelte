@@ -4,7 +4,6 @@
 <script lang="ts">
 	import { Collapsible as CollapsiblePrimitive } from 'bits-ui';
 
-	import { joinClassNames } from '$lib/utils/class-names';
 	import { collapsibleTriggerClass } from '../collapsible.svelte';
 	import type { CollapsibleTriggerProps } from '../types';
 
@@ -14,7 +13,7 @@
 <CollapsiblePrimitive.Trigger
 	bind:ref
 	{...restProps}
-	class={joinClassNames(collapsibleTriggerClass, className)}
+	class={[collapsibleTriggerClass, className]}
 />
 
 <style>

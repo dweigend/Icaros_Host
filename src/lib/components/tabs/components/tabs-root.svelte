@@ -4,7 +4,6 @@
 <script lang="ts">
 	import { Tabs as TabsPrimitive } from 'bits-ui';
 
-	import { joinClassNames } from '$lib/utils/class-names';
 	import { tabsRootClass } from '../tabs.svelte';
 	import type { TabsRootProps } from '../types';
 
@@ -20,7 +19,7 @@
 	bind:ref
 	bind:value
 	{...restProps}
-	class={joinClassNames(tabsRootClass, className)}
+	class={[tabsRootClass, className]}
 />
 
 <style>

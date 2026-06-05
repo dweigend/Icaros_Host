@@ -14,6 +14,8 @@ close to the code while the top-level README stays short.
   certificate setup, `/launch` behavior, and troubleshooting for the headset.
 - [Experience Client API](client-api.md): browser/WebXR client contract for
   experiences that consume normalized controls.
+- [Debugging](debugging.md): bounded pairing debug snapshot for humans and LLM
+  agents.
 
 ## Current MVP Rules
 

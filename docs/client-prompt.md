@@ -11,7 +11,7 @@ Ziel:
 - Keine eigene Hardware- oder Gerätelogik einbauen.
 
 Experience-ID:
-- Verwende diese ID: "<DEINE-EXPERIENCE-ID>"
+- Verwende diese ID: "mountain-flight"
 - Diese ID muss beim Server registriert werden.
 
 Server-Verbindung:
@@ -29,7 +29,7 @@ Nach dem Öffnen des WebSockets sende diese JSON-Nachricht:
   "payload": {
     "role": "experience",
     "id": "<EINDEUTIGE-CLIENT-ID>",
-    "experienceId": "<DEINE-EXPERIENCE-ID>"
+    "experienceId": "mountain-flight"
   }
 }
 
@@ -42,7 +42,7 @@ Payload:
   "pitch": number,
   "roll": number,
   "quality": number,
-  "source": "external",
+  "source": "m5",
   "safeMode": boolean,
   "timestamp": number
 }
@@ -51,6 +51,7 @@ Bedeutung:
 - pitch: normalisierte Vor-/Zurück-Neigung im Bereich -1 bis 1
 - roll: normalisierte Links-/Rechts-Neigung im Bereich -1 bis 1
 - quality: Signalqualität im Bereich 0 bis 1
+- source: normalisierte Host-Quelle, aktuell "m5"
 - safeMode: wenn true, keine Bewegung anwenden
 - timestamp: Zeitstempel vom Server
 

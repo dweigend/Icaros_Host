@@ -4,7 +4,6 @@
 <script lang="ts">
 	import { Collapsible as CollapsiblePrimitive } from 'bits-ui';
 
-	import { joinClassNames } from '$lib/utils/class-names';
 	import { collapsibleRootClass } from '../collapsible.svelte';
 	import type { CollapsibleRootProps } from '../types';
 
@@ -20,7 +19,7 @@
 	bind:ref
 	bind:open
 	{...restProps}
-	class={joinClassNames(collapsibleRootClass, className)}
+	class={[collapsibleRootClass, className]}
 />
 
 <style>

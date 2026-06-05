@@ -4,14 +4,13 @@
 <script lang="ts">
 	import { Accordion as AccordionPrimitive } from 'bits-ui';
 
-	import { joinClassNames } from '$lib/utils/class-names';
 	import { accordionItemClass } from '../accordion.svelte';
 	import type { AccordionItemProps } from '../types';
 
 	let { ref = $bindable(null), class: className = '', ...restProps }: AccordionItemProps = $props();
 </script>
 
-<AccordionPrimitive.Item bind:ref {...restProps} class={joinClassNames(accordionItemClass, className)} />
+<AccordionPrimitive.Item bind:ref {...restProps} class={[accordionItemClass, className]} />
 
 <style>
 	:global(.ui-accordion__item) {

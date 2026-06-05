@@ -22,10 +22,14 @@ import {
 } from '$lib/protocol';
 import {
 	createNeutralControl,
+	isM5OrientationFrame,
 	normalizeM5Frame,
 	parseM5Frame,
-	STALE_AFTER_MS
+	STALE_AFTER_MS,
+	smoothControlOrientation
 } from '$lib/server/control';
+import { isDevicePairingRequest } from '$lib/server/device/pairing';
+import { recordPairedDeviceFrame } from '$lib/server/device/usb-setup';
 import { stationStateStore } from '$lib/server/station/state';
 import { RuntimeClientRegistry } from './runtime-clients';
 
@@ -72,9 +76,16 @@ export class IcarosWebSocketGateway {
 	}
 
 	#handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
-		const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
+		const url = new URL(request.url ?? '/', 'http://localhost');
+		const pathname = url.pathname;
 
 		if (pathname === DEVICE_PATH) {
+			if (!isDevicePairingRequest(url.searchParams.get('pairing'))) {
+				socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+				socket.destroy();
+				return;
+			}
+
 			this.#deviceServer.handleUpgrade(request, socket, head, (websocket) => {
 				this.#deviceServer.emit('connection', websocket, request);
 			});
@@ -100,8 +111,14 @@ export class IcarosWebSocketGateway {
 				return;
 			}
 
+			recordPairedDeviceFrame(frame);
+
+			if (!isM5OrientationFrame(frame)) {
+				return;
+			}
+
 			this.#lastDeviceFrameAt = Date.now();
-			this.#publishControl(normalizeM5Frame(frame));
+			this.#publishControl(smoothControlOrientation(this.#lastControl, normalizeM5Frame(frame)));
 		});
 
 		socket.on('close', () => {

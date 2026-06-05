@@ -46,7 +46,7 @@ flowchart TD
 3. The host stores that id as `activeExperienceId`.
 4. The Meta Quest opens `/launch` and is redirected to the active WebXR
    experience over HTTPS.
-5. The M5 connects over `/ws/device` and sends raw frames.
+5. The paired M5 connects over `/ws/device?pairing=<token>` and sends raw frames.
 6. The host validates and normalizes raw frames.
 7. Runtime clients connect over `/ws/runtime` using WSS when loaded from HTTPS
    and register their role/id.
@@ -59,7 +59,8 @@ flowchart TD
 - The host owns routing state, device state, and control translation.
 - Quest-facing browser surfaces must support HTTPS, which implies WSS for
   `/ws/runtime`.
-- The M5 endpoint owns raw-frame compatibility.
+- The M5 endpoint owns raw-frame compatibility and rejects unpaired device
+  sockets.
 - Experiences receive normalized controls only.
 - Static experience serving is not part of the current one-page UI slice.
 - `/launch` redirects only; it does not serve or start experience assets.
@@ -69,7 +70,7 @@ flowchart TD
 | Area | Owner | Boundary |
 | --- | --- | --- |
 | Station state | Host | Stores `activeExperienceId` and broadcasts station state. |
-| Device input | Host | Accepts raw M5 frames only on `/ws/device`. |
+| Device input | Host | Accepts raw M5 frames only on the paired `/ws/device` URL. |
 | Runtime client API | Host | Accepts registered browser/WebXR clients on `/ws/runtime`. |
 | Experience rendering | Experience client | Runs on its own origin, commonly port `5174`. |
 | Quest entrypoint | Host `/launch` | Redirects to an already running experience client. |
@@ -96,6 +97,12 @@ variables override it:
 
 Browser pages loaded from HTTPS must use WSS for `/ws/runtime`. The public
 experience client derives that automatically from `window.location.protocol`.
+
+The current M5 firmware supports plain `ws://` only. The paired device URL is
+therefore generated as `ws://.../ws/device?pairing=...` by default, even when
+the operator console itself is opened over HTTPS. If the device WebSocket runs
+on a different origin or port, set `ICAROS_DEVICE_WS_ORIGIN` or
+`ICAROS_DEVICE_WS_PORT` before starting the host.
 
 See [Quest HTTPS Launch Routing](quest-https-launch-routing.md) for exact URL
 resolution, environment variables, and troubleshooting.

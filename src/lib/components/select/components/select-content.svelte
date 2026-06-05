@@ -6,7 +6,6 @@
 	import type { Snippet } from 'svelte';
 	import { fly } from 'svelte/transition';
 
-	import { joinClassNames } from '$lib/utils/class-names';
 	import { selectContentClass } from '../select.svelte';
 	import type { SelectContentProps } from '../types';
 
@@ -22,7 +21,7 @@
 		{#if open}
 			<div {...wrapperProps}>
 				<div
-					{...mergeProps(props, { class: joinClassNames(selectContentClass, className) })}
+					{...mergeProps(props, { class: [selectContentClass, className] })}
 					transition:fly={{ y: -4, duration: 120 }}
 				>
 					{@render children?.()}
