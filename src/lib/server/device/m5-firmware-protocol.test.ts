@@ -76,20 +76,20 @@ describe('buildM5FirmwareDiagnosePayload', () => {
 describe('validateM5FirmwareConfigureInput', () => {
 	it('accepts the minimal Host pairing config', () => {
 		expect(
-				validateM5FirmwareConfigureInput({
-					ssid: 'test-wifi',
-					serverUrl: 'ws://192.168.50.194:5184/ws/device?pairing=abc',
-					deviceId: 'icaros-station-a-m5'
-				})
+			validateM5FirmwareConfigureInput({
+				ssid: 'test-wifi',
+				serverUrl: 'ws://192.168.50.194:5184/ws/device?pairing=abc',
+				deviceId: 'icaros-station-a-m5'
+			})
 		).toEqual({ ok: true });
 	});
 
 	it('rejects missing required configure fields', () => {
 		expect(
-				validateM5FirmwareConfigureInput({
-					ssid: 'test-wifi',
-					serverUrl: 'ws://192.168.50.194:5184/ws/device?pairing=abc'
-				})
+			validateM5FirmwareConfigureInput({
+				ssid: 'test-wifi',
+				serverUrl: 'ws://192.168.50.194:5184/ws/device?pairing=abc'
+			})
 		).toEqual({
 			ok: false,
 			error: 'Missing ssid, serverUrl, or deviceId'
