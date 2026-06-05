@@ -211,16 +211,25 @@ The current standalone demo client commonly runs at:
 http://localhost:5174/
 ```
 
-When opened through the Quest launch route, the headset should use the LAN host
-instead:
+When opened through the Quest launch route, the headset should use the host LAN
+origin instead. The host owns `/launch`:
 
 ```text
 http://<mac-lan-ip>:5183/launch
 ```
 
-With development certificates installed, both URLs should use HTTPS:
+With development certificates installed on the host, the launch URL should use
+HTTPS:
 
 ```text
 https://<mac-lan-ip>:5183/launch
+```
+
+The experience URL is separate and must match the standalone client server. Use
+HTTPS for the client only when the client actually runs with TLS:
+
+```text
+http://<mac-lan-ip>:5174/
+# or, with client TLS enabled:
 https://<mac-lan-ip>:5174/
 ```

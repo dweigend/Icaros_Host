@@ -317,8 +317,20 @@
                             <div>
                                 <Kbd>{questLaunchUrl}</Kbd>
                                 <span
-                                    >Quest / Brille öffnet die aktive Experience</span
+                                    >Quest Launch URL (Host)</span
                                 >
+                            </div>
+                        </li>
+                        <li>
+                            <span class="host-console__endpoint-icon">
+                                <ExternalLink size={16} aria-hidden="true" />
+                            </span>
+                            <div>
+                                <Kbd
+                                    >{experienceTargetUrl ??
+                                        "pending active experience"}</Kbd
+                                >
+                                <span>Experience URL (Client)</span>
                             </div>
                         </li>
                         <li>
@@ -346,8 +358,7 @@
                             <div>
                                 <Kbd>{runtimeSocketUrl}</Kbd>
                                 <span
-                                    >Experience verbindet sich und registriert
-                                    ihre ID</span
+                                    >Runtime WebSocket Proxy zum Host</span
                                 >
                             </div>
                         </li>
@@ -409,22 +420,22 @@
                     rel="noreferrer"
                 >
                     <ExternalLink size={16} aria-hidden="true" />
-                    Launch
+                    Host Launch
                 </Button>
             {/if}
         </div>
 
         <div class="host-console__routing-copy">
             <p class="host-console__copy">
+                Quest Launch URL (Host)
                 <Kbd>{questLaunchUrl}</Kbd>
-                leitet zur laufenden Client-Seite
+                leitet zur Experience URL (Client)
                 <Kbd>{experienceTargetUrl ?? "pending active experience"}</Kbd>
                 weiter.
             </p>
             <p class="host-console__copy">
-                Der aktive Client verbindet sich mit <Kbd
-                    >{runtimeSocketUrl}</Kbd
-                > und erhält
+                Runtime WebSocket Proxy <Kbd>/ws/runtime</Kbd> zum Host:
+                <Kbd>{runtimeSocketUrl}</Kbd>. Der aktive Client erhält
                 <code>control.orientation</code>.
             </p>
         </div>

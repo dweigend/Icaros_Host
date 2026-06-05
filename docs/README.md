@@ -36,10 +36,12 @@ close to the code while the top-level README stays short.
 | --- | --- | --- |
 | Host console | `http://localhost:5183/` | `https://<mac-lan-ip>:5183/` |
 | Quest launch endpoint | `http://localhost:5183/launch` | `https://<mac-lan-ip>:5183/launch` |
-| Experience client | `http://localhost:5174/` | `https://<mac-lan-ip>:5174/` |
+| Experience client | `http://localhost:5174/` | `http://<mac-lan-ip>:5174/` or HTTPS only when the client runs TLS |
 | Runtime WebSocket | `ws://localhost:5183/ws/runtime` | `wss://<mac-lan-ip>:5183/ws/runtime` |
 | M5 WebSocket | `ws://<mac-lan-ip>:5183/ws/device` | `ws://<mac-lan-ip>:5184/ws/device` when Host runs HTTPS |
 
 Use plain HTTP only for desktop development. For the Meta Quest and WebXR,
 prefer HTTPS on the LAN address and make the headset trust the development
 certificate authority.
+The `/launch` endpoint is always on the Host origin. Do not use
+`<mac-lan-ip>:5174/launch`; port `5174` is the experience client origin only.

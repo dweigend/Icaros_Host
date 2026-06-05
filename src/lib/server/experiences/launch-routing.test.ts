@@ -4,6 +4,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { createQuestLaunchUrl, resolveConnectionInfo } from '$lib/server/network';
 import { resolveExperienceLaunchUrl } from './launch-routing';
 
 describe('resolveExperienceLaunchUrl', () => {
@@ -11,7 +12,32 @@ describe('resolveExperienceLaunchUrl', () => {
 		vi.unstubAllEnvs();
 	});
 
-	it('maps the active experience to the same LAN host on the default client port', () => {
+	it('maps the active experience to the same LAN host on the default HTTP client port', () => {
+		expect(
+			resolveExperienceLaunchUrl('mountain-flight', new URL('https://192.168.50.194:5183/launch'))
+		).toEqual({
+			ok: true,
+			url: 'http://192.168.50.194:5174/'
+		});
+	});
+
+	it('keeps Host launch and experience target URLs on their own origins', () => {
+		const requestUrl = new URL('https://192.168.50.194:5183/launch');
+		const connection = resolveConnectionInfo(requestUrl);
+		const questLaunchUrl = createQuestLaunchUrl(connection.httpOrigin);
+		const experienceTarget = resolveExperienceLaunchUrl('mountain-flight', requestUrl);
+
+		expect(questLaunchUrl).toBe('https://192.168.50.194:5183/launch');
+		expect(questLaunchUrl).not.toBe('https://192.168.50.194:5174/launch');
+		expect(experienceTarget).toEqual({
+			ok: true,
+			url: 'http://192.168.50.194:5174/'
+		});
+	});
+
+	it('supports an explicit HTTPS experience protocol when the client runs TLS', () => {
+		vi.stubEnv('ICAROS_EXPERIENCE_PROTOCOL', 'https');
+
 		expect(
 			resolveExperienceLaunchUrl('mountain-flight', new URL('https://192.168.50.194:5183/launch'))
 		).toEqual({
@@ -39,6 +65,19 @@ describe('resolveExperienceLaunchUrl', () => {
 		).toEqual({
 			ok: true,
 			url: 'https://client.local:9443/experiences/mountain-flight/'
+		});
+	});
+
+	it('does not let ICAROS_EXPERIENCE_ORIGIN change the Host launch endpoint', () => {
+		vi.stubEnv('ICAROS_EXPERIENCE_ORIGIN', 'http://client.local:5174/');
+
+		const requestUrl = new URL('https://host.local:5183/launch');
+		const connection = resolveConnectionInfo(requestUrl);
+
+		expect(createQuestLaunchUrl(connection.httpOrigin)).toBe('https://host.local:5183/launch');
+		expect(resolveExperienceLaunchUrl('mountain-flight', requestUrl)).toEqual({
+			ok: true,
+			url: 'http://client.local:5174/'
 		});
 	});
 });

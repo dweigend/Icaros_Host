@@ -12,7 +12,7 @@ import {
 	startM5UsbPairing
 } from '$lib/server/device/pairing-service';
 import { resolveExperienceLaunchUrl } from '$lib/server/experiences';
-import { resolveConnectionInfo } from '$lib/server/network';
+import { createQuestLaunchUrl, resolveConnectionInfo } from '$lib/server/network';
 import { setActiveExperience } from '$lib/server/station/active-experience';
 import { stationStateStore } from '$lib/server/station/state';
 import type { Actions, PageServerLoad } from './$types';
@@ -26,7 +26,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	return {
 		connection: {
 			...connection,
-			questLaunchUrl: new URL('/launch', connection.httpOrigin).toString(),
+			questLaunchUrl: createQuestLaunchUrl(connection.httpOrigin),
 			experienceTargetUrl: launchTarget.ok ? launchTarget.url : null,
 			pairedDeviceUrl: pairingStatus.connection.pairedDeviceUrl
 		},

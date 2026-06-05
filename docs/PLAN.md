@@ -97,9 +97,15 @@ their `experienceId`.
 
 The Meta Quest remains a supported runtime device. It opens the host console or
 active WebXR experience over HTTPS. `/launch` redirects to the active experience
-client URL. The default target is the same LAN host on port `5174`, with protocol
-inherited from the host request. Override it with `ICAROS_EXPERIENCE_ORIGIN` or
-`ICAROS_EXPERIENCE_PORT` when the client runs elsewhere.
+client URL. The default target is the same LAN host on plain HTTP port `5174`
+because the local client dev server usually does not run TLS. Override it with
+`ICAROS_EXPERIENCE_ORIGIN`, `ICAROS_EXPERIENCE_PROTOCOL`, or
+`ICAROS_EXPERIENCE_PORT` when the client runs elsewhere or really serves HTTPS.
+
+The Quest launch URL itself is always the Host endpoint
+`http(s)://<host-lan-ip>:5183/launch`. The experience client URL is separate,
+commonly `http(s)://<host-lan-ip>:5174/`, and must never be shown with a
+`/launch` path.
 
 The operator sets the active id in the console. The host forwards
 `control.orientation` only to registered experience clients whose
@@ -118,7 +124,11 @@ The operator sets the active id in the console. The host forwards
   `/ws/runtime` proxied back to the host.
 - Set `activeExperienceId` in the host console from one stable LAN origin.
 - Verify that `https://<mac-lan-ip>:5183/launch` returns a `307` redirect to
-  `https://<mac-lan-ip>:5174/`.
+  `http://<mac-lan-ip>:5174/` by default when the client dev server is plain
+  HTTP.
+- If the standalone client runs with TLS, set
+  `ICAROS_EXPERIENCE_PROTOCOL=https` or `ICAROS_EXPERIENCE_ORIGIN` and verify
+  that `/launch` redirects to `https://<mac-lan-ip>:5174/`.
 - Open the launch URL on the Quest and confirm the WebXR experience connects to
   `/ws/runtime` with WSS.
 - Add or keep automated coverage for default launch URL resolution, missing

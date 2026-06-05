@@ -64,8 +64,9 @@ experience client whose `experienceId` matches the active id receives
 
 The `/launch` endpoint is a thin Quest launcher for the active experience. It
 redirects the headset to the configured experience origin, defaulting to the same
-LAN host on port `5174`. When the host is opened over HTTPS, the generated
-experience URL also uses HTTPS.
+LAN host on port `5174` over HTTP. The experience URL uses HTTPS only when the
+standalone client actually runs with TLS and the host is configured with
+`ICAROS_EXPERIENCE_PROTOCOL=https` or `ICAROS_EXPERIENCE_ORIGIN=https://...`.
 
 ## Quest And HTTPS
 
@@ -84,6 +85,10 @@ Quest points to the headset itself. Quest-facing browser surfaces must support
 HTTPS, and runtime sockets loaded from HTTPS must use WSS. The M5 device
 boundary remains separate and may use its firmware-compatible WebSocket input
 path.
+
+For desktop smoke tests the client can still run on plain
+`http://<mac-lan-ip>:5174/`. That proves routing, but WebXR on Quest requires
+the client origin itself to be HTTPS.
 
 ## Control API
 

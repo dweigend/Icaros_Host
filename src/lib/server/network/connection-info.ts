@@ -31,6 +31,10 @@ export function resolveConnectionInfo(url: URL): HostConnectionInfo {
 	};
 }
 
+export function createQuestLaunchUrl(hostOrigin: string): string {
+	return new URL('/launch', hostOrigin).toString();
+}
+
 export function resolveServerOpenUrls(
 	protocol: HttpProtocol,
 	hostname: string,

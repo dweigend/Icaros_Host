@@ -4,10 +4,11 @@
  * experience to a LAN-safe browser URL that Quest can open directly.
  */
 import { isNonEmptySlug } from '$lib/protocol';
-import { formatHost, readHttpProtocol, resolveLanHostname } from '$lib/server/network';
+import { formatHost, resolveLanHostname } from '$lib/server/network';
 
 const DEFAULT_EXPERIENCE_PORT = '5174';
 const DEFAULT_EXPERIENCE_PATH = '/';
+const DEFAULT_EXPERIENCE_PROTOCOL = 'http';
 
 export type ExperienceLaunchResult =
 	| Readonly<{ ok: true; url: string }>
@@ -52,7 +53,7 @@ function resolveExperienceOrigin(
 		return readExperienceOrigin(configuredOrigin);
 	}
 
-	const protocol = process.env.ICAROS_EXPERIENCE_PROTOCOL ?? readHttpProtocol(requestUrl.protocol);
+	const protocol = process.env.ICAROS_EXPERIENCE_PROTOCOL ?? DEFAULT_EXPERIENCE_PROTOCOL;
 	const port = process.env.ICAROS_EXPERIENCE_PORT ?? DEFAULT_EXPERIENCE_PORT;
 
 	if (protocol !== 'http' && protocol !== 'https') {
