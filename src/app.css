@@ -30,7 +30,6 @@
 	--font-size-sm: 0.76rem;
 	--font-size-md: 0.84rem;
 	--font-size-lg: 1rem;
-	--icon-bare-size: 1.15rem;
 	font-family:
 		"SFMono-Regular", "Cascadia Code", "Roboto Mono", "Liberation Mono", ui-monospace, monospace;
 	color: var(--color-text);
@@ -56,18 +55,4 @@ body {
 button,
 input {
 	font: inherit;
-}
-
-.ui-icon-bare {
-	display: inline-grid;
-	place-items: center;
-	width: var(--icon-bare-size);
-	height: var(--icon-bare-size);
-	color: var(--color-info);
-	line-height: 1;
-}
-
-.ui-icon-bare svg {
-	width: 0.95rem;
-	height: 0.95rem;
 }

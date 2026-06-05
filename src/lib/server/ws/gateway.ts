@@ -9,7 +9,8 @@
  * The gateway owns sockets, timers, and cleanup. It deliberately does not own
  * routing decisions, manifest discovery, or rendering code.
  */
-import type { IncomingMessage, Server } from 'node:http';
+import type { Server as HttpServer, IncomingMessage } from 'node:http';
+import type { Server as HttpsServer } from 'node:https';
 import type { Duplex } from 'node:stream';
 import { type WebSocket, WebSocketServer } from 'ws';
 import {
@@ -32,6 +33,8 @@ const DEVICE_PATH = '/ws/device';
 const RUNTIME_PATH = '/ws/runtime';
 const STALE_CHECK_INTERVAL_MS = 250;
 
+type RuntimeHttpServer = HttpServer | HttpsServer;
+
 export class IcarosWebSocketGateway {
 	#deviceServer = new WebSocketServer({ noServer: true });
 	#runtimeServer = new WebSocketServer({ noServer: true });
@@ -41,7 +44,7 @@ export class IcarosWebSocketGateway {
 	#staleTimer: ReturnType<typeof setInterval> | null = null;
 	#unsubscribeStation: (() => void) | null = null;
 
-	attach(server: Server): void {
+	attach(server: RuntimeHttpServer): void {
 		this.#deviceServer.on('connection', (socket) => this.#handleDeviceConnection(socket));
 		this.#runtimeServer.on('connection', (socket) => this.#handleRuntimeConnection(socket));
 		this.#unsubscribeStation = stationStateStore.subscribe((state) => {

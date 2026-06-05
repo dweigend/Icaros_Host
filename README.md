@@ -7,13 +7,13 @@ collapsed into one technical console page.
 
 Icaros Host is the station router, gateway, and translator for one local
 station. The host owns station state, device input, runtime sockets, and
-experience discovery. The UI is intentionally one page:
+active experience routing. The UI is intentionally one page:
 
 ```txt
 /
   single operator console
   station status
-  installed experience manifests
+  runtime connection URLs
   activeExperienceId action
 ```
 
@@ -35,9 +35,10 @@ removed to keep the codebase small and readable.
 M1 still targets one physical station:
 
 - station id: `station-a`
+- one Meta Quest headset as HTTPS/WebXR runtime device
 - one M5 controller
 - one active experience id
-- many installed experience manifests
+- browser-based experience clients that register over WebSocket
 - one operator-facing host console
 
 The host stores:
@@ -51,39 +52,38 @@ The host stores:
 The single console page reads that state and updates it through a SvelteKit form
 action. No separate operator route or JSON API is needed for the MVP UI.
 
-## Experience Discovery
+## Experience Routing
 
-The host scans finished build folders for manifests. In this MVP, discovery is
-used to populate the console and validate `activeExperienceId`; static serving
-of experience builds is intentionally not part of the current UI slice.
+The host does not statically serve experience builds in this MVP. An experience
+is a browser/WebXR client that opens its own page, connects to the host over
+`/ws/runtime`, and registers with an `experienceId`.
 
-Expected layout:
+The operator console sets `activeExperienceId` directly. Only a registered
+experience client whose `experienceId` matches the active id receives
+`control.orientation` frames.
+
+The `/launch` endpoint is a thin Quest launcher for the active experience. It
+redirects the headset to the configured experience origin, defaulting to the same
+LAN host on port `5174`. When the host is opened over HTTPS, the generated
+experience URL also uses HTTPS.
+
+## Quest And HTTPS
+
+The Meta Quest is still a first-class runtime device in this MVP. It does not
+require a dedicated `/vr` route, but it must be able to open the host console
+and the active WebXR experience from a secure origin:
 
 ```txt
-<ICAROS_EXPERIENCES_DIR>/
-  echo-flight/
-    dist/
-      experience.manifest.json
-  bat-sense/
-    dist/
-      experience.manifest.json
+https://<host-lan-name-or-ip>:<port>/
+https://<experience-origin>/
+wss://<host-lan-name-or-ip>:<port>/ws/runtime
 ```
 
-Each manifest describes the experience:
-
-```json
-{
-  "id": "echo-flight",
-  "title": "Echo Flight",
-  "entry": "echo-flight",
-  "requiredDevices": ["quest", "m5"],
-  "protocol": "neural-flight.v1",
-  "mode": "prototype"
-}
-```
-
-`entry` is metadata in this MVP. The console does not serve or redirect to that
-entry.
+`http://localhost` is not enough for the headset because `localhost` on the
+Quest points to the headset itself. Quest-facing browser surfaces must support
+HTTPS, and runtime sockets loaded from HTTPS must use WSS. The M5 device
+boundary remains separate and may use its firmware-compatible WebSocket input
+path.
 
 ## Control API
 
@@ -107,6 +107,6 @@ produces neutral safe-mode controls.
 
 - [Architecture](docs/architecture.md)
 - [Experience Client API](docs/client-api.md)
-- [Implementation Plan](PLAN.md)
+- [Implementation Plan](docs/PLAN.md)
 - [Coding Standards](CODINGSTANDARDS.md)
 - [Agent Rules](AGENTS.md)

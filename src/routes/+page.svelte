@@ -13,4 +13,4 @@
 	<title>Icaros Host Console</title>
 </svelte:head>
 
-<HostConsole discovery={data.discovery} station={data.station} />
+<HostConsole connection={data.connection} station={data.station} />

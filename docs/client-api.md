@@ -4,6 +4,9 @@ Purpose: this document is a how-to for experience developers who connect a
 browser experience to Icaros Host. It describes only the client-facing API and
 intentionally leaves out device and hardware internals.
 
+For headset URLs, HTTPS certificate setup, and `/launch` redirect behavior, see
+[Quest HTTPS Launch Routing](quest-https-launch-routing.md).
+
 ## What The Client Does
 
 An experience connects to Icaros Host and receives normalized control data. The
@@ -71,7 +74,7 @@ Options:
 
 | Option | Type | Required | Default | Purpose |
 | --- | --- | --- | --- | --- |
-| `experienceId` | `string` | yes | none | Unique id of the experience. It must match an installed and activated experience manifest, for example `"echo-flight"`. |
+| `experienceId` | `string` | yes | none | Unique id of the experience. It must match the id the operator marks active in the host console, for example `"echo-flight"`. |
 | `clientId` | `string` | no | `crypto.randomUUID()` | Runtime client id sent to the host during registration. Most experiences should leave this unset. |
 | `runtimePath` | `string` | no | `"/ws/runtime"` | Runtime WebSocket path on the current host. Most experiences should leave this unset. |
 
@@ -163,6 +166,10 @@ formats.
 
 ## Runtime Behavior
 
+The host console exposes a Quest launch URL at `/launch`. That endpoint
+redirects to the currently active experience client URL; it does not serve the
+experience assets itself.
+
 The client resolves the runtime socket from the current page:
 
 - `http://...` uses `ws://.../ws/runtime`.
@@ -172,3 +179,47 @@ If the host sends a station state where the active experience id no longer
 matches this client, the client navigates to `/`. This keeps inactive
 experiences from continuing to run after the operator changes the active
 experience.
+
+## Standalone Client Runtime Socket
+
+The browser client builds its WebSocket URL from `window.location.host` plus
+`runtimePath`. This means an experience running on port `5174` tries to open:
+
+```text
+/ws/runtime
+```
+
+on the experience origin first. During local development, the standalone demo
+client proxies that path back to the host. The Infinite World demo does this in
+`test-clients/infinite-world/vite.config.ts`.
+
+The plain host Vite dev server is not enough for end-to-end runtime checks
+because it does not attach the Bun WebSocket gateway. Use the built server entry
+point for socket testing:
+
+```sh
+bun run build
+PORT=5183 bun run serve:lan
+```
+
+## Local Demo Client
+
+The current standalone demo client commonly runs at:
+
+```text
+http://localhost:5174/
+```
+
+When opened through the Quest launch route, the headset should use the LAN host
+instead:
+
+```text
+http://<mac-lan-ip>:5183/launch
+```
+
+With development certificates installed, both URLs should use HTTPS:
+
+```text
+https://<mac-lan-ip>:5183/launch
+https://<mac-lan-ip>:5174/
+```

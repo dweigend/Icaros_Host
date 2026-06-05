@@ -7,7 +7,7 @@ reviewable, and learnable for students.
 ## Working Style
 
 - Work like a pragmatic senior engineer.
-- Read `AGENTS.md`, `README.md`, `PLAN.md`, relevant `docs/**`, and local
+- Read `AGENTS.md`, `README.md`, `docs/PLAN.md`, relevant `docs/**`, and local
   `README.md` files before changing code.
 - Do not change code blindly.
 - Search for existing patterns, utilities, and APIs before creating new ones.

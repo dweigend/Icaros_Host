@@ -17,7 +17,7 @@ Before changing code:
 
 1. Read `AGENTS.md`.
 2. Read `README.md`.
-3. Read `PLAN.md`.
+3. Read `docs/PLAN.md`.
 4. Read `CODINGSTANDARDS.md`.
 5. Inspect relevant `docs/**` and local folder `README.md` files.
 6. Check the current worktree state.
@@ -32,8 +32,9 @@ before designing components.
 - Do not add UI subpages unless the user explicitly reopens that scope.
 - WebSocket controls runtime clients.
 - The operator decides the active experience id from `/`.
-- The host stores `activeExperienceId`; the current MVP does not redirect or
-  statically serve experience builds.
+- The host stores `activeExperienceId`; `/launch` may redirect to the externally
+  running active experience, but the host does not statically serve experience
+  builds.
 - The M5 sends raw data only to the host.
 - Experiences receive only normalized control data.
 - No experience may connect directly to the M5.
@@ -49,10 +50,9 @@ Implement one station:
 - one Quest
 - one M5
 - one active experience
-- many installed experience builds
+- browser/WebXR experience clients that register over `/ws/runtime`
 - minimal operator UI
 - template client library foundation
-- local manifest discovery from finished `dist` folders
 
 Prepare but do not fully implement:
 
@@ -96,7 +96,8 @@ Prepare but do not fully implement:
 - M5 compatibility is a boundary. Do not break the existing M5 message shapes.
 - Runtime sockets must support HTTPS/WSS deployment when exposed to clients.
 - Internal services may remain plain HTTP/WS behind the gateway.
-- Prefer the single console page over route-level launch managers.
+- Prefer the single console page and the thin `/launch` redirect over route-level
+  launch managers.
 - Runtime objects with sockets, timers, events, or loops need explicit cleanup.
 - Stale or disconnected M5 state must produce neutral safe-mode controls.
 

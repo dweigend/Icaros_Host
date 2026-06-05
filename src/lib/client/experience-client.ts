@@ -26,7 +26,7 @@ export class IcarosExperienceClient {
 
 	constructor(options: ExperienceClientOptions) {
 		this.#options = {
-			clientId: crypto.randomUUID(),
+			clientId: createDefaultClientId(),
 			runtimePath: '/ws/runtime',
 			...options
 		};
@@ -92,7 +92,7 @@ export class IcarosExperienceClient {
 			message?.type === 'station.state' &&
 			message.payload.activeExperienceId !== this.#options.experienceId
 		) {
-			window.location.assign('/');
+			navigateToHostConsole();
 		}
 	}
 }
@@ -106,6 +106,30 @@ export function createIcarosExperienceClient(
 function resolveRuntimeUrl(runtimePath: string): string {
 	const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 	return `${protocol}//${window.location.host}${runtimePath}`;
+}
+
+function createDefaultClientId(): string {
+	if (typeof globalThis.crypto?.randomUUID === 'function') {
+		return globalThis.crypto.randomUUID();
+	}
+
+	const bytes = new Uint8Array(16);
+	globalThis.crypto?.getRandomValues(bytes);
+	return `client-${Date.now().toString(36)}-${Array.from(bytes, formatByte).join('')}`;
+}
+
+function formatByte(byte: number): string {
+	return byte.toString(16).padStart(2, '0');
+}
+
+function navigateToHostConsole(): void {
+	const consoleUrl = new URL('/', window.location.href);
+
+	if (consoleUrl.href === window.location.href) {
+		return;
+	}
+
+	window.location.assign(consoleUrl.href);
 }
 
 function parseRuntimeMessage(data: string): ControlOrientationMessage | StationStateMessage | null {

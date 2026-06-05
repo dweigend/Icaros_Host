@@ -11,7 +11,8 @@
 		"sourceMap": true,
 		"strict": true,
 		"moduleResolution": "bundler"
-	}
+	},
+	"exclude": ["build", "test-clients/*/dist", "test-clients/*/src", "test-clients/*/vite.config.ts"]
 	// Path aliases are handled by https://svelte.dev/docs/kit/configuration#alias
 	// except $lib which is handled by https://svelte.dev/docs/kit/configuration#files
 	//

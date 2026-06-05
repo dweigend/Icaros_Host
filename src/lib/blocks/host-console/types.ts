@@ -1,15 +1,16 @@
 /**
  * Purpose: public prop types for the composed host console block.
  */
-import type { ExperienceManifest, StationState } from '$lib/protocol';
+import type { StationState } from '$lib/protocol';
 
-export type HostConsoleDiscovery = Readonly<{
-	experiences: readonly ExperienceManifest[];
-	errors: readonly string[];
-	rootDir: string;
+export type HostConsoleConnection = Readonly<{
+	httpOrigin: string;
+	wsOrigin: string;
+	questLaunchUrl: string;
+	experienceTargetUrl: string | null;
 }>;
 
 export type HostConsoleProps = Readonly<{
-	discovery: HostConsoleDiscovery;
+	connection: HostConsoleConnection;
 	station: StationState;
 }>;

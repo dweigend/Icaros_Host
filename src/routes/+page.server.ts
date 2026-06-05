@@ -1,22 +1,29 @@
 /**
  * Purpose: server-side data and actions for the single Icaros Host console.
- * The page reads installed experience manifests and updates the one M1 station
- * state without adding separate UI routes or API endpoints.
+ * The page updates the one M1 station state and exposes launch URLs without
+ * owning experience assets.
  */
 import { fail } from '@sveltejs/kit';
 
 import { isNonEmptySlug } from '$lib/protocol';
-import { discoverExperiences } from '$lib/server/experiences';
-import { setValidatedActiveExperience } from '$lib/server/station/active-experience';
+import { resolveExperienceLaunchUrl } from '$lib/server/experiences';
+import { resolveConnectionInfo } from '$lib/server/network';
+import { setActiveExperience } from '$lib/server/station/active-experience';
 import { stationStateStore } from '$lib/server/station/state';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async () => {
-	const discovery = await discoverExperiences();
+export const load: PageServerLoad = async ({ url }) => {
+	const station = stationStateStore.getState();
+	const connection = resolveConnectionInfo(url);
+	const launchTarget = resolveExperienceLaunchUrl(station.activeExperienceId, url);
 
 	return {
-		discovery,
-		station: stationStateStore.getState()
+		connection: {
+			...connection,
+			questLaunchUrl: new URL('/launch', connection.httpOrigin).toString(),
+			experienceTargetUrl: launchTarget.ok ? launchTarget.url : null
+		},
+		station
 	};
 };
 
@@ -30,7 +37,7 @@ export const actions: Actions = {
 			return fail(400, { message: 'Invalid experience id.' });
 		}
 
-		const result = await setValidatedActiveExperience(activeExperienceId);
+		const result = setActiveExperience(activeExperienceId);
 
 		if (!result.ok) {
 			return fail(400, { message: result.error });

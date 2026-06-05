@@ -3,15 +3,14 @@
 	on data loading while this block owns page-specific presentation and actions.
 -->
 <script lang="ts">
-	import { browser } from '$app/environment';
 	import {
 		ChevronDown,
 		CircleStop,
+		ExternalLink,
 		Glasses,
 		Play,
 		RadioTower,
 		Router,
-		Server,
 		Terminal
 	} from '@lucide/svelte';
 
@@ -19,39 +18,27 @@
 		Button,
 		Collapsible,
 		Kbd,
-		ScrollArea,
-		Select,
-		StatusDot,
-		Tabs
+		StatusDot
 	} from '$lib/components';
 	import type { HostConsoleProps } from './types';
 
-	let { discovery, station }: HostConsoleProps = $props();
+	let { connection, station }: HostConsoleProps = $props();
 
-	let activeTab = $state('overview');
 	let networkOpen = $state(true);
 	let selectedExperienceId = $state('');
 
 	const activeExperienceId = $derived(station.activeExperienceId);
-	const installedCount = $derived(discovery.experiences.length);
-	const experienceOptions = $derived(
-		discovery.experiences.map((experience) => ({
-			label: `${experience.title} // ${experience.id}`,
-			value: experience.id
-		}))
-	);
+	const consoleUrl = $derived(`${connection.httpOrigin}/`);
+	const questLaunchUrl = $derived(connection.questLaunchUrl);
+	const experienceTargetUrl = $derived(connection.experienceTargetUrl);
+	const m5SocketUrl = $derived(`${connection.wsOrigin}/ws/device`);
+	const runtimeSocketUrl = $derived(`${connection.wsOrigin}/ws/runtime`);
 
-	const publicHost = $derived.by(() => {
-		if (!browser) {
-			return '<host-lan-ip>:3000';
+	$effect(() => {
+		if (selectedExperienceId === '' && activeExperienceId !== null) {
+			selectedExperienceId = activeExperienceId;
 		}
-
-		const portSuffix = window.location.port === '' ? '' : `:${window.location.port}`;
-		return `<host-lan-ip>${portSuffix}`;
 	});
-	const questUrl = $derived(`http://${publicHost}/`);
-	const m5SocketUrl = $derived(`ws://${publicHost}/ws/device`);
-	const runtimeSocketUrl = $derived(`ws://${publicHost}/ws/runtime`);
 </script>
 
 <main class="host-console">
@@ -65,156 +52,137 @@
 		</div>
 	</header>
 
-	<Tabs.Root bind:value={activeTab} activationMode="manual">
-		<Tabs.List aria-label="Console views">
-			<Tabs.Trigger value="overview">Overview</Tabs.Trigger>
-			<Tabs.Trigger value="experiences">Experiences</Tabs.Trigger>
-			<Tabs.Trigger value="diagnostics">Diagnostics</Tabs.Trigger>
-		</Tabs.List>
+	<section class="host-console__grid" aria-label="Station overview">
+		<article class="host-console__panel host-console__panel--primary">
+			<div class="host-console__panel-head">
+				<span class="host-console__label">active experience</span>
+				<StatusDot
+					tone={activeExperienceId === null ? 'default' : 'success'}
+					label={activeExperienceId === null ? 'No active experience' : 'Experience active'}
+				/>
+			</div>
+			<strong class="host-console__readout">{activeExperienceId ?? 'none'}</strong>
+			<p class="host-console__copy">
+				Nur diese Experience erhält normalisierte M5-Steuerdaten über den Runtime-Socket.
+			</p>
+		</article>
 
-		<Tabs.Content value="overview">
-			<section class="host-console__grid" aria-label="Station overview">
-				<article class="host-console__panel host-console__panel--primary">
-					<div class="host-console__panel-head">
-						<span class="host-console__label">active experience</span>
-						<StatusDot
-							tone={activeExperienceId === null ? 'default' : 'success'}
-							label={activeExperienceId === null ? 'No active experience' : 'Experience active'}
-						/>
-					</div>
-					<strong class="host-console__readout">{activeExperienceId ?? 'waiting'}</strong>
-					<p class="host-console__copy">
-						Host owns station state. Experiences only receive normalized controls.
-					</p>
-				</article>
-
-				<article class="host-console__panel host-console__panel--network">
-					<Collapsible.Root bind:open={networkOpen}>
-						<Collapsible.Trigger>
-							<span class="host-console__label">network endpoints</span>
-							<ChevronDown size={16} aria-hidden="true" />
-						</Collapsible.Trigger>
-						<Collapsible.Content>
-							<ul class="host-console__mini-list">
-								<li>
-									<span class="host-console__endpoint-icon ui-icon-bare">
-										<Glasses size={16} aria-hidden="true" />
-									</span>
-									<div>
-										<Kbd>{questUrl}</Kbd>
-										<span>Quest / Brille öffnet die Host-Startseite</span>
-									</div>
-								</li>
-								<li>
-									<span class="host-console__endpoint-icon ui-icon-bare">
-										<RadioTower size={16} aria-hidden="true" />
-									</span>
-									<div>
-										<Kbd>{m5SocketUrl}</Kbd>
-										<span>M5 Controller sendet rohe JSON-Frames</span>
-									</div>
-								</li>
-								<li>
-									<span class="host-console__endpoint-icon ui-icon-bare">
-										<Router size={16} aria-hidden="true" />
-									</span>
-									<div>
-										<Kbd>{runtimeSocketUrl}</Kbd>
-										<span>Experience-Client empfängt normalisierte Controls</span>
-									</div>
-								</li>
-							</ul>
-							<p class="host-console__copy">
-								Use the LAN IP of this host machine. Do not enter 0.0.0.0 on Quest or M5.
-							</p>
-						</Collapsible.Content>
-					</Collapsible.Root>
-				</article>
-			</section>
-		</Tabs.Content>
-
-		<Tabs.Content value="experiences">
-			<section class="host-console__section" aria-labelledby="experience-title">
-				<div class="host-console__section-head">
-					<div>
-						<p class="host-console__kicker">manifest scan</p>
-						<h2 id="experience-title" class="host-console__section-title">Installed Experiences</h2>
-					</div>
-
-					{#if installedCount > 0}
-						<form class="host-console__actions" method="POST" action="?/setActive">
-							<input type="hidden" name="experienceId" value={selectedExperienceId} />
-							<Select.Field
-								bind:value={selectedExperienceId}
-								ariaLabel="Choose active experience"
-								options={experienceOptions}
-								placeholder="Choose experience"
-							/>
-							<Button type="submit" variant="primary" disabled={selectedExperienceId === ''}>
-								<Play size={16} aria-hidden="true" />
-								Start
-							</Button>
-						</form>
-					{/if}
-
-					{#if activeExperienceId !== null}
-						<form method="POST" action="?/setActive">
-							<input type="hidden" name="experienceId" value="" />
-							<Button type="submit" variant="ghost">
-								<CircleStop size={16} aria-hidden="true" />
-								Clear
-							</Button>
-						</form>
-					{/if}
-				</div>
-
-				<ScrollArea class="host-console__scroll-area">
-					{#if installedCount === 0}
-						<div class="host-console__empty">
-							<Server size={20} aria-hidden="true" />
-							<span>No valid experience manifests found.</span>
-						</div>
-					{:else}
-						<ul class="host-console__list">
-							{#each discovery.experiences as experience (experience.id)}
-								<li class="host-console__row" data-active={experience.id === activeExperienceId}>
-									<div class="host-console__row-main">
-										<strong>{experience.title}</strong>
-										<span>{experience.id} // {experience.mode} // {experience.requiredDevices.join('+')}</span>
-									</div>
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				</ScrollArea>
-			</section>
-		</Tabs.Content>
-
-		<Tabs.Content value="diagnostics">
-			<section class="host-console__section" aria-labelledby="diagnostics-title">
-				<p class="host-console__kicker">system diagnostics</p>
-				<h2 id="diagnostics-title" class="host-console__section-title">Diagnostics</h2>
-
-				<div class="host-console__diagnostic-block">
-					<span class="host-console__label">Runtime boundaries</span>
-					<ul class="host-console__boundary-list">
-						<li>M5 raw frames terminate at the host.</li>
-						<li>Experiences receive normalized controls only.</li>
-						<li>Active state is stored as activeExperienceId for station-a.</li>
+		<article class="host-console__panel host-console__panel--network">
+			<Collapsible.Root bind:open={networkOpen}>
+				<Collapsible.Trigger>
+					<span class="host-console__label">Verbindungsadressen</span>
+					<ChevronDown size={16} aria-hidden="true" />
+				</Collapsible.Trigger>
+				<Collapsible.Content>
+					<ul class="host-console__mini-list">
+						<li>
+							<span class="host-console__endpoint-icon">
+								<Glasses size={16} aria-hidden="true" />
+							</span>
+							<div>
+								<Kbd>{questLaunchUrl}</Kbd>
+								<span>Quest / Brille öffnet die aktive Experience</span>
+							</div>
+						</li>
+						<li>
+							<span class="host-console__endpoint-icon">
+								<Terminal size={16} aria-hidden="true" />
+							</span>
+							<div>
+								<Kbd>{consoleUrl}</Kbd>
+								<span>Operator-Konsole</span>
+							</div>
+						</li>
+						<li>
+							<span class="host-console__endpoint-icon">
+								<RadioTower size={16} aria-hidden="true" />
+							</span>
+							<div>
+								<Kbd>{m5SocketUrl}</Kbd>
+								<span>M5 Controller sendet Rohdaten</span>
+							</div>
+						</li>
+						<li>
+							<span class="host-console__endpoint-icon">
+								<Router size={16} aria-hidden="true" />
+							</span>
+							<div>
+								<Kbd>{runtimeSocketUrl}</Kbd>
+								<span>Experience verbindet sich und registriert ihre ID</span>
+							</div>
+						</li>
 					</ul>
-				</div>
-			</section>
-		</Tabs.Content>
-	</Tabs.Root>
+					<p class="host-console__copy">
+						Diese Adressen auf Geräten im selben LAN verwenden.
+					</p>
+				</Collapsible.Content>
+			</Collapsible.Root>
+		</article>
+	</section>
+
+	<section class="host-console__section" aria-labelledby="experience-title">
+		<div class="host-console__section-head">
+			<div>
+				<p class="host-console__kicker">runtime routing</p>
+				<h2 id="experience-title" class="host-console__section-title">Aktive Experience</h2>
+			</div>
+
+			<form class="host-console__actions" method="POST" action="?/setActive">
+				<input
+					class="host-console__input"
+					name="experienceId"
+					bind:value={selectedExperienceId}
+					autocomplete="off"
+					inputmode="text"
+					pattern="[a-z0-9][a-z0-9-]*"
+					placeholder="echo-flight"
+					aria-label="Active experience id"
+				/>
+				<Button type="submit" variant="primary" disabled={selectedExperienceId === ''}>
+					<Play size={16} aria-hidden="true" />
+					Aktiv setzen
+				</Button>
+			</form>
+
+			{#if activeExperienceId !== null}
+				<form method="POST" action="?/setActive">
+					<input type="hidden" name="experienceId" value="" />
+					<Button type="submit" variant="ghost">
+						<CircleStop size={16} aria-hidden="true" />
+						Clear
+					</Button>
+				</form>
+				<Button href={questLaunchUrl} variant="secondary" target="_blank" rel="noreferrer">
+					<ExternalLink size={16} aria-hidden="true" />
+					Launch
+				</Button>
+			{/if}
+		</div>
+
+		<div class="host-console__routing-copy">
+			<p class="host-console__copy">
+				<Kbd>{questLaunchUrl}</Kbd>
+				leitet zur laufenden Client-Seite
+				<Kbd>{experienceTargetUrl ?? 'pending active experience'}</Kbd>
+				weiter.
+			</p>
+			<p class="host-console__copy">
+				Der aktive Client verbindet sich mit <Kbd>{runtimeSocketUrl}</Kbd> und erhält
+				<code>control.orientation</code>.
+			</p>
+		</div>
+	</section>
 </main>
 
 <style>
 	.host-console {
+		--endpoint-icon-size: 1.15rem;
+
 		min-height: 100svh;
 		display: grid;
 		align-content: start;
-		gap: 1rem;
-		padding: 1rem;
+		gap: var(--space-3);
+		padding: var(--space-4);
 		min-width: 0;
 	}
 
@@ -230,8 +198,8 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 1rem;
-		padding-top: 1rem;
+		gap: var(--space-3);
+		padding-top: var(--space-3);
 		min-width: 0;
 	}
 
@@ -272,7 +240,7 @@
 
 	.host-console__grid {
 		display: grid;
-		grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+		grid-template-columns: minmax(16rem, 0.8fr) minmax(0, 1.2fr);
 		gap: var(--space-3);
 	}
 
@@ -288,8 +256,9 @@
 	.host-console__panel {
 		display: grid;
 		gap: var(--space-3);
-		min-height: 6.75rem;
-		padding: var(--space-3);
+		align-content: start;
+		min-height: 7rem;
+		padding: var(--space-4);
 		min-width: 0;
 	}
 
@@ -305,12 +274,11 @@
 	}
 
 	.host-console__panel-head,
-	.host-console__section-head,
-	.host-console__row {
+	.host-console__section-head {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 1rem;
+		gap: var(--space-3);
 		min-width: 0;
 	}
 
@@ -322,8 +290,7 @@
 	}
 
 	.host-console__copy,
-	.host-console__mini-list,
-	.host-console__row-main span {
+	.host-console__mini-list {
 		margin: 0;
 		color: var(--color-text-soft);
 		font-size: var(--font-size-sm);
@@ -331,20 +298,19 @@
 		overflow-wrap: anywhere;
 	}
 
-	.host-console__mini-list,
-	.host-console__list {
+	.host-console__mini-list {
 		padding: 0;
 		list-style: none;
 	}
 
 	.host-console__mini-list {
 		display: grid;
-		gap: var(--space-2);
+		gap: var(--space-3);
 	}
 
 	.host-console__mini-list li {
 		display: grid;
-		grid-template-columns: var(--icon-bare-size) minmax(0, 1fr);
+		grid-template-columns: var(--endpoint-icon-size) minmax(0, 1fr);
 		align-items: center;
 		gap: var(--space-2);
 		min-width: 0;
@@ -361,56 +327,26 @@
 	}
 
 	.host-console__endpoint-icon {
+		display: inline-grid;
+		place-items: center;
+		width: var(--endpoint-icon-size);
+		height: var(--endpoint-icon-size);
 		align-self: start;
 		margin-top: 0.15rem;
 		color: color-mix(in srgb, var(--color-info), var(--color-text-soft) 20%);
+		line-height: 1;
+	}
+
+	.host-console__endpoint-icon :global(svg) {
+		width: 0.95rem;
+		height: 0.95rem;
 	}
 
 	.host-console__section {
 		display: grid;
-		gap: 1rem;
-		padding: 1rem;
+		gap: var(--space-3);
+		padding: var(--space-4);
 		min-width: 0;
-	}
-
-	.host-console__list {
-		display: grid;
-		gap: 0.5rem;
-		margin: 0;
-	}
-
-	.host-console__row {
-		padding: 0.85rem;
-		border: 1px solid var(--color-border);
-		border-radius: 0.4rem;
-		background: var(--color-background);
-		min-width: 0;
-	}
-
-	.host-console__row[data-active='true'] {
-		border-color: var(--color-accent);
-		background: color-mix(in srgb, var(--color-accent), var(--color-background) 88%);
-	}
-
-	.host-console__row-main {
-		display: grid;
-		gap: 0.3rem;
-		min-width: 0;
-	}
-
-	.host-console__row-main strong {
-		color: var(--color-text-strong);
-		overflow-wrap: anywhere;
-	}
-
-	.host-console__empty {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.55rem;
-		min-height: 3rem;
-		color: var(--color-text-soft);
-		min-width: 0;
-		overflow-wrap: anywhere;
 	}
 
 	.host-console__actions {
@@ -420,22 +356,28 @@
 		min-width: min(28rem, 100%);
 	}
 
-	:global(.host-console__scroll-area) {
-		max-height: 18rem;
+	.host-console__routing-copy {
+		display: grid;
+		gap: var(--space-1);
 		min-width: 0;
 	}
 
-	.host-console__boundary-list {
-		display: grid;
-		gap: 0.45rem;
-		margin: 0;
-		padding-left: 1rem;
-		overflow-wrap: anywhere;
+	.host-console__input {
+		width: 100%;
+		min-height: 2.25rem;
+		padding: 0 0.85rem;
+		border: 1px solid var(--color-border-strong);
+		border-radius: 0.4rem;
+		color: var(--color-text-strong);
+		background: var(--color-background);
+		font: inherit;
+		font-size: var(--font-size-sm);
+		min-width: 0;
 	}
 
-	.host-console__diagnostic-block {
-		display: grid;
-		gap: 0.75rem;
+	.host-console__input:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: 2px;
 	}
 
 	@media (max-width: 58rem) {
@@ -444,8 +386,7 @@
 		}
 
 		.host-console__header,
-		.host-console__section-head,
-		.host-console__row {
+		.host-console__section-head {
 			align-items: stretch;
 			flex-direction: column;
 		}
@@ -458,10 +399,6 @@
 			grid-template-columns: 1fr;
 			width: 100%;
 			min-width: 0;
-		}
-
-		.host-console__row :global(.ui-button) {
-			width: 100%;
 		}
 	}
 </style>

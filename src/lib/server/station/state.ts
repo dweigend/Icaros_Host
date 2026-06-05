@@ -7,6 +7,12 @@ import { STATION_ID, type StationState } from '$lib/protocol';
 
 export type StationStateListener = (state: StationState) => void;
 
+const STATION_STATE_STORE_KEY = '__icarosStationStateStore';
+
+type IcarosGlobalState = typeof globalThis & {
+	[STATION_STATE_STORE_KEY]?: StationStateStore;
+};
+
 class StationStateStore {
 	#state: StationState = { activeExperienceId: null };
 	#listeners = new Set<StationStateListener>();
@@ -45,4 +51,9 @@ class StationStateStore {
 	}
 }
 
-export const stationStateStore = new StationStateStore();
+const icarosGlobalState = globalThis as IcarosGlobalState;
+
+export const stationStateStore =
+	icarosGlobalState[STATION_STATE_STORE_KEY] ?? new StationStateStore();
+
+icarosGlobalState[STATION_STATE_STORE_KEY] = stationStateStore;
