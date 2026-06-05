@@ -25,7 +25,7 @@
 	let compactMode = $state(false);
 	let diagnosticPanels = $state<string[]>(['boundaries']);
 	let networkOpen = $state(true);
-	let selectedExperienceId = $state('');
+	let selectedExperienceId = $state(station.activeExperienceId ?? '');
 
 	const activeExperienceId = $derived(station.activeExperienceId);
 	const installedCount = $derived(discovery.experiences.length);
@@ -48,11 +48,6 @@
 		}
 	] as const;
 
-	$effect(() => {
-		if (selectedExperienceId === '' && station.activeExperienceId !== null) {
-			selectedExperienceId = station.activeExperienceId;
-		}
-	});
 </script>
 
 <main class="host-console" data-compact={compactMode}>
@@ -73,7 +68,7 @@
 			/>
 
 			<DropdownMenu.Root>
-				<DropdownMenu.Trigger class="ui-button ui-button--secondary ui-button--icon" aria-label="Console actions">
+				<DropdownMenu.Trigger class="host-console__menu-trigger" aria-label="Console actions">
 					<MoreVertical size={18} aria-hidden="true" />
 				</DropdownMenu.Trigger>
 				<DropdownMenu.Portal>
@@ -287,6 +282,28 @@
 		justify-content: flex-end;
 		gap: 0.75rem;
 		min-width: 0;
+	}
+
+	:global(.host-console__menu-trigger) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex: 0 0 auto;
+		width: 2.35rem;
+		height: 2.35rem;
+		padding: 0;
+		border: 1px solid var(--color-border-strong);
+		border-radius: 0.45rem;
+		color: var(--color-text);
+		background: var(--color-surface-raised);
+		line-height: 1;
+		cursor: pointer;
+	}
+
+	:global(.host-console__menu-trigger:hover),
+	:global(.host-console__menu-trigger[data-state='open']) {
+		border-color: var(--color-accent);
+		color: var(--color-text-strong);
 	}
 
 	.host-console__kicker,

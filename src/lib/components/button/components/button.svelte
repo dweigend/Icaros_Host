@@ -80,6 +80,9 @@
 
 	:global(.ui-button--icon) {
 		width: 2.25rem;
+		height: 2.25rem;
+		min-height: 2.25rem;
 		padding: 0;
+		line-height: 1;
 	}
 </style>

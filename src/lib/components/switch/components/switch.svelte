@@ -39,8 +39,9 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.75rem;
+		gap: 0.65rem;
 		color: var(--color-text);
+		line-height: 1.15;
 	}
 
 	.ui-switch__copy {
@@ -63,8 +64,12 @@
 
 	:global(.ui-switch__control) {
 		position: relative;
-		width: 2.45rem;
-		height: 1.35rem;
+		display: inline-flex;
+		align-items: center;
+		flex: 0 0 auto;
+		width: 2.15rem;
+		height: 1.2rem;
+		padding: 0;
 		border: 1px solid var(--color-border-strong);
 		border-radius: 999px;
 		background: var(--color-surface);
@@ -81,16 +86,16 @@
 
 	:global(.ui-switch__thumb) {
 		display: block;
-		width: 1rem;
-		height: 1rem;
+		width: 0.9rem;
+		height: 0.9rem;
 		border-radius: 999px;
 		background: var(--color-text-strong);
-		transform: translateX(0.15rem);
+		transform: translateX(0.12rem);
 		transition: transform 120ms ease;
 	}
 
 	:global(.ui-switch__control[data-state='checked'] .ui-switch__thumb) {
 		background: var(--color-accent-contrast);
-		transform: translateX(1.2rem);
+		transform: translateX(1rem);
 	}
 </style>
