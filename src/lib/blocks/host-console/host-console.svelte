@@ -150,11 +150,10 @@
 			return;
 		}
 
-		const activeId = debugTargetExperienceId;
 		const socket = debugSocket;
 
 		if (socket !== null) {
-			registerDebugTap(socket, activeId);
+			registerDebugTap(socket);
 		}
 	});
 
@@ -181,10 +180,7 @@
 		].slice(0, DEBUG_FRAME_LIMIT);
 	}
 
-	function registerDebugTap(
-		socket: WebSocket,
-		experienceId: string | null = debugTargetExperienceId
-	): void {
+	function registerDebugTap(socket: WebSocket): void {
 		if (socket.readyState !== WebSocket.OPEN) {
 			return;
 		}
@@ -192,14 +188,7 @@
 		socket.send(
 			JSON.stringify({
 				type: 'client.register',
-				payload:
-					experienceId === null
-						? { role: 'operator', id: DEBUG_CLIENT_ID }
-						: {
-								role: 'experience',
-								id: DEBUG_CLIENT_ID,
-								experienceId
-							}
+				payload: { role: 'operator', id: DEBUG_CLIENT_ID }
 			})
 		);
 	}

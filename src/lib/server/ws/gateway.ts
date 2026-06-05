@@ -3,8 +3,9 @@
  *
  * `/ws/device` is only for the M5. It receives raw firmware frames and converts
  * them to normalized controls. `/ws/runtime` is for browser clients. It sends
- * station state to all registered runtime clients and sends controls only to the
- * currently active experience.
+ * station state to all registered runtime clients, sends controls to the
+ * currently active experience, and mirrors normalized controls to operator
+ * clients for diagnostics.
  *
  * The gateway owns sockets, timers, and cleanup. It deliberately does not own
  * routing decisions, manifest discovery, or rendering code.
@@ -194,6 +195,11 @@ export class IcarosWebSocketGateway {
 			}
 
 			client = this.#runtimeClients.replaceRegistration(client, registration);
+			this.#runtimeClients.sendControlToClient(
+				client,
+				createControlOrientationMessage(this.#lastControl),
+				stationStateStore.getState().activeExperienceId
+			);
 		});
 
 		socket.on('close', () => {
@@ -203,7 +209,7 @@ export class IcarosWebSocketGateway {
 
 	#publishControl(control: ControlOrientation): void {
 		this.#lastControl = control;
-		this.#runtimeClients.sendControlToActiveExperience(
+		this.#runtimeClients.sendControlToActiveExperienceAndOperators(
 			createControlOrientationMessage(control),
 			stationStateStore.getState().activeExperienceId
 		);

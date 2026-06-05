@@ -2,9 +2,10 @@
  * Purpose: manage connected runtime WebSocket clients.
  *
  * Runtime clients are browser-side participants: operator pages, Quest launchers,
- * and running experiences. All of them may need station state, but only the
- * currently active experience should receive control frames. Keeping that rule in
- * one small registry makes the WebSocket gateway easier to read.
+ * and running experiences. All of them may need station state. Controls are
+ * routed to the active experience for interaction and to operators for
+ * diagnostics. Keeping those rules in one small registry makes the WebSocket
+ * gateway easier to read.
  */
 import { WebSocket } from 'ws';
 import type {
@@ -58,14 +59,14 @@ export class RuntimeClientRegistry {
 		}
 	}
 
-	sendControlToActiveExperience(
+	sendControlToActiveExperienceAndOperators(
 		message: ControlOrientationMessage,
 		activeExperienceId: string | null
 	): void {
 		const serialized = JSON.stringify(message);
 
 		for (const client of this.#clients) {
-			if (!isActiveExperienceClient(client, activeExperienceId)) {
+			if (!canReceiveControl(client, activeExperienceId)) {
 				continue;
 			}
 
@@ -78,7 +79,7 @@ export class RuntimeClientRegistry {
 		message: ControlOrientationMessage,
 		activeExperienceId: string | null
 	): void {
-		if (!isActiveExperienceClient(client, activeExperienceId)) {
+		if (!canReceiveControl(client, activeExperienceId)) {
 			return;
 		}
 
@@ -86,10 +87,11 @@ export class RuntimeClientRegistry {
 	}
 }
 
-function isActiveExperienceClient(
-	client: RuntimeClient,
-	activeExperienceId: string | null
-): boolean {
+function canReceiveControl(client: RuntimeClient, activeExperienceId: string | null): boolean {
+	if (client.registration?.role === 'operator') {
+		return true;
+	}
+
 	return (
 		client.registration?.role === 'experience' &&
 		client.registration.experienceId === activeExperienceId
