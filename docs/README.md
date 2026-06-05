@@ -16,6 +16,8 @@ close to the code while the top-level README stays short.
   experiences that consume normalized controls.
 - [Debugging](debugging.md): bounded pairing debug snapshot for humans and LLM
   agents.
+- [M5 Pairing Solution](m5-pairing-solution.md): confirmed root cause, fix,
+  verification matrix, and best practices for the USB/WLAN/WebSocket pairing.
 
 ## Current MVP Rules
 
@@ -36,7 +38,7 @@ close to the code while the top-level README stays short.
 | Quest launch endpoint | `http://localhost:5183/launch` | `https://<mac-lan-ip>:5183/launch` |
 | Experience client | `http://localhost:5174/` | `https://<mac-lan-ip>:5174/` |
 | Runtime WebSocket | `ws://localhost:5183/ws/runtime` | `wss://<mac-lan-ip>:5183/ws/runtime` |
-| M5 WebSocket | `ws://<mac-lan-ip>:5183/ws/device` | `wss://<mac-lan-ip>:5183/ws/device` when Host runs HTTPS |
+| M5 WebSocket | `ws://<mac-lan-ip>:5183/ws/device` | `ws://<mac-lan-ip>:5184/ws/device` when Host runs HTTPS |
 
 Use plain HTTP only for desktop development. For the Meta Quest and WebXR,
 prefer HTTPS on the LAN address and make the headset trust the development

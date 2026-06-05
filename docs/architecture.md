@@ -65,12 +65,51 @@ flowchart TD
 - Static experience serving is not part of the current one-page UI slice.
 - `/launch` redirects only; it does not serve or start experience assets.
 
+## Operator Surfaces And Host Core
+
+The target structure separates who operates the station from who owns station
+logic:
+
+```mermaid
+flowchart LR
+  Human["Human operator"] --> WebUI["Web UI<br/>/"]
+  Automation["Coding LLM / automation"] --> CLI["CLI<br/>bun run m5:pairing"]
+
+  WebUI --> HostCore["Host core<br/>pairing, diagnosis, routing state"]
+  CLI --> HostCore
+
+  HostCore --> UsbSetup["USB setup runner"]
+  HostCore --> DeviceGateway["/ws/device gateway"]
+  HostCore --> DebugSnapshot["bounded debug snapshot"]
+```
+
+The web UI is for humans. It should stay dense, visible, and station-oriented:
+show the current M5 pairing state, let an operator start USB setup, toggle
+debug mode, copy connection URLs, and set the active experience id.
+
+The CLI is for Coding LLMs and automation. It should expose repeatable commands
+for environment inspection, redacted pairing URL lookup, health checks,
+WebSocket protocol checks, pairing start, and bounded snapshot inspection.
+
+Both surfaces must use the same Host core for M5 pairing and diagnosis. The Host
+core owns pairing tokens, status transitions, USB setup execution, debug event
+collection, paired `/ws/device` observations, and neutral safe-mode behavior.
+When behavior changes, change that core boundary and keep both surfaces thin.
+
+Do not put a second M5 pairing implementation into the CLI. The CLI must not
+generate its own authoritative token, run an independent pairing state machine,
+parse M5 frames as a parallel source of truth, or depend on modifying the M5
+adapter repository. It may trigger Host actions and read Host-owned artifacts.
+
 ## Runtime Ownership
 
 | Area | Owner | Boundary |
 | --- | --- | --- |
 | Station state | Host | Stores `activeExperienceId` and broadcasts station state. |
 | Device input | Host | Accepts raw M5 frames only on the paired `/ws/device` URL. |
+| M5 pairing and diagnosis | Host core | Owns USB setup state, pairing tokens, bounded debug snapshots, and device socket observations. |
+| Human operation | Web UI `/` | Starts pairing and shows current state for station operators. |
+| Automation operation | CLI | Calls Host actions and reads Host-owned diagnostics for repeatable checks. |
 | Runtime client API | Host | Accepts registered browser/WebXR clients on `/ws/runtime`. |
 | Experience rendering | Experience client | Runs on its own origin, commonly port `5174`. |
 | Quest entrypoint | Host `/launch` | Redirects to an already running experience client. |
@@ -100,7 +139,9 @@ experience client derives that automatically from `window.location.protocol`.
 
 The current M5 firmware supports plain `ws://` only. The paired device URL is
 therefore generated as `ws://.../ws/device?pairing=...` by default, even when
-the operator console itself is opened over HTTPS. If the device WebSocket runs
+the operator console itself is opened over HTTPS. In HTTPS mode, the host starts
+a separate plain device WebSocket listener on port `5184` by default so the M5
+does not speak plain WS to the TLS UI/runtime port. If the device WebSocket runs
 on a different origin or port, set `ICAROS_DEVICE_WS_ORIGIN` or
 `ICAROS_DEVICE_WS_PORT` before starting the host.
 

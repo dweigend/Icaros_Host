@@ -197,9 +197,15 @@ directly or parse raw M5 frames.
 
 `ERR_CONNECTION_REFUSED` for `http://<mac-lan-ip>:5183` usually means the host
 process is not running, is on another port, or is bound to loopback only. Start
-with `PORT=5183 bun run serve:lan` and confirm the process says
-`Icaros Host listening on http://0.0.0.0:5183` or
-`Icaros Host listening on https://0.0.0.0:5183`.
+with `PORT=5183 bun run serve:lan` and confirm the process logs the bind
+address plus at least one openable URL, for example:
+
+```text
+Icaros Host listening on https://0.0.0.0:5183
+Open locally: https://localhost:5183/
+Open on LAN: https://192.168.50.194:5183/
+M5 plain device WebSocket listening on ws://0.0.0.0:5184
+```
 
 `http://localhost:5174` works on the Mac but not on Quest because `localhost`
 on Quest is not the Mac. Use `http(s)://<mac-lan-ip>:5174/` or open
@@ -211,6 +217,23 @@ and set the id first, for example `mountain-flight`.
 The page loads over HTTPS but the socket fails when the experience tries to use
 plain `ws://`. Use the public client API or a same-origin `/ws/runtime` URL so
 HTTPS pages resolve to WSS.
+
+The M5 pairing URL should stay plain `ws://`, but it must not point at the
+HTTPS UI/runtime port. With the default HTTPS host, the generated M5 URL is
+`ws://<mac-lan-ip>:5184/ws/device?pairing=...`, and the host logs a matching
+plain device WebSocket listener. If a different port is required, set
+`ICAROS_DEVICE_WS_PORT` before starting the host.
+
+After a successful USB `configureResult`, the Host sends a serial `reboot`
+command by default so the controller starts cleanly with the saved WLAN and
+WebSocket configuration. Set `ICAROS_M5_REBOOT_AFTER_CONFIGURE=false` only when
+you explicitly want to keep the controller running after USB setup.
+
+If pairing still times out and the debug snapshot contains no `websocket`
+lines, the controller did not reach the Host's device WebSocket at all. Check
+WLAN credentials, 2.4 GHz support, client isolation or guest-network VLANs,
+firewall rules for the plain device port, and whether the Host LAN IP in the
+M5 URL is reachable from another device on the same network.
 
 The Quest shows a certificate warning or WebXR does not start. Install the
 mkcert root CA on the headset and use a certificate that includes the exact LAN

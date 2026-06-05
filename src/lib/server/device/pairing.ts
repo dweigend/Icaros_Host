@@ -5,18 +5,31 @@
  * controller configured over the server-side USB setup path should know this
  * URL token; browser/WebXR clients continue to use `/ws/runtime`.
  */
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
 const DEVICE_PAIRING_QUERY_KEY = 'pairing';
 const DEFAULT_DEVICE_WS_PORT = '5183';
+export const DEFAULT_HTTPS_DEVICE_WS_PORT = '5184';
 const VITE_DEV_PORT = '5173';
 const FALLBACK_TOKEN_BYTES = 18;
+const DEVICE_PAIRING_TOKEN_GLOBAL_KEY = Symbol.for('icaros.host.devicePairingToken');
 
-const pairingToken =
-	readConfiguredToken() ?? randomBytes(FALLBACK_TOKEN_BYTES).toString('base64url');
+const pairingToken = readSharedPairingToken();
 
 export function readDevicePairingToken(): string {
 	return pairingToken;
+}
+
+export function readDevicePairingTokenFingerprint(): string {
+	return createDevicePairingTokenFingerprint(pairingToken);
+}
+
+export function createDevicePairingTokenFingerprint(candidate: string | null): string {
+	if (candidate === null || candidate.length === 0) {
+		return candidate === null ? 'missing' : 'empty';
+	}
+
+	return createHash('sha256').update(candidate).digest('hex').slice(0, 12);
 }
 
 export function createPairedDeviceWebSocketUrl(wsOrigin: string): string {
@@ -36,6 +49,11 @@ export function resolveDeviceWebSocketOrigin(wsOrigin: string): string {
 	const configuredPort = process.env.ICAROS_DEVICE_WS_PORT?.trim();
 	if (configuredPort !== undefined && configuredPort !== '') {
 		url.port = configuredPort;
+		return url.origin;
+	}
+
+	if (wsOrigin.startsWith('wss://')) {
+		url.port = DEFAULT_HTTPS_DEVICE_WS_PORT;
 		return url.origin;
 	}
 
@@ -69,6 +87,24 @@ export function redactDevicePairingToken(input: string): string {
 function readConfiguredToken(): string | null {
 	const value = process.env.ICAROS_DEVICE_PAIRING_TOKEN?.trim();
 	return value === undefined || value === '' ? null : value;
+}
+
+function readSharedPairingToken(): string {
+	const configuredToken = readConfiguredToken();
+	const globalScope = globalThis as typeof globalThis & Record<symbol, string | undefined>;
+	if (configuredToken !== null) {
+		globalScope[DEVICE_PAIRING_TOKEN_GLOBAL_KEY] = configuredToken;
+		return configuredToken;
+	}
+
+	const existingToken = globalScope[DEVICE_PAIRING_TOKEN_GLOBAL_KEY];
+	if (existingToken !== undefined) {
+		return existingToken;
+	}
+
+	const generatedToken = randomBytes(FALLBACK_TOKEN_BYTES).toString('base64url');
+	globalScope[DEVICE_PAIRING_TOKEN_GLOBAL_KEY] = generatedToken;
+	return generatedToken;
 }
 
 function constantTimeEquals(left: string, right: string): boolean {

@@ -4,7 +4,11 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createPairedDeviceWebSocketUrl, resolveDeviceWebSocketOrigin } from './pairing';
+import {
+	createDevicePairingTokenFingerprint,
+	createPairedDeviceWebSocketUrl,
+	resolveDeviceWebSocketOrigin
+} from './pairing';
 
 describe('resolveDeviceWebSocketOrigin', () => {
 	afterEach(() => {
@@ -34,8 +38,14 @@ describe('resolveDeviceWebSocketOrigin', () => {
 		);
 	});
 
-	it('keeps the gateway port and downgrades HTTPS runtime origins for plain M5 firmware', () => {
+	it('uses a separate plain device port for HTTPS runtime origins', () => {
 		expect(resolveDeviceWebSocketOrigin('wss://192.168.50.194:5183')).toBe(
+			'ws://192.168.50.194:5184'
+		);
+	});
+
+	it('keeps the gateway port for plain HTTP runtime origins', () => {
+		expect(resolveDeviceWebSocketOrigin('ws://192.168.50.194:5183')).toBe(
 			'ws://192.168.50.194:5183'
 		);
 	});
@@ -52,5 +62,19 @@ describe('createPairedDeviceWebSocketUrl', () => {
 		expect(url.origin).toBe('ws://192.168.50.194:5183');
 		expect(url.pathname).toBe('/ws/device');
 		expect(url.searchParams.get('pairing')).toEqual(expect.any(String));
+	});
+});
+
+describe('createDevicePairingTokenFingerprint', () => {
+	it('creates a stable non-secret fingerprint for diagnostics', () => {
+		expect(createDevicePairingTokenFingerprint('dev-m5-token')).toMatch(/^[a-f0-9]{12}$/);
+		expect(createDevicePairingTokenFingerprint('dev-m5-token')).toBe(
+			createDevicePairingTokenFingerprint('dev-m5-token')
+		);
+	});
+
+	it('distinguishes missing and empty token candidates', () => {
+		expect(createDevicePairingTokenFingerprint(null)).toBe('missing');
+		expect(createDevicePairingTokenFingerprint('')).toBe('empty');
 	});
 });

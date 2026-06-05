@@ -1,0 +1,2 @@
+# Purpose: keep local PlatformIO build output out of the Host repository.
+.pio/

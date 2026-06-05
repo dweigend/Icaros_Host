@@ -28,7 +28,9 @@ if hasattr(sys.stdout, "reconfigure"):
 DEFAULT_BAUD_RATE = 115200
 DEFAULT_SECONDS = 10.0
 CONFIGURE_RESULT_TIMEOUT_SECONDS = 8.0
+CONFIGURE_RETRY_INTERVAL_SECONDS = 2.0
 FIRMWARE_CHECK_SECONDS = 3.0
+DIAGNOSE_RESULT_TIMEOUT_SECONDS = 2.5
 PAIRING_EVENT_PREFIX = "PAIRING_EVENT "
 REQUIRED_FIRMWARE_VERSION = os.environ.get("ICAROS_REQUIRED_M5_FIRMWARE", "0.1.0")
 DEFAULT_ADAPTER_DIR = Path("/Users/weigend/Documents/GitHub/M5_WebSocet_Adapter")
@@ -40,7 +42,8 @@ M5_PORT_PATTERNS = (
     "/dev/tty.wchusbserial*",
     "/dev/tty.usbmodem*",
 )
-PROBE_MESSAGES = (
+DIAGNOSE_PROBE_MESSAGE = {"type": "diagnose"}
+LEGACY_PROBE_MESSAGES = (
     {"type": "statusRequest"},
     {"type": "getConfig"},
     {"type": "startTelemetry"},
@@ -72,6 +75,8 @@ class ProbeStats:
     json_lines: int = 0
     data_frames: int = 0
     firmware_version: str | None = None
+    configure_saved: bool = False
+    reboot_sent: bool = False
 
 
 @dataclass(frozen=True)
@@ -92,8 +97,27 @@ def main() -> int:
     parser.add_argument("--baud", type=int, default=DEFAULT_BAUD_RATE)
     parser.add_argument("--seconds", type=float, default=DEFAULT_SECONDS)
     parser.add_argument(
+        "--config-stdin",
+        action="store_true",
+        help="Read pairing config as JSON from stdin so secrets do not appear in process args.",
+    )
+    parser.add_argument(
+        "--skip-firmware-update",
+        action="store_true",
+        help="Probe firmware but do not build or upload controller firmware. This is the default.",
+    )
+    parser.add_argument(
+        "--allow-firmware-update",
+        action="store_true",
+        help="Allow building and uploading firmware from the configured adapter repo.",
+    )
+    parser.add_argument(
+        "--reboot-after-configure",
+        action="store_true",
+        help="Send a reboot command after configureResult ok so saved WiFi config is applied cleanly.",
+    )
+    parser.add_argument(
         "--server-url",
-        required=True,
         help="The host /ws/device URL this controller should use when configured for WiFi.",
     )
     parser.add_argument(
@@ -109,10 +133,15 @@ def main() -> int:
     parser.add_argument("--subnet", help="Subnet mask for optional static controller IP.")
     parser.add_argument("--dns", help="DNS server for optional static controller IP.")
     args = parser.parse_args()
+    configure_input = read_configure_input(args)
+    if not args.server_url and configure_input is None:
+        raise SystemExit("--server-url is required unless --config-stdin provides serverUrl.")
+
+    server_url = configure_input.server_url if configure_input is not None else str(args.server_url)
+    device_id = configure_input.device_id if configure_input is not None else args.device_id
 
     print("Icaros Host USB controller setup")
-    print(f"Runtime device endpoint: {redact_pairing_token(args.server_url)}")
-    configure_input = read_configure_input(args)
+    print(f"Runtime device endpoint: {redact_pairing_token(server_url)}")
     if configure_input is None:
         print("This run checks USB telemetry only; WiFi credentials are not requested or stored.")
     else:
@@ -131,16 +160,21 @@ def main() -> int:
         state="usb_connected",
         step="USB verbunden",
         progress=10,
-        deviceId=args.device_id,
+        deviceId=device_id,
         message=f"USB serial port selected: {port}",
     )
-    firmware_version = check_and_update_firmware(port=port, baud_rate=args.baud)
+    firmware_version = check_and_update_firmware(
+        port=port,
+        baud_rate=args.baud,
+        allow_update=args.allow_firmware_update and not args.skip_firmware_update,
+    )
     stats = probe_port(
         port=port,
         baud_rate=args.baud,
         seconds=args.seconds,
         configure_input=configure_input,
         write_probes=args.write_probes,
+        reboot_after_configure=args.reboot_after_configure,
         firmware_version=firmware_version,
     )
     print(
@@ -148,6 +182,21 @@ def main() -> int:
         f"{stats.bytes_read} bytes, {stats.lines} lines, "
         f"{stats.json_lines} JSON lines, {stats.data_frames} data frames."
     )
+
+    if stats.configure_saved:
+        message = "Controller accepted paired configuration."
+        if stats.reboot_sent:
+            message = "Controller accepted paired configuration and reboot command was sent."
+        emit_event(
+            state="usb_test",
+            step="USB-Konfiguration gespeichert",
+            progress=80,
+            usbOk=True,
+            firmwareVersion=stats.firmware_version,
+            message=message,
+        )
+        print("USB setup passed: controller accepted paired configuration.")
+        return 0
 
     if stats.data_frames > 0:
         emit_event(
@@ -185,6 +234,9 @@ def find_all_serial_ports() -> list[str]:
 
 
 def read_configure_input(args: argparse.Namespace) -> ConfigureInput | None:
+    if args.config_stdin:
+        return read_configure_input_from_stdin(args)
+
     if not args.ssid and not args.password:
         return None
 
@@ -203,7 +255,59 @@ def read_configure_input(args: argparse.Namespace) -> ConfigureInput | None:
     )
 
 
-def check_and_update_firmware(*, port: str, baud_rate: int) -> str | None:
+def read_configure_input_from_stdin(args: argparse.Namespace) -> ConfigureInput | None:
+    try:
+        raw_config = json.load(sys.stdin)
+    except json.JSONDecodeError as error:
+        raise SystemExit(f"Invalid --config-stdin JSON: {error}") from error
+
+    if not isinstance(raw_config, dict):
+        raise SystemExit("--config-stdin JSON must be an object.")
+
+    server_url = read_required_string(raw_config, "serverUrl")
+    device_id = read_optional_string(raw_config, "deviceId") or args.device_id
+    ssid = read_optional_string(raw_config, "ssid")
+    password = read_optional_string(raw_config, "password")
+
+    if ssid is None and password is None:
+        args.server_url = server_url
+        args.device_id = device_id
+        return None
+
+    if ssid is None or password is None:
+        raise SystemExit("stdin config ssid and password must be passed together.")
+
+    return ConfigureInput(
+        ssid=ssid,
+        password=password,
+        server_url=server_url,
+        device_id=device_id,
+        static_ip=read_optional_string(raw_config, "staticIp"),
+        gateway=read_optional_string(raw_config, "gateway"),
+        subnet=read_optional_string(raw_config, "subnet"),
+        dns=read_optional_string(raw_config, "dns"),
+    )
+
+
+def read_required_string(config: dict[object, object], key: str) -> str:
+    value = read_optional_string(config, key)
+    if value is None:
+        raise SystemExit(f"stdin config missing required string field {key}.")
+    return value
+
+
+def read_optional_string(config: dict[object, object], key: str) -> str | None:
+    value = config.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise SystemExit(f"stdin config field {key} must be a string or null.")
+
+    trimmed = value.strip()
+    return trimmed or None
+
+
+def check_and_update_firmware(*, port: str, baud_rate: int, allow_update: bool) -> str | None:
     emit_event(
         state="firmware_check",
         step="Firmware prüfen",
@@ -221,6 +325,16 @@ def check_and_update_firmware(*, port: str, baud_rate: int) -> str | None:
         )
 
     if firmware_version == REQUIRED_FIRMWARE_VERSION:
+        return firmware_version
+
+    if not allow_update:
+        emit_event(
+            state="firmware_check",
+            step="Firmware geprüft",
+            progress=35,
+            firmwareVersion=firmware_version,
+            message="Firmware update skipped by Host safety policy.",
+        )
         return firmware_version
 
     adapter_dir = Path(os.environ.get("ICAROS_M5_ADAPTER_DIR", str(DEFAULT_ADAPTER_DIR)))
@@ -312,6 +426,7 @@ def probe_port(
     seconds: float,
     configure_input: ConfigureInput | None,
     write_probes: bool,
+    reboot_after_configure: bool,
     firmware_version: str | None,
 ) -> ProbeStats:
     stats = ProbeStats()
@@ -337,8 +452,12 @@ def probe_port(
                 message="Writing paired WLAN/WebSocket configuration over USB.",
             )
             send_configure_request(fd, configure_input)
+            stats.configure_saved = True
+            if reboot_after_configure:
+                send_reboot_request(fd)
+                stats.reboot_sent = True
         if write_probes:
-            write_probe_messages(fd)
+            buffer = write_probe_messages(fd, stats)
         emit_event(
             state="usb_test",
             step="USB-Daten prüfen",
@@ -377,10 +496,17 @@ def send_configure_request(fd: int, configure_input: ConfigureInput) -> None:
     safe_request["serverUrl"] = redact_pairing_token(str(safe_request["serverUrl"]))
     print(f"Sending configure frame: {json.dumps(safe_request, ensure_ascii=False)}")
 
-    os.write(fd, json.dumps(request, separators=(",", ":")).encode("utf-8") + b"\n")
+    configure_line = json.dumps(request, separators=(",", ":")).encode("utf-8") + b"\n"
     started_at = time.monotonic()
+    last_sent_at = 0.0
     buffer = b""
     while time.monotonic() - started_at < CONFIGURE_RESULT_TIMEOUT_SECONDS:
+        now = time.monotonic()
+        if last_sent_at == 0.0 or now - last_sent_at >= CONFIGURE_RETRY_INTERVAL_SECONDS:
+            flush_serial_input(fd)
+            os.write(fd, configure_line)
+            last_sent_at = now
+
         readable, _, _ = select.select([fd], [], [], 0.2)
         if not readable:
             continue
@@ -411,6 +537,25 @@ def send_configure_request(fd: int, configure_input: ConfigureInput) -> None:
             raise SystemExit(f"Controller rejected configure frame{detail}")
 
     raise SystemExit("Timed out waiting for configureResult.")
+
+
+def flush_serial_input(fd: int) -> None:
+    try:
+        termios.tcflush(fd, termios.TCIFLUSH)
+    except termios.error:
+        pass
+
+
+def send_reboot_request(fd: int) -> None:
+    request = {"type": "reboot"}
+    os.write(fd, json.dumps(request, separators=(",", ":")).encode("utf-8") + b"\n")
+    print("Sent USB command: reboot")
+    emit_event(
+        state="configure",
+        step="Controller neu starten",
+        progress=72,
+        message="Reboot command sent so saved WLAN/WebSocket configuration is applied cleanly.",
+    )
 
 
 def parse_configure_result_line(raw_line: bytes) -> dict[str, object] | None:
@@ -469,24 +614,58 @@ def configure_serial_fd(fd: int, baud_rate: int) -> None:
     termios.tcsetattr(fd, termios.TCSANOW, attrs)
 
 
-def write_probe_messages(fd: int) -> None:
-    for message in PROBE_MESSAGES:
-        line = json.dumps(message, separators=(",", ":")).encode("utf-8") + b"\n"
-        os.write(fd, line)
-        print(f"Sent USB probe: {message['type']}")
+def write_probe_messages(fd: int, stats: ProbeStats) -> bytes:
+    flush_serial_input(fd)
+    send_probe_message(fd, DIAGNOSE_PROBE_MESSAGE)
+    buffer = read_until_frame_type(fd, stats, "diagnoseResult")
+
+    for message in LEGACY_PROBE_MESSAGES:
+        send_probe_message(fd, message)
         time.sleep(0.15)
 
+    return buffer
 
-def handle_line(raw_line: bytes, stats: ProbeStats) -> None:
+
+def send_probe_message(fd: int, message: dict[str, str]) -> None:
+    line = json.dumps(message, separators=(",", ":")).encode("utf-8") + b"\n"
+    os.write(fd, line)
+    print(f"Sent USB probe: {message['type']}")
+
+
+def read_until_frame_type(fd: int, stats: ProbeStats, expected_type: str) -> bytes:
+    deadline = time.monotonic() + DIAGNOSE_RESULT_TIMEOUT_SECONDS
+    buffer = b""
+
+    while time.monotonic() < deadline:
+        readable, _, _ = select.select([fd], [], [], 0.2)
+        if not readable:
+            continue
+
+        chunk = os.read(fd, 4096)
+        if not chunk:
+            continue
+
+        stats.bytes_read += len(chunk)
+        buffer += chunk
+        while b"\n" in buffer:
+            raw_line, buffer = buffer.split(b"\n", 1)
+            parsed = handle_line(raw_line.rstrip(b"\r"), stats)
+            if parsed is not None and parsed.get("type") == expected_type:
+                return buffer
+
+    return buffer
+
+
+def handle_line(raw_line: bytes, stats: ProbeStats) -> dict[str, object] | None:
     if not raw_line:
-        return
+        return None
 
     stats.lines += 1
     text = raw_line.decode("utf-8", errors="replace").strip()
     parsed = parse_json_object(text)
     if parsed is None:
         print(f"serial text: {text[:180]}")
-        return
+        return None
 
     stats.json_lines += 1
     frame_type = parsed.get("type")
@@ -496,6 +675,7 @@ def handle_line(raw_line: bytes, stats: ProbeStats) -> None:
     print(f"serial json: {summarize_json(parsed)}")
     if is_data_frame(frame_type, parsed):
         stats.data_frames += 1
+    return parsed
 
 
 def parse_json_object(text: str) -> dict[str, object] | None:
@@ -521,6 +701,16 @@ def summarize_json(parsed: dict[str, object]) -> str:
     public_keys = (
         "type",
         "deviceId",
+        "firmwareVersion",
+        "wifiStatus",
+        "localIp",
+        "wsHost",
+        "wsPort",
+        "wsPath",
+        "tcpProbeOk",
+        "webSocketConfigured",
+        "webSocketConnected",
+        "lastWebSocketError",
         "pitch",
         "roll",
         "angleX",
@@ -528,11 +718,23 @@ def summarize_json(parsed: dict[str, object]) -> str:
         "rotationX",
         "rotationY",
         "quality",
+        "rssi",
+        "uptimeMs",
         "message",
         "ok",
     )
     summary = {key: parsed[key] for key in public_keys if key in parsed}
-    return json.dumps(summary or parsed, ensure_ascii=False, separators=(",", ":"))[:240]
+    ws_path = summary.get("wsPath")
+    if isinstance(ws_path, str):
+        summary["wsPath"] = redact_pairing_token(ws_path)
+    server_url = parsed.get("serverUrl")
+    if isinstance(server_url, str):
+        summary["serverUrl"] = redact_pairing_token(server_url)
+    if summary:
+        return json.dumps(summary, ensure_ascii=False, separators=(",", ":"))[:700]
+
+    fallback = {"keys": sorted(str(key) for key in parsed.keys())}
+    return json.dumps(fallback, ensure_ascii=False, separators=(",", ":"))[:700]
 
 
 def explain_open_error(port: str, error: OSError) -> None:

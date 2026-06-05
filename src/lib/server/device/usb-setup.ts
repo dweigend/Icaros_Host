@@ -16,6 +16,7 @@ const DEBUG_SNAPSHOT_FILE = resolve(process.cwd(), '.icaros/debug/m5-pairing-deb
 const PAIRING_EVENT_PREFIX = 'PAIRING_EVENT ';
 const WLAN_VERIFY_TIMEOUT_MS = 90_000;
 const MAX_DEBUG_LINES = 300;
+const USB_SETUP_RUNTIME_GLOBAL_KEY = Symbol.for('icaros.host.usbSetupRuntime');
 
 export type PairingState =
 	| 'idle'
@@ -98,31 +99,67 @@ type PairingEvent = Readonly<{
 	error?: string;
 }>;
 
-const status: MutablePairingStatus = {
-	state: 'idle',
-	step: 'Warten auf Einrichtung',
-	progress: 0,
-	startedAt: null,
-	finishedAt: null,
-	serverUrl: null,
-	deviceId: null,
-	firmwareVersion: null,
-	usbOk: false,
-	wlanOk: false,
-	lastFrameAt: null,
-	message: 'Controller per USB anschließen und Pairing starten.',
-	error: null,
-	exitCode: null,
-	debugEnabled: false,
-	debugLines: [],
-	staticIp: null,
-	gateway: null,
-	subnet: null,
-	dns: null
+export type DeviceUpgradeDiagnostics = Readonly<{
+	remote: string | null;
+	path: string;
+	hasPairing: boolean;
+	pairingFingerprint: string;
+	expectedFingerprint: string;
+	protocol: string | null;
+	origin: string | null;
+	decision: 'reject' | 'handleUpgrade' | 'accepted' | 'non-device-path';
+	reason: string | null;
+}>;
+
+type UsbSetupRuntime = {
+	status: MutablePairingStatus;
+	wlanTimer: ReturnType<typeof setTimeout> | null;
+	nextDebugId: number;
 };
 
-let wlanTimer: ReturnType<typeof setTimeout> | null = null;
-let nextDebugId = 1;
+const runtime = readSharedRuntime();
+const status = runtime.status;
+
+function readSharedRuntime(): UsbSetupRuntime {
+	const globalScope = globalThis as typeof globalThis & Record<symbol, UsbSetupRuntime | undefined>;
+	const existingRuntime = globalScope[USB_SETUP_RUNTIME_GLOBAL_KEY];
+	if (existingRuntime !== undefined) {
+		return existingRuntime;
+	}
+
+	const nextRuntime = {
+		status: createInitialStatus(),
+		wlanTimer: null,
+		nextDebugId: 1
+	};
+	globalScope[USB_SETUP_RUNTIME_GLOBAL_KEY] = nextRuntime;
+	return nextRuntime;
+}
+
+function createInitialStatus(): MutablePairingStatus {
+	return {
+		state: 'idle',
+		step: 'Warten auf Einrichtung',
+		progress: 0,
+		startedAt: null,
+		finishedAt: null,
+		serverUrl: null,
+		deviceId: null,
+		firmwareVersion: null,
+		usbOk: false,
+		wlanOk: false,
+		lastFrameAt: null,
+		message: 'Controller per USB anschließen und Pairing starten.',
+		error: null,
+		exitCode: null,
+		debugEnabled: false,
+		debugLines: [],
+		staticIp: null,
+		gateway: null,
+		subnet: null,
+		dns: null
+	};
+}
 
 export function getUsbSetupSnapshot(): UsbSetupSnapshot {
 	return {
@@ -163,11 +200,12 @@ export function startUsbSetup(serverUrl: string, input: UsbPairingInput): UsbSet
 	resetStatus(serverUrl, input);
 	appendDebug('system', `Pairing started for ${redactDevicePairingToken(serverUrl)}.`);
 
-	const child = spawn('python3', buildScriptArgs(serverUrl, input), {
+	const child = spawn('python3', buildScriptArgs(), {
 		cwd: process.cwd(),
-		stdio: ['ignore', 'pipe', 'pipe']
+		stdio: ['pipe', 'pipe', 'pipe']
 	});
 
+	child.stdin.end(JSON.stringify(buildScriptConfig(serverUrl, input)));
 	child.stdout.setEncoding('utf8');
 	child.stderr.setEncoding('utf8');
 	child.stdout.on('data', (chunk: string) => readScriptChunk(chunk));
@@ -185,6 +223,10 @@ export function startUsbSetup(serverUrl: string, input: UsbPairingInput): UsbSet
 
 	child.on('close', (code) => {
 		status.exitCode = code;
+		if (status.state === 'ready') {
+			return;
+		}
+
 		if (status.state === 'failed' || code !== 0) {
 			failPairing(status.error ?? `USB setup failed with exit code ${code ?? 'unknown'}.`);
 			return;
@@ -202,7 +244,7 @@ export function startUsbSetup(serverUrl: string, input: UsbPairingInput): UsbSet
 }
 
 export function recordPairedDeviceFrame(frame: unknown, receivedAt: number = Date.now()): void {
-	if (status.state !== 'wlan_test' && status.state !== 'ready') {
+	if (!canAcceptPairedDeviceFrame()) {
 		appendDebug('websocket', `Ignoring paired frame while state=${status.state}.`);
 		return;
 	}
@@ -224,6 +266,30 @@ export function recordPairedDeviceFrame(frame: unknown, receivedAt: number = Dat
 	clearWlanTimeout();
 	writeControllerToml();
 	writeDebugSnapshot();
+}
+
+export function recordPairedDeviceSocketOpen(remote: string | null): void {
+	appendDebug('websocket', `Paired device WebSocket connected from ${remote ?? 'unknown remote'}.`);
+}
+
+export function recordPairedDeviceTcpConnection(remote: string | null): void {
+	appendDebug('websocket', `Plain device TCP connection from ${remote ?? 'unknown remote'}.`);
+}
+
+export function recordRejectedDeviceSocket(reason: string): void {
+	appendDebug('websocket', `Rejected device WebSocket upgrade: ${reason}.`);
+}
+
+export function recordDeviceSocketUpgrade(details: DeviceUpgradeDiagnostics): void {
+	appendDebug('websocket', `Device upgrade ${formatDeviceUpgradeDiagnostics(details)}.`);
+}
+
+function canAcceptPairedDeviceFrame(): boolean {
+	if (status.state === 'idle' || status.state === 'failed') {
+		return false;
+	}
+
+	return status.startedAt !== null;
 }
 
 function resetStatus(serverUrl: string, input: UsbPairingInput): void {
@@ -248,27 +314,34 @@ function resetStatus(serverUrl: string, input: UsbPairingInput): void {
 	status.dns = input.dns;
 }
 
-function buildScriptArgs(serverUrl: string, input: UsbPairingInput): string[] {
-	const args = [USB_SETUP_SCRIPT, '--server-url', serverUrl, '--device-id', input.deviceId];
+function buildScriptArgs(): string[] {
+	const args = [USB_SETUP_SCRIPT, '--config-stdin'];
 
-	if (input.ssid !== null && input.password !== null) {
-		args.push('--ssid', input.ssid);
-		args.push('--password', input.password);
-		appendOptionalArg(args, '--static-ip', input.staticIp);
-		appendOptionalArg(args, '--gateway', input.gateway);
-		appendOptionalArg(args, '--subnet', input.subnet);
-		appendOptionalArg(args, '--dns', input.dns);
+	if (process.env.ICAROS_ALLOW_M5_FIRMWARE_UPDATE !== 'true') {
+		args.push('--skip-firmware-update');
+	}
+
+	if (process.env.ICAROS_M5_REBOOT_AFTER_CONFIGURE !== 'false') {
+		args.push('--reboot-after-configure');
 	}
 
 	return args;
 }
 
-function appendOptionalArg(args: string[], flag: string, value: string | null): void {
-	if (value === null || value === '') {
-		return;
-	}
-
-	args.push(flag, value);
+function buildScriptConfig(
+	serverUrl: string,
+	input: UsbPairingInput
+): Record<string, string | null> {
+	return {
+		serverUrl,
+		deviceId: input.deviceId,
+		ssid: input.ssid,
+		password: input.password,
+		staticIp: input.staticIp,
+		gateway: input.gateway,
+		subnet: input.subnet,
+		dns: input.dns
+	};
 }
 
 function readScriptChunk(chunk: string): void {
@@ -342,7 +415,7 @@ function failPairing(error: string): void {
 
 function startWlanTimeout(): void {
 	clearWlanTimeout();
-	wlanTimer = setTimeout(() => {
+	runtime.wlanTimer = setTimeout(() => {
 		if (status.state === 'wlan_test') {
 			failPairing('Controller did not connect over WLAN/LAN WebSocket in time.');
 		}
@@ -350,9 +423,9 @@ function startWlanTimeout(): void {
 }
 
 function clearWlanTimeout(): void {
-	if (wlanTimer !== null) {
-		clearTimeout(wlanTimer);
-		wlanTimer = null;
+	if (runtime.wlanTimer !== null) {
+		clearTimeout(runtime.wlanTimer);
+		runtime.wlanTimer = null;
 	}
 }
 
@@ -369,13 +442,13 @@ function appendDebug(source: PairingDebugLine['source'], message: string): void 
 	status.debugLines = [
 		...status.debugLines,
 		{
-			id: nextDebugId,
+			id: runtime.nextDebugId,
 			timestamp: Date.now(),
 			source,
 			message: redactDevicePairingToken(message)
 		}
 	].slice(-MAX_DEBUG_LINES);
-	nextDebugId += 1;
+	runtime.nextDebugId += 1;
 	writeDebugSnapshot();
 }
 
@@ -444,6 +517,20 @@ function summarizeFrame(frame: unknown): string {
 		quality: record.quality
 	};
 	return JSON.stringify(summary);
+}
+
+function formatDeviceUpgradeDiagnostics(details: DeviceUpgradeDiagnostics): string {
+	return [
+		`remote=${details.remote ?? 'unknown'}`,
+		`path=${details.path}`,
+		`hasPairing=${details.hasPairing}`,
+		`pairingFingerprint=${details.pairingFingerprint}`,
+		`expectedFingerprint=${details.expectedFingerprint}`,
+		`protocol=${details.protocol ?? '<none>'}`,
+		`origin=${details.origin ?? '<none>'}`,
+		`decision=${details.decision}`,
+		`reason=${details.reason ?? '<none>'}`
+	].join(' ');
 }
 
 function redactEvent(event: PairingEvent): PairingEvent {

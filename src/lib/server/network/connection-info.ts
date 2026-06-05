@@ -13,6 +13,11 @@ export type HostConnectionInfo = Readonly<{
 
 export type HttpProtocol = 'http' | 'https';
 
+export type ServerOpenUrl = Readonly<{
+	label: 'Open locally' | 'Open on LAN' | 'Open at';
+	url: string;
+}>;
+
 export function resolveConnectionInfo(url: URL): HostConnectionInfo {
 	const lanHostname = resolveLanHostname(url.hostname);
 	const host = formatHost(lanHostname, url.port);
@@ -26,17 +31,36 @@ export function resolveConnectionInfo(url: URL): HostConnectionInfo {
 	};
 }
 
+export function resolveServerOpenUrls(
+	protocol: HttpProtocol,
+	hostname: string,
+	port: number
+): readonly ServerOpenUrl[] {
+	const portValue = String(port);
+
+	if (hostname === '0.0.0.0') {
+		return [
+			{ label: 'Open locally', url: createHttpUrl(protocol, 'localhost', portValue) },
+			...resolveLanIpv4Hostnames().map((lanHostname) => ({
+				label: 'Open on LAN' as const,
+				url: createHttpUrl(protocol, lanHostname, portValue)
+			}))
+		];
+	}
+
+	const label = isLocalHostname(hostname) ? 'Open locally' : 'Open at';
+	return [{ label, url: createHttpUrl(protocol, hostname, portValue) }];
+}
+
 export function resolveLanHostname(hostname: string): string {
 	if (!isLocalHostname(hostname)) {
 		return hostname;
 	}
 
-	for (const addresses of Object.values(networkInterfaces())) {
-		for (const address of addresses ?? []) {
-			if (address.family === 'IPv4' && !address.internal) {
-				return address.address;
-			}
-		}
+	const [lanHostname] = resolveLanIpv4Hostnames();
+
+	if (lanHostname !== undefined) {
+		return lanHostname;
 	}
 
 	return 'localhost';
@@ -53,4 +77,22 @@ export function readHttpProtocol(protocol: string): HttpProtocol {
 
 function isLocalHostname(hostname: string): boolean {
 	return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
+function resolveLanIpv4Hostnames(): readonly string[] {
+	const hostnames: string[] = [];
+
+	for (const addresses of Object.values(networkInterfaces())) {
+		for (const address of addresses ?? []) {
+			if (address.family === 'IPv4' && !address.internal) {
+				hostnames.push(address.address);
+			}
+		}
+	}
+
+	return hostnames;
+}
+
+function createHttpUrl(protocol: HttpProtocol, hostname: string, port: string): string {
+	return `${protocol}://${formatHost(hostname, port)}/`;
 }

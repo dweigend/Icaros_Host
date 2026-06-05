@@ -7,14 +7,10 @@ import { fail } from '@sveltejs/kit';
 
 import { isNonEmptySlug } from '$lib/protocol';
 import {
-	createPairedDeviceWebSocketUrl,
-	redactDevicePairingToken
-} from '$lib/server/device/pairing';
-import {
-	getUsbSetupSnapshot,
-	setPairingDebugEnabled,
-	startUsbSetup
-} from '$lib/server/device/usb-setup';
+	getM5PairingStatus,
+	setM5PairingDebug,
+	startM5UsbPairing
+} from '$lib/server/device/pairing-service';
 import { resolveExperienceLaunchUrl } from '$lib/server/experiences';
 import { resolveConnectionInfo } from '$lib/server/network';
 import { setActiveExperience } from '$lib/server/station/active-experience';
@@ -25,17 +21,17 @@ export const load: PageServerLoad = async ({ url }) => {
 	const station = stationStateStore.getState();
 	const connection = resolveConnectionInfo(url);
 	const launchTarget = resolveExperienceLaunchUrl(station.activeExperienceId, url);
-	const pairedDeviceUrl = createPairedDeviceWebSocketUrl(connection.wsOrigin);
+	const pairingStatus = getM5PairingStatus(url);
 
 	return {
 		connection: {
 			...connection,
 			questLaunchUrl: new URL('/launch', connection.httpOrigin).toString(),
 			experienceTargetUrl: launchTarget.ok ? launchTarget.url : null,
-			pairedDeviceUrl: redactDevicePairingToken(pairedDeviceUrl)
+			pairedDeviceUrl: pairingStatus.connection.pairedDeviceUrl
 		},
 		station,
-		usbSetup: getUsbSetupSnapshot()
+		usbSetup: pairingStatus.usbSetup
 	};
 };
 
@@ -59,20 +55,22 @@ export const actions: Actions = {
 	},
 	connectUsb: async ({ request, url }) => {
 		const formData = await request.formData();
-		const connection = resolveConnectionInfo(url);
 		const pairingInput = readUsbPairingInput(formData);
 
 		if (pairingInput === null) {
 			return fail(400, { message: 'WiFi SSID and password are required for pairing.' });
 		}
 
-		startUsbSetup(createPairedDeviceWebSocketUrl(connection.wsOrigin), pairingInput);
+		const result = startM5UsbPairing(url, pairingInput);
+		if (!result.ok) {
+			return fail(400, { message: result.error });
+		}
 
 		return { ok: true };
 	},
 	setPairingDebug: async ({ request }) => {
 		const formData = await request.formData();
-		setPairingDebugEnabled(formData.get('enabled') === 'true');
+		setM5PairingDebug(formData.get('enabled') === 'true');
 
 		return { ok: true };
 	}

@@ -15,6 +15,9 @@ import {
 	type ServerOptions as HttpsServerOptions
 } from 'node:https';
 
+import { DEFAULT_HTTPS_DEVICE_WS_PORT } from '../src/lib/server/device/pairing';
+import { recordPairedDeviceTcpConnection } from '../src/lib/server/device/usb-setup';
+import { resolveServerOpenUrls } from '../src/lib/server/network';
 import { createIcarosWebSocketGateway } from '../src/lib/server/ws';
 
 const port = Number(process.env.PORT ?? 3000);
@@ -38,20 +41,47 @@ async function start(): Promise<void> {
 	const protocol = tlsOptions === null ? 'http' : 'https';
 	const { server } = createRuntimeServer(createProtocolAwareHandler(handler, protocol), tlsOptions);
 	const gateway = createIcarosWebSocketGateway();
+	const plainDeviceWsPort = resolvePlainDeviceWsPort(protocol);
 
 	gateway.attach(server);
+	const plainDeviceServer = plainDeviceWsPort === null ? null : createPlainDeviceServer(gateway);
 
 	server.listen(port, host, () => {
 		console.log(`Icaros Host listening on ${protocol}://${host}:${port}`);
+
+		for (const openUrl of resolveServerOpenUrls(protocol, host, port)) {
+			console.log(`${openUrl.label}: ${openUrl.url}`);
+		}
 	});
+
+	if (plainDeviceServer !== null && plainDeviceWsPort !== null) {
+		plainDeviceServer.listen(plainDeviceWsPort, host, () => {
+			console.log(`M5 plain device WebSocket listening on ws://${host}:${plainDeviceWsPort}`);
+		});
+	}
 
 	const stop = (): void => {
 		gateway.dispose();
 		server.close();
+		plainDeviceServer?.close();
 	};
 
 	process.on('SIGINT', stop);
 	process.on('SIGTERM', stop);
+}
+
+function createPlainDeviceServer(
+	gateway: ReturnType<typeof createIcarosWebSocketGateway>
+): HttpServer {
+	const server = createHttpServer((_request, response) => {
+		response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+		response.end('M5 device WebSocket endpoint only.\n');
+	});
+	server.on('connection', (socket) => {
+		recordPairedDeviceTcpConnection(formatRemoteAddress(socket.remoteAddress, socket.remotePort));
+	});
+	gateway.attachDeviceServer(server);
+	return server;
 }
 
 await start();
@@ -95,4 +125,39 @@ function loadTlsOptions(): HttpsServerOptions | null {
 		key: readFileSync(keyFile),
 		cert: readFileSync(certFile)
 	};
+}
+
+function resolvePlainDeviceWsPort(protocol: RuntimeServerConfig['protocol']): number | null {
+	if (protocol !== 'https') {
+		return null;
+	}
+
+	const explicitOrigin = process.env.ICAROS_DEVICE_WS_ORIGIN?.trim();
+	if (explicitOrigin !== undefined && explicitOrigin !== '') {
+		return null;
+	}
+
+	const configuredPort = process.env.ICAROS_DEVICE_WS_PORT?.trim();
+	if (configuredPort === 'none') {
+		return null;
+	}
+
+	return readPort(configuredPort ?? DEFAULT_HTTPS_DEVICE_WS_PORT, DEFAULT_HTTPS_DEVICE_WS_PORT);
+}
+
+function readPort(value: string, fallback: string): number {
+	const parsed = Number(value);
+	if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65_535) {
+		return parsed;
+	}
+
+	return Number(fallback);
+}
+
+function formatRemoteAddress(address: string | undefined, port: number | undefined): string | null {
+	if (address === undefined) {
+		return null;
+	}
+
+	return port === undefined ? address : `${address}:${port}`;
 }

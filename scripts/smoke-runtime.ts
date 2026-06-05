@@ -8,6 +8,8 @@
  */
 import WebSocket from 'ws';
 
+import { resolveDeviceWebSocketOrigin } from '../src/lib/server/device/pairing';
+
 type SmokeConfig = Readonly<{
 	hostOrigin: URL;
 	experienceId: string;
@@ -191,7 +193,10 @@ function openDeviceSocket(config: SmokeConfig, fail: (error: Error) => void): We
 }
 
 function toDeviceWebSocketUrl(config: SmokeConfig): string {
-	const url = new URL(toWebSocketUrl(config.hostOrigin, '/ws/device'));
+	const url = new URL(
+		'/ws/device',
+		resolveDeviceWebSocketOrigin(toWebSocketUrl(config.hostOrigin, ''))
+	);
 	if (config.devicePairingToken !== null) {
 		url.searchParams.set('pairing', config.devicePairingToken);
 	}
