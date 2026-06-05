@@ -15,3 +15,18 @@
 	{...restProps}
 	class={joinClassNames('ui-separator', className)}
 />
+
+<style>
+	:global(.ui-separator) {
+		width: min(var(--content-max-width), 100%);
+		height: 1px;
+		margin: 0.2rem auto;
+		background: linear-gradient(
+			90deg,
+			transparent,
+			var(--color-border-strong),
+			var(--color-accent-muted),
+			transparent
+		);
+	}
+</style>

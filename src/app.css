@@ -1,13 +1,31 @@
 /*
- * Purpose: global terminal-style surface for the single-page Icaros Host
- * console. Route files keep markup and data flow only; this file owns the visual
- * language so students can inspect the UI in one predictable place.
+ * Purpose: global Icaros Host design tokens, reset rules, and app-shell
+ * foundations. Component and block-specific styling lives beside the owning
+ * Svelte family so route files stay markup-only.
  */
 :root {
+	--content-max-width: 76rem;
+	--color-background: #050506;
+	--color-surface: #0d0e10;
+	--color-surface-raised: #15171a;
+	--color-surface-strong: #1c1f23;
+	--color-border: #30343a;
+	--color-border-strong: #585f68;
+	--color-muted: #7f8791;
+	--color-text: #d7dbe0;
+	--color-text-soft: #a8b0b9;
+	--color-text-strong: #f4f6f8;
+	--color-accent: #72e6a4;
+	--color-accent-muted: #2f8f5b;
+	--color-accent-contrast: #041008;
+	--color-info: #7bbcff;
+	--color-warning: #f2c96d;
+	--color-danger: #ff8b7d;
+	--color-success: #72e6a4;
 	font-family:
 		"SFMono-Regular", "Cascadia Code", "Roboto Mono", "Liberation Mono", ui-monospace, monospace;
-	color: #d8f8df;
-	background: #050806;
+	color: var(--color-text);
+	background: var(--color-background);
 	font-synthesis: none;
 }
 
@@ -15,269 +33,12 @@ body {
 	margin: 0;
 	min-width: 320px;
 	background:
-		linear-gradient(rgba(68, 255, 127, 0.035) 1px, transparent 1px),
-		linear-gradient(90deg, rgba(68, 255, 127, 0.025) 1px, transparent 1px), #050806;
-	background-size: 18px 18px;
+		linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px), var(--color-background);
+	background-size: 24px 24px;
 }
 
 button,
 input {
 	font: inherit;
-}
-
-.terminal-page {
-	min-height: 100svh;
-	display: grid;
-	align-content: start;
-	gap: 1rem;
-	padding: 1rem;
-}
-
-.terminal-header,
-.terminal-grid,
-.terminal-section {
-	width: min(78rem, 100%);
-	margin: 0 auto;
-}
-
-.terminal-header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 1rem;
-	padding-top: 1rem;
-}
-
-.terminal-title-block {
-	display: grid;
-	gap: 0.35rem;
-}
-
-.terminal-kicker,
-.terminal-label {
-	margin: 0;
-	font-size: 0.75rem;
-	font-weight: 700;
-	letter-spacing: 0;
-	text-transform: uppercase;
-	color: #73b383;
-}
-
-.terminal-title,
-.terminal-section-title {
-	margin: 0;
-	display: inline-flex;
-	align-items: center;
-	gap: 0.6rem;
-	letter-spacing: 0;
-	color: #e9ffef;
-}
-
-.terminal-title {
-	font-size: clamp(1.8rem, 3rem, 3rem);
-	line-height: 1;
-}
-
-.terminal-section-title {
-	font-size: 1rem;
-}
-
-.terminal-grid {
-	display: grid;
-	grid-template-columns: 1.4fr 0.8fr 0.8fr;
-	gap: 0.75rem;
-}
-
-.terminal-panel,
-.terminal-section {
-	border: 1px solid #2b6f3d;
-	background: rgba(7, 18, 10, 0.92);
-	box-shadow: inset 0 0 0 1px rgba(118, 255, 151, 0.08);
-}
-
-.terminal-panel {
-	display: grid;
-	gap: 0.8rem;
-	min-height: 8rem;
-	padding: 1rem;
-}
-
-.terminal-panel-primary {
-	border-color: #5cd978;
-}
-
-.terminal-panel-head,
-.terminal-section-head,
-.terminal-row {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 1rem;
-}
-
-.ui-status-dot {
-	width: 0.65rem;
-	height: 0.65rem;
-	border-radius: 999px;
-	background: #6f7f72;
-	display: inline-block;
-}
-
-.ui-status-dot--success {
-	background: #64ff83;
-	box-shadow: 0 0 18px rgba(100, 255, 131, 0.72);
-}
-
-.terminal-readout {
-	font-size: clamp(1.3rem, 2rem, 2rem);
-	line-height: 1;
-	color: #f1fff4;
-	overflow-wrap: anywhere;
-}
-
-.terminal-copy,
-.terminal-mini-list,
-.terminal-row-main span {
-	margin: 0;
-	color: #a4c7ad;
-	font-size: 0.85rem;
-}
-
-.terminal-mini-list,
-.terminal-list,
-.terminal-error-list {
-	padding: 0;
-	list-style: none;
-}
-
-.terminal-mini-list {
-	display: grid;
-	gap: 0.45rem;
-}
-
-.terminal-mini-list li {
-	display: grid;
-	gap: 0.25rem;
-}
-
-.ui-separator {
-	width: min(78rem, 100%);
-	height: 1px;
-	margin: 0.25rem auto;
-	background: linear-gradient(90deg, transparent, #3ca653, transparent);
-}
-
-.terminal-section {
-	display: grid;
-	gap: 1rem;
-	padding: 1rem;
-}
-
-.terminal-list,
-.terminal-error-list {
-	display: grid;
-	gap: 0.5rem;
-	margin: 0;
-}
-
-.terminal-row {
-	padding: 0.8rem;
-	border: 1px solid #244e30;
-	background: rgba(1, 8, 4, 0.8);
-}
-
-.terminal-row[data-active="true"] {
-	border-color: #64ff83;
-	background: rgba(20, 79, 35, 0.48);
-}
-
-.terminal-row-main {
-	display: grid;
-	gap: 0.3rem;
-	min-width: 0;
-}
-
-.terminal-row-main strong {
-	color: #e8ffed;
-}
-
-.terminal-empty {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.55rem;
-	min-height: 3rem;
-	color: #a4c7ad;
-}
-
-.terminal-error-list {
-	color: #ffb4a3;
-}
-
-.ui-button {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: 0.5rem;
-	min-height: 2.35rem;
-	padding: 0 0.85rem;
-	border: 1px solid #3e8f51;
-	border-radius: 0;
-	color: #d8f8df;
-	background: #07120a;
-	font-weight: 700;
-	text-decoration: none;
-	cursor: pointer;
-}
-
-.ui-button:hover {
-	border-color: #64ff83;
-	color: #ffffff;
-}
-
-.ui-button--primary {
-	color: #031006;
-	background: #64ff83;
-	border-color: #64ff83;
-}
-
-.ui-button--ghost {
-	background: transparent;
-}
-
-.ui-button--icon {
-	width: 2.35rem;
-	padding: 0;
-}
-
-.ui-kbd {
-	display: inline-flex;
-	align-items: center;
-	min-height: 1.35rem;
-	padding: 0 0.35rem;
-	border: 1px solid #2b6f3d;
-	color: #d8f8df;
-	background: #020503;
-	font-size: 0.76rem;
-}
-
-@media (max-width: 54rem) {
-	.terminal-grid {
-		grid-template-columns: 1fr;
-	}
-
-	.terminal-header,
-	.terminal-section-head,
-	.terminal-row {
-		align-items: stretch;
-		flex-direction: column;
-	}
-
-	.terminal-section-head {
-		align-items: flex-start;
-	}
-
-	.terminal-row form,
-	.terminal-row .ui-button {
-		width: 100%;
-	}
 }
