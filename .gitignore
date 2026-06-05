@@ -1,0 +1,7 @@
+# Purpose: keep generated SvelteKit, dependency, and build artifacts out of git.
+node_modules
+.svelte-kit
+build
+.env
+.env.*
+!.env.example

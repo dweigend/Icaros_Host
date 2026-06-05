@@ -28,13 +28,12 @@ before designing components.
 
 ## Core Architecture Rules
 
-- HTTP loads experiences.
-- WebSocket controls experiences.
-- The Quest stays on a fixed default URL: `https://station-a.local/vr`.
-- The operator decides what the Quest displays.
-- The host stores `activeExperienceId`; `/vr` redirects to that experience.
-- If no experience is active, `/vr` shows waiting or recovery state.
-- If the active experience changes, the old experience navigates back to `/vr`.
+- The UI is a single technical console page at `/`.
+- Do not add UI subpages unless the user explicitly reopens that scope.
+- WebSocket controls runtime clients.
+- The operator decides the active experience id from `/`.
+- The host stores `activeExperienceId`; the current MVP does not redirect or
+  statically serve experience builds.
 - The M5 sends raw data only to the host.
 - Experiences receive only normalized control data.
 - No experience may connect directly to the M5.
@@ -95,9 +94,9 @@ Prepare but do not fully implement:
 ## Runtime Rules
 
 - M5 compatibility is a boundary. Do not break the existing M5 message shapes.
-- Quest-facing pages and sockets must support HTTPS/WSS deployment.
+- Runtime sockets must support HTTPS/WSS deployment when exposed to clients.
 - Internal services may remain plain HTTP/WS behind the gateway.
-- Prefer simple route redirects from `/vr` over custom launch managers.
+- Prefer the single console page over route-level launch managers.
 - Runtime objects with sockets, timers, events, or loops need explicit cleanup.
 - Stale or disconnected M5 state must produce neutral safe-mode controls.
 
