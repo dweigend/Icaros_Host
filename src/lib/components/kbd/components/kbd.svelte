@@ -16,14 +16,14 @@
 	.ui-kbd {
 		display: inline-flex;
 		align-items: center;
-		min-height: 1.45rem;
+		min-height: 1.25rem;
 		max-width: 100%;
-		padding: 0 0.45rem;
+		padding: 0 0.35rem;
 		border: 1px solid var(--color-border);
 		border-radius: 0.25rem;
 		color: var(--color-text-strong);
-		background: var(--color-surface);
-		font-size: 0.76rem;
+		background: color-mix(in srgb, var(--color-surface), transparent 35%);
+		font-size: var(--font-size-sm);
 		overflow-wrap: anywhere;
 	}
 </style>

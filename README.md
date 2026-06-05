@@ -106,6 +106,7 @@ produces neutral safe-mode controls.
 ## Related Docs
 
 - [Architecture](docs/architecture.md)
+- [Experience Client API](docs/client-api.md)
 - [Implementation Plan](PLAN.md)
 - [Coding Standards](CODINGSTANDARDS.md)
 - [Agent Rules](AGENTS.md)

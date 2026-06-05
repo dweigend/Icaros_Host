@@ -3,6 +3,7 @@
 	on data loading while this block owns page-specific presentation and actions.
 -->
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import {
 		ChevronDown,
 		CircleStop,
@@ -40,10 +41,17 @@
 		}))
 	);
 
-	const publicHost = '<host-lan-ip>:3000';
-	const questUrl = `http://${publicHost}/`;
-	const m5SocketUrl = `ws://${publicHost}/ws/device`;
-	const runtimeSocketUrl = `ws://${publicHost}/ws/runtime`;
+	const publicHost = $derived.by(() => {
+		if (!browser) {
+			return '<host-lan-ip>:3000';
+		}
+
+		const portSuffix = window.location.port === '' ? '' : `:${window.location.port}`;
+		return `<host-lan-ip>${portSuffix}`;
+	});
+	const questUrl = $derived(`http://${publicHost}/`);
+	const m5SocketUrl = $derived(`ws://${publicHost}/ws/device`);
+	const runtimeSocketUrl = $derived(`ws://${publicHost}/ws/runtime`);
 </script>
 
 <main class="host-console">
@@ -55,7 +63,6 @@
 				Icaros Host
 			</h1>
 		</div>
-
 	</header>
 
 	<Tabs.Root bind:value={activeTab} activationMode="manual">
@@ -90,7 +97,7 @@
 						<Collapsible.Content>
 							<ul class="host-console__mini-list">
 								<li>
-									<span class="host-console__endpoint-icon">
+									<span class="host-console__endpoint-icon ui-icon-bare">
 										<Glasses size={16} aria-hidden="true" />
 									</span>
 									<div>
@@ -99,7 +106,7 @@
 									</div>
 								</li>
 								<li>
-									<span class="host-console__endpoint-icon">
+									<span class="host-console__endpoint-icon ui-icon-bare">
 										<RadioTower size={16} aria-hidden="true" />
 									</span>
 									<div>
@@ -108,7 +115,7 @@
 									</div>
 								</li>
 								<li>
-									<span class="host-console__endpoint-icon">
+									<span class="host-console__endpoint-icon ui-icon-bare">
 										<Router size={16} aria-hidden="true" />
 									</span>
 									<div>
@@ -134,28 +141,31 @@
 						<h2 id="experience-title" class="host-console__section-title">Installed Experiences</h2>
 					</div>
 
-					<form class="host-console__actions" method="POST" action="?/setActive">
-						<input type="hidden" name="experienceId" value={selectedExperienceId} />
-						<Select.Field
-							bind:value={selectedExperienceId}
-							ariaLabel="Choose active experience"
-							disabled={installedCount === 0}
-							options={experienceOptions}
-							placeholder={installedCount === 0 ? 'No valid manifests' : 'Choose experience'}
-						/>
-						<Button type="submit" variant="primary" disabled={selectedExperienceId === ''}>
-							<Play size={16} aria-hidden="true" />
-							Start
-						</Button>
-					</form>
+					{#if installedCount > 0}
+						<form class="host-console__actions" method="POST" action="?/setActive">
+							<input type="hidden" name="experienceId" value={selectedExperienceId} />
+							<Select.Field
+								bind:value={selectedExperienceId}
+								ariaLabel="Choose active experience"
+								options={experienceOptions}
+								placeholder="Choose experience"
+							/>
+							<Button type="submit" variant="primary" disabled={selectedExperienceId === ''}>
+								<Play size={16} aria-hidden="true" />
+								Start
+							</Button>
+						</form>
+					{/if}
 
-					<form method="POST" action="?/setActive">
-						<input type="hidden" name="experienceId" value="" />
-						<Button type="submit" variant="ghost">
-							<CircleStop size={16} aria-hidden="true" />
-							Clear
-						</Button>
-					</form>
+					{#if activeExperienceId !== null}
+						<form method="POST" action="?/setActive">
+							<input type="hidden" name="experienceId" value="" />
+							<Button type="submit" variant="ghost">
+								<CircleStop size={16} aria-hidden="true" />
+								Clear
+							</Button>
+						</form>
+					{/if}
 				</div>
 
 				<ScrollArea class="host-console__scroll-area">
@@ -234,7 +244,7 @@
 	.host-console__kicker,
 	.host-console__label {
 		margin: 0;
-		font-size: 0.72rem;
+		font-size: var(--font-size-xs);
 		font-weight: 800;
 		letter-spacing: 0;
 		text-transform: uppercase;
@@ -263,7 +273,7 @@
 	.host-console__grid {
 		display: grid;
 		grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-		gap: 0.75rem;
+		gap: var(--space-3);
 	}
 
 	.host-console__panel,
@@ -277,9 +287,9 @@
 
 	.host-console__panel {
 		display: grid;
-		gap: 0.85rem;
-		min-height: 8rem;
-		padding: 1rem;
+		gap: var(--space-3);
+		min-height: 6.75rem;
+		padding: var(--space-3);
 		min-width: 0;
 	}
 
@@ -291,7 +301,7 @@
 	}
 
 	.host-console__panel--network {
-		border-color: color-mix(in srgb, var(--color-info), var(--color-border) 62%);
+		border-color: color-mix(in srgb, var(--color-info), var(--color-border) 78%);
 	}
 
 	.host-console__panel-head,
@@ -316,7 +326,7 @@
 	.host-console__row-main span {
 		margin: 0;
 		color: var(--color-text-soft);
-		font-size: 0.84rem;
+		font-size: var(--font-size-sm);
 		min-width: 0;
 		overflow-wrap: anywhere;
 	}
@@ -329,20 +339,20 @@
 
 	.host-console__mini-list {
 		display: grid;
-		gap: 0.5rem;
+		gap: var(--space-2);
 	}
 
 	.host-console__mini-list li {
 		display: grid;
-		grid-template-columns: 2rem minmax(0, 1fr);
-		align-items: start;
-		gap: 0.5rem;
+		grid-template-columns: var(--icon-bare-size) minmax(0, 1fr);
+		align-items: center;
+		gap: var(--space-2);
 		min-width: 0;
 	}
 
 	.host-console__mini-list li > div {
 		display: grid;
-		gap: 0.25rem;
+		gap: 0.15rem;
 		min-width: 0;
 	}
 
@@ -351,14 +361,9 @@
 	}
 
 	.host-console__endpoint-icon {
-		display: inline-grid;
-		place-items: center;
-		width: 2rem;
-		aspect-ratio: 1;
-		border: 1px solid color-mix(in srgb, var(--color-info), var(--color-border) 54%);
-		border-radius: 0.4rem;
-		color: var(--color-info);
-		background: color-mix(in srgb, var(--color-info), transparent 88%);
+		align-self: start;
+		margin-top: 0.15rem;
+		color: color-mix(in srgb, var(--color-info), var(--color-text-soft) 20%);
 	}
 
 	.host-console__section {
