@@ -189,7 +189,7 @@
 	}
 
 	.host-console__title {
-		font-size: 2.35rem;
+		font-size: clamp(1.9rem, 8vw, 2.35rem);
 		line-height: 1;
 	}
 
