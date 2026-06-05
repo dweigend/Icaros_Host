@@ -39,7 +39,7 @@ The operator console should use one stable origin during a session. Mixing
 POST protection when the active experience action is submitted, for example:
 
 ```txt
-http://192.168.50.194:5183/?/setActive
+https://192.168.50.194:5183/?/setActive
 Cross-site POST form submissions are forbidden
 ```
 
@@ -56,8 +56,8 @@ Project impact:
 Minimum viable setup:
 
 - Use one stable host origin for the operator console during a session, for
-  example `http://192.168.50.194:5183/`, and avoid mixing it with
-  `http://localhost:5183/`.
+  example `https://192.168.50.194:5183/`, and avoid mixing it with
+  `https://localhost:5183/`.
 - Keep CSRF protection enabled by default.
 - Configure dev and future deployment paths so the operator UI, `/launch`, and
   `/ws/runtime` derive URLs from the same explicit host origin.
@@ -97,15 +97,16 @@ their `experienceId`.
 
 The Meta Quest remains a supported runtime device. It opens the host console or
 active WebXR experience over HTTPS. `/launch` redirects to the active experience
-client URL. The default target is the same LAN host on plain HTTP port `5174`
-because the local client dev server usually does not run TLS. Override it with
-`ICAROS_EXPERIENCE_ORIGIN`, `ICAROS_EXPERIENCE_PROTOCOL`, or
-`ICAROS_EXPERIENCE_PORT` when the client runs elsewhere or really serves HTTPS.
+client URL only when an HTTPS target is explicitly configured. There is no HTTP
+default or fallback. Start the host with `ICAROS_EXPERIENCE_ORIGIN=https://...`
+or `ICAROS_EXPERIENCE_PROTOCOL=https`; otherwise `/launch` returns a clear
+configuration error.
 
-The Quest launch URL itself is always the Host endpoint
-`http(s)://<host-lan-ip>:5183/launch`. The experience client URL is separate,
-commonly `http(s)://<host-lan-ip>:5174/`, and must never be shown with a
-`/launch` path.
+The Quest launch URL itself is always the HTTPS Host endpoint
+`https://<host-lan-ip>:5183/launch`. The experience client URL is separate,
+commonly `https://<host-lan-ip>:5174/` for Quest/WebXR, and must never be shown
+with a `/launch` path. Plain HTTP client URLs are desktop-only direct checks,
+not launch targets.
 
 The operator sets the active id in the console. The host forwards
 `control.orientation` only to registered experience clients whose
@@ -118,17 +119,18 @@ The operator sets the active id in the console. The host forwards
   `.certs/icaros-host-key.pem`.
 - Install the mkcert root CA on the Meta Quest so the headset trusts
   `https://<mac-lan-ip>:5183/launch` and the redirected experience origin.
-- Restart the host with `PORT=5183 bun run serve:lan` and confirm it listens on
-  `https://0.0.0.0:5183` when certificates are present.
+- Restart the host with
+  `ICAROS_EXPERIENCE_PROTOCOL=https PORT=5183 bun run serve:lan` and confirm it
+  listens on `https://0.0.0.0:5183` when certificates are present.
 - Start the standalone experience client on port `5174` and keep
   `/ws/runtime` proxied back to the host.
 - Set `activeExperienceId` in the host console from one stable LAN origin.
 - Verify that `https://<mac-lan-ip>:5183/launch` returns a `307` redirect to
-  `http://<mac-lan-ip>:5174/` by default when the client dev server is plain
-  HTTP.
-- If the standalone client runs with TLS, set
-  `ICAROS_EXPERIENCE_PROTOCOL=https` or `ICAROS_EXPERIENCE_ORIGIN` and verify
-  that `/launch` redirects to `https://<mac-lan-ip>:5174/`.
+  `https://<mac-lan-ip>:5174/` only after the standalone client runs with TLS
+  and the host is started with `ICAROS_EXPERIENCE_PROTOCOL=https` or
+  `ICAROS_EXPERIENCE_ORIGIN=https://<mac-lan-ip>:5174`.
+- Verify that `/launch` returns `500` with a configuration message when no
+  HTTPS experience target is configured.
 - Open the launch URL on the Quest and confirm the WebXR experience connects to
   `/ws/runtime` with WSS.
 - Add or keep automated coverage for default launch URL resolution, missing

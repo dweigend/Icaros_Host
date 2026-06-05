@@ -273,13 +273,7 @@
 
 <main class="host-console">
     <header class="host-console__header">
-        <div class="host-console__title-block">
-            <p class="host-console__kicker">station-a // local host console</p>
-            <h1 class="host-console__title">
-                <Terminal size={24} aria-hidden="true" />
-                Icaros Host
-            </h1>
-        </div>
+        <h1>Icaros Host</h1>
     </header>
 
     <section class="host-console__grid" aria-label="Station overview">
@@ -316,9 +310,7 @@
                             </span>
                             <div>
                                 <Kbd>{questLaunchUrl}</Kbd>
-                                <span
-                                    >Quest Launch URL (Host)</span
-                                >
+                                <span>Quest Launch URL (Host)</span>
                             </div>
                         </li>
                         <li>
@@ -357,15 +349,10 @@
                             </span>
                             <div>
                                 <Kbd>{runtimeSocketUrl}</Kbd>
-                                <span
-                                    >Runtime WebSocket Proxy zum Host</span
-                                >
+                                <span>Runtime WebSocket Proxy zum Host</span>
                             </div>
                         </li>
                     </ul>
-                    <p class="host-console__copy">
-                        Diese Adressen auf Geräten im selben LAN verwenden.
-                    </p>
                 </Collapsible.Content>
             </Collapsible.Root>
         </article>
@@ -374,10 +361,7 @@
     <section class="host-console__section" aria-labelledby="experience-title">
         <div class="host-console__section-head">
             <div>
-                <p class="host-console__kicker">runtime routing</p>
-                <h2 id="experience-title" class="host-console__section-title">
-                    Aktive Experience
-                </h2>
+                <p class="host-console__kicker">Aktive Experience</p>
             </div>
 
             <form
@@ -444,11 +428,7 @@
     <section class="host-console__section" aria-labelledby="usb-title">
         <div class="host-console__section-head">
             <div>
-                <p class="host-console__kicker">m5 usb setup</p>
-                <h2 id="usb-title" class="host-console__section-title">
-                    <PlugZap size={18} aria-hidden="true" />
-                    Controller einrichten
-                </h2>
+                <p class="host-console__kicker">Controller einrichten</p>
             </div>
             <div class="host-console__debug-status">
                 <StatusDot
@@ -463,7 +443,7 @@
                     name="enabled"
                     value={usbSetup.debugEnabled ? "false" : "true"}
                 />
-                <div class="host-console__debug-toggle">
+                <div>
                     <Switch
                         checked={usbSetup.debugEnabled}
                         label="Debug"
@@ -478,11 +458,6 @@
         </div>
 
         <div class="host-console__routing-copy">
-            <p class="host-console__copy">
-                <Kbd>{usbSetup.serverUrl ?? m5SocketUrl}</Kbd>
-                wird als gepaarter Zielpfad vorbereitet. Grün wird erst angezeigt,
-                wenn USB und WLAN/WebSocket erfolgreich geprüft sind.
-            </p>
             <p class="host-console__copy">
                 Laufzeit: {usbSetupDuration}
                 {#if usbSetup.exitCode !== null}
@@ -582,10 +557,6 @@
                     <PlugZap size={16} aria-hidden="true" />
                     {usbSetupBusy ? "Läuft" : "Pairing einrichten"}
                 </Button>
-                <p class="host-console__copy">
-                    WLAN ist Pflicht. USB richtet ein, der Controller muss
-                    danach per WebSocket beim Server ankommen.
-                </p>
             </div>
         </form>
 
@@ -668,13 +639,6 @@
 
     <section class="host-console__section" aria-labelledby="debug-title">
         <div class="host-console__section-head">
-            <div>
-                <p class="host-console__kicker">runtime debug</p>
-                <h2 id="debug-title" class="host-console__section-title">
-                    <Activity size={18} aria-hidden="true" />
-                    Datenstream
-                </h2>
-            </div>
             <div class="host-console__debug-status">
                 <StatusDot
                     tone={debugStatusTone}
@@ -794,12 +758,6 @@
         min-width: 0;
     }
 
-    .host-console__title-block {
-        display: grid;
-        gap: 0.35rem;
-        min-width: 0;
-    }
-
     .host-console__kicker,
     .host-console__label {
         margin: 0;
@@ -808,25 +766,6 @@
         letter-spacing: 0;
         text-transform: uppercase;
         color: var(--color-accent);
-    }
-
-    .host-console__title,
-    .host-console__section-title {
-        margin: 0;
-        display: inline-flex;
-        align-items: center;
-        gap: 0.6rem;
-        letter-spacing: 0;
-        color: var(--color-text-strong);
-    }
-
-    .host-console__title {
-        font-size: clamp(1.9rem, 8vw, 2.35rem);
-        line-height: 1;
-    }
-
-    .host-console__section-title {
-        font-size: 1rem;
     }
 
     .host-console__grid {
@@ -1086,16 +1025,6 @@
         color: var(--color-text-soft);
         font-size: var(--font-size-sm);
         text-transform: uppercase;
-    }
-
-    .host-console__debug-toggle {
-        display: inline-flex;
-        align-items: center;
-        min-height: 2.55rem;
-        padding: 0.45rem 0.6rem;
-        border: 1px solid var(--color-border-strong);
-        border-radius: 0.45rem;
-        background: color-mix(in srgb, var(--color-background), transparent 8%);
     }
 
     .host-console__debug-grid {

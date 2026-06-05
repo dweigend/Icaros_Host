@@ -172,8 +172,8 @@ experience assets itself.
 
 The client resolves the runtime socket from the current page:
 
-- `http://...` uses `ws://.../ws/runtime`.
-- `https://...` uses `wss://.../ws/runtime`.
+- Direct desktop HTTP pages use `ws://.../ws/runtime`.
+- Quest/WebXR HTTPS pages use `wss://.../ws/runtime`.
 
 If the host sends a station state where the active experience id no longer
 matches this client, the client navigates to `/`. This keeps inactive
@@ -200,7 +200,7 @@ point for socket testing:
 
 ```sh
 bun run build
-PORT=5183 bun run serve:lan
+ICAROS_EXPERIENCE_PROTOCOL=https PORT=5183 bun run serve:lan
 ```
 
 ## Local Demo Client
@@ -211,25 +211,20 @@ The current standalone demo client commonly runs at:
 http://localhost:5174/
 ```
 
-When opened through the Quest launch route, the headset should use the host LAN
-origin instead. The host owns `/launch`:
-
-```text
-http://<mac-lan-ip>:5183/launch
-```
-
-With development certificates installed on the host, the launch URL should use
-HTTPS:
+That URL is only for direct desktop checks. When opened through the Quest launch
+route, the headset must use the host HTTPS LAN origin instead. The host owns
+`/launch`:
 
 ```text
 https://<mac-lan-ip>:5183/launch
 ```
 
-The experience URL is separate and must match the standalone client server. Use
-HTTPS for the client only when the client actually runs with TLS:
+The experience URL is separate and must match the standalone client server.
+Plain HTTP is only for direct desktop checks. `/launch` requires an explicit
+HTTPS experience target and returns a configuration error instead of redirecting
+to HTTP.
 
 ```text
-http://<mac-lan-ip>:5174/
-# or, with client TLS enabled:
-https://<mac-lan-ip>:5174/
+http://<mac-lan-ip>:5174/      direct desktop only; never a /launch target
+https://<mac-lan-ip>:5174/     Quest/WebXR experience target
 ```

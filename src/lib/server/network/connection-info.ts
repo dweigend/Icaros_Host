@@ -14,7 +14,13 @@ export type HostConnectionInfo = Readonly<{
 export type HttpProtocol = 'http' | 'https';
 
 export type ServerOpenUrl = Readonly<{
-	label: 'Open locally' | 'Open on LAN' | 'Open at';
+	label:
+		| 'Open locally'
+		| 'Open locally (desktop HTTP)'
+		| 'Open on LAN'
+		| 'Open on LAN (desktop HTTP)'
+		| 'Open at'
+		| 'Open at (desktop HTTP)';
 	url: string;
 }>;
 
@@ -32,7 +38,9 @@ export function resolveConnectionInfo(url: URL): HostConnectionInfo {
 }
 
 export function createQuestLaunchUrl(hostOrigin: string): string {
-	return new URL('/launch', hostOrigin).toString();
+	const url = new URL('/launch', hostOrigin);
+	url.protocol = 'https:';
+	return url.toString();
 }
 
 export function resolveServerOpenUrls(
@@ -44,15 +52,18 @@ export function resolveServerOpenUrls(
 
 	if (hostname === '0.0.0.0') {
 		return [
-			{ label: 'Open locally', url: createHttpUrl(protocol, 'localhost', portValue) },
+			{
+				label: readServerOpenLabel(protocol, 'local'),
+				url: createHttpUrl(protocol, 'localhost', portValue)
+			},
 			...resolveLanIpv4Hostnames().map((lanHostname) => ({
-				label: 'Open on LAN' as const,
+				label: readServerOpenLabel(protocol, 'lan'),
 				url: createHttpUrl(protocol, lanHostname, portValue)
 			}))
 		];
 	}
 
-	const label = isLocalHostname(hostname) ? 'Open locally' : 'Open at';
+	const label = readServerOpenLabel(protocol, isLocalHostname(hostname) ? 'local' : 'custom');
 	return [{ label, url: createHttpUrl(protocol, hostname, portValue) }];
 }
 
@@ -99,4 +110,19 @@ function resolveLanIpv4Hostnames(): readonly string[] {
 
 function createHttpUrl(protocol: HttpProtocol, hostname: string, port: string): string {
 	return `${protocol}://${formatHost(hostname, port)}/`;
+}
+
+function readServerOpenLabel(
+	protocol: HttpProtocol,
+	target: 'local' | 'lan' | 'custom'
+): ServerOpenUrl['label'] {
+	if (protocol === 'https') {
+		if (target === 'local') return 'Open locally';
+		if (target === 'lan') return 'Open on LAN';
+		return 'Open at';
+	}
+
+	if (target === 'local') return 'Open locally (desktop HTTP)';
+	if (target === 'lan') return 'Open on LAN (desktop HTTP)';
+	return 'Open at (desktop HTTP)';
 }

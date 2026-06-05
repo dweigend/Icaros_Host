@@ -8,7 +8,7 @@ import { formatHost, resolveLanHostname } from '$lib/server/network';
 
 const DEFAULT_EXPERIENCE_PORT = '5174';
 const DEFAULT_EXPERIENCE_PATH = '/';
-const DEFAULT_EXPERIENCE_PROTOCOL = 'http';
+const HTTPS_EXPERIENCE_PROTOCOL = 'https';
 
 export type ExperienceLaunchResult =
 	| Readonly<{ ok: true; url: string }>
@@ -53,11 +53,18 @@ function resolveExperienceOrigin(
 		return readExperienceOrigin(configuredOrigin);
 	}
 
-	const protocol = process.env.ICAROS_EXPERIENCE_PROTOCOL ?? DEFAULT_EXPERIENCE_PROTOCOL;
+	const protocol = process.env.ICAROS_EXPERIENCE_PROTOCOL;
 	const port = process.env.ICAROS_EXPERIENCE_PORT ?? DEFAULT_EXPERIENCE_PORT;
 
-	if (protocol !== 'http' && protocol !== 'https') {
-		return fail(500, 'ICAROS_EXPERIENCE_PROTOCOL must be http or https.');
+	if (protocol === undefined) {
+		return fail(
+			500,
+			'Quest launch requires an HTTPS experience target. Set ICAROS_EXPERIENCE_ORIGIN=https://... or ICAROS_EXPERIENCE_PROTOCOL=https.'
+		);
+	}
+
+	if (protocol !== HTTPS_EXPERIENCE_PROTOCOL) {
+		return fail(500, 'ICAROS_EXPERIENCE_PROTOCOL must be https for Quest launch.');
 	}
 
 	if (!/^\d{1,5}$/.test(port)) {
@@ -77,8 +84,8 @@ function readExperienceOrigin(
 	try {
 		const url = new URL(origin);
 
-		if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-			return fail(500, 'ICAROS_EXPERIENCE_ORIGIN must use http or https.');
+		if (url.protocol !== 'https:') {
+			return fail(500, 'ICAROS_EXPERIENCE_ORIGIN must use https for Quest launch.');
 		}
 
 		return { ok: true, value: url };

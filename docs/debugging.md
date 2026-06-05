@@ -63,6 +63,10 @@ endpoints:
 bun run serve:lan
 ```
 
+For Quest `/launch` debugging, the Host must also have an explicit HTTPS
+experience target, for example
+`ICAROS_EXPERIENCE_PROTOCOL=https PORT=5183 bun run serve:lan`.
+
 Use one stable origin per run. For Quest/LAN debugging, prefer the LAN HTTPS
 origin:
 

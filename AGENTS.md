@@ -96,6 +96,17 @@ Prepare but do not fully implement:
 - M5 compatibility is a boundary. Do not break the existing M5 message shapes.
 - Runtime sockets must support HTTPS/WSS deployment when exposed to clients.
 - Internal services may remain plain HTTP/WS behind the gateway.
+- Quest-facing browser surfaces must be HTTPS. `/launch` must never default,
+  fall back, or redirect to `http://` experience URLs.
+- The host must require an explicit HTTPS experience target through
+  `ICAROS_EXPERIENCE_ORIGIN=https://...` or
+  `ICAROS_EXPERIENCE_PROTOCOL=https`; missing or HTTP configuration must fail
+  with a clear error instead of silently routing to HTTP.
+- The standalone VR client must not silently start a Quest/WebXR dev server over
+  HTTP. Missing TLS files must produce a clear startup error.
+- Keep the M5 device boundary separate: firmware-compatible plain `ws://` may
+  exist only on the device WebSocket path or separate device port, not for
+  Quest/browser runtime pages.
 - Prefer the single console page and the thin `/launch` redirect over route-level
   launch managers.
 - Runtime objects with sockets, timers, events, or loops need explicit cleanup.

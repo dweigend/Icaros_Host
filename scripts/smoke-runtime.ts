@@ -39,7 +39,7 @@ type RuntimeMessage =
 			payload: Readonly<{ activeExperienceId: string | null }>;
 	  }>;
 
-const DEFAULT_HOST_ORIGIN = 'http://localhost:5183';
+const DEFAULT_HOST_ORIGIN = 'https://localhost:5183';
 const DEFAULT_EXPERIENCE_ID = 'mountain-flight';
 const DEFAULT_TIMEOUT_MS = 5_000;
 const DEFAULT_PITCH = 22.5;

@@ -25,6 +25,8 @@ close to the code while the top-level README stays short.
 - The host is not the WebXR experience.
 - `/` is the single operator console page.
 - `/launch` is a redirect endpoint, not a UI page and not a static asset server.
+- `/launch` must never default, fall back, or redirect to HTTP experience URLs.
+  Missing or HTTP experience configuration must fail with a clear error.
 - Experience clients run separately, currently commonly on port `5174`.
 - Runtime clients register over `/ws/runtime`.
 - M5 devices send raw frames only to `/ws/device`.
@@ -35,13 +37,14 @@ close to the code while the top-level README stays short.
 | Surface | Local development | Quest/LAN development |
 | --- | --- | --- |
 | Host console | `http://localhost:5183/` | `https://<mac-lan-ip>:5183/` |
-| Quest launch endpoint | `http://localhost:5183/launch` | `https://<mac-lan-ip>:5183/launch` |
-| Experience client | `http://localhost:5174/` | `http://<mac-lan-ip>:5174/` or HTTPS only when the client runs TLS |
+| Quest launch endpoint | no HTTP launch path; use HTTPS | `https://<mac-lan-ip>:5183/launch` |
+| Experience client | `http://localhost:5174/` for direct desktop checks | `https://<mac-lan-ip>:5174/` for Quest/WebXR |
 | Runtime WebSocket | `ws://localhost:5183/ws/runtime` | `wss://<mac-lan-ip>:5183/ws/runtime` |
 | M5 WebSocket | `ws://<mac-lan-ip>:5183/ws/device` | `ws://<mac-lan-ip>:5184/ws/device` when Host runs HTTPS |
 
-Use plain HTTP only for desktop development. For the Meta Quest and WebXR,
-prefer HTTPS on the LAN address and make the headset trust the development
-certificate authority.
+Use plain HTTP only for direct desktop development of non-launch pages.
+`/launch` does not redirect to HTTP and should not be advertised as an HTTP
+URL. For the Meta Quest and WebXR, use HTTPS on the LAN address and make the
+headset trust the development certificate authority.
 The `/launch` endpoint is always on the Host origin. Do not use
 `<mac-lan-ip>:5174/launch`; port `5174` is the experience client origin only.

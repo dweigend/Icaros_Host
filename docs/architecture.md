@@ -126,13 +126,18 @@ Non-loopback hostnames are preserved. If the operator opens
 `https://192.168.50.194:5183/`, generated host and launch URLs keep
 `192.168.50.194`.
 
-## Protocol Inheritance
+## HTTPS Launch Target Policy
 
-The launch resolver inherits the incoming host protocol unless environment
-variables override it:
+The launch resolver never falls back to HTTP. Quest-facing launch redirects
+require an explicit HTTPS experience target:
 
-- `http://<host>:5183/launch` redirects to `http://<host>:5174/` by default.
-- `https://<host>:5183/launch` redirects to `https://<host>:5174/` by default.
+- Without `ICAROS_EXPERIENCE_ORIGIN=https://...` or
+  `ICAROS_EXPERIENCE_PROTOCOL=https`, `/launch` returns `500` with a
+  configuration message.
+- `ICAROS_EXPERIENCE_ORIGIN=http://...` and
+  `ICAROS_EXPERIENCE_PROTOCOL=http` are rejected.
+- With `ICAROS_EXPERIENCE_PROTOCOL=https`, `/launch` targets
+  `https://<host>:5174/` unless `ICAROS_EXPERIENCE_PORT` changes the port.
 
 Browser pages loaded from HTTPS must use WSS for `/ws/runtime`. The public
 experience client derives that automatically from `window.location.protocol`.
