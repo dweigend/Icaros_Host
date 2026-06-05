@@ -1,7 +1,7 @@
 /**
  * Purpose: parse and format normalized runtime messages for the host console
- * debug panel. This module is transport-free and never exposes raw M5 frames to
- * the UI.
+ * debug panel. This route-local module is transport-free and never exposes raw
+ * M5 frames to the UI.
  */
 import type { ControlOrientation, StationState } from '$lib/protocol';
 
