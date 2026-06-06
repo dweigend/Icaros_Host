@@ -3,32 +3,45 @@
  * WebSocket reconnect basics and exposes normalized orientation updates only.
  */
 import {
+	type ClientRegisteredPayload,
+	type ClientRejectedPayload,
 	type ControlOrientation,
-	type ControlOrientationMessage,
 	createMessage,
-	type StationStateMessage,
+	type StationState,
+	validateClientRegisteredPayload,
+	validateClientRejectedPayload,
 	validateControlOrientation,
 	validateStationState
 } from '$lib/protocol';
 
 export type OrientationListener = (control: ControlOrientation) => void;
 
+type RuntimeMessage =
+	| Readonly<{ type: 'control.orientation'; payload: ControlOrientation }>
+	| Readonly<{ type: 'station.state'; payload: StationState }>
+	| Readonly<{ type: 'client.registered'; payload: ClientRegisteredPayload }>
+	| Readonly<{ type: 'client.rejected'; payload: ClientRejectedPayload }>;
+
 export type ExperienceClientOptions = Readonly<{
 	experienceId: string;
 	clientId?: string;
+	title?: string;
 	runtimePath?: string;
 }>;
 
 export class IcarosExperienceClient {
 	#options: Required<ExperienceClientOptions>;
 	#socket: WebSocket | null = null;
+	#heartbeat: ReturnType<typeof setInterval> | null = null;
+	#registered = false;
 	#orientationListeners = new Set<OrientationListener>();
 
 	constructor(options: ExperienceClientOptions) {
 		this.#options = {
-			clientId: createDefaultClientId(),
 			runtimePath: '/ws/runtime',
-			...options
+			...options,
+			clientId: options.clientId ?? readStableClientId(),
+			title: options.title ?? readDocumentTitle(options.experienceId)
 		};
 	}
 
@@ -41,15 +54,7 @@ export class IcarosExperienceClient {
 		this.#socket = socket;
 
 		socket.addEventListener('open', () => {
-			socket.send(
-				JSON.stringify(
-					createMessage('client.register', {
-						role: 'experience',
-						id: this.#options.clientId,
-						experienceId: this.#options.experienceId
-					})
-				)
-			);
+			this.#sendHello(socket);
 		});
 
 		socket.addEventListener('message', (event) => {
@@ -57,11 +62,15 @@ export class IcarosExperienceClient {
 		});
 
 		socket.addEventListener('close', () => {
+			this.#stopHeartbeat();
+			this.#registered = false;
 			this.#socket = null;
 		});
 	}
 
 	dispose(): void {
+		this.#stopHeartbeat();
+		this.#registered = false;
 		this.#socket?.close();
 		this.#socket = null;
 		this.#orientationListeners.clear();
@@ -82,7 +91,27 @@ export class IcarosExperienceClient {
 
 		const message = parseRuntimeMessage(data);
 
+		if (message?.type === 'client.registered') {
+			if (message.payload.clientId !== this.#options.clientId) {
+				return;
+			}
+
+			this.#registered = true;
+			this.#startHeartbeat();
+			return;
+		}
+
+		if (message?.type === 'client.rejected') {
+			this.#registered = false;
+			this.#socket?.close();
+			return;
+		}
+
 		if (message?.type === 'control.orientation') {
+			if (!this.#registered) {
+				return;
+			}
+
 			for (const listener of this.#orientationListeners) {
 				listener(message.payload);
 			}
@@ -95,6 +124,47 @@ export class IcarosExperienceClient {
 			navigateToHostConsole();
 		}
 	}
+
+	#sendHello(socket: WebSocket): void {
+		socket.send(
+			JSON.stringify(
+				createMessage('client.hello', {
+					role: 'experience',
+					clientId: this.#options.clientId,
+					experienceId: this.#options.experienceId,
+					title: this.#options.title,
+					url: window.location.href,
+					userAgent: window.navigator.userAgent
+				})
+			)
+		);
+	}
+
+	#startHeartbeat(): void {
+		this.#stopHeartbeat();
+		this.#heartbeat = setInterval(() => {
+			if (this.#socket?.readyState !== WebSocket.OPEN) {
+				return;
+			}
+
+			this.#socket.send(
+				JSON.stringify(
+					createMessage('client.heartbeat', {
+						clientId: this.#options.clientId
+					})
+				)
+			);
+		}, 4_000);
+	}
+
+	#stopHeartbeat(): void {
+		if (this.#heartbeat === null) {
+			return;
+		}
+
+		clearInterval(this.#heartbeat);
+		this.#heartbeat = null;
+	}
 }
 
 export function createIcarosExperienceClient(
@@ -106,6 +176,23 @@ export function createIcarosExperienceClient(
 function resolveRuntimeUrl(runtimePath: string): string {
 	const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 	return `${protocol}//${window.location.host}${runtimePath}`;
+}
+
+function readStableClientId(): string {
+	const storageKey = 'icaros.clientId';
+
+	try {
+		const existing = window.localStorage.getItem(storageKey);
+		if (existing !== null && existing.trim() !== '') {
+			return existing;
+		}
+
+		const clientId = createDefaultClientId();
+		window.localStorage.setItem(storageKey, clientId);
+		return clientId;
+	} catch {
+		return createDefaultClientId();
+	}
 }
 
 function createDefaultClientId(): string {
@@ -132,38 +219,51 @@ function navigateToHostConsole(): void {
 	window.location.assign(consoleUrl.href);
 }
 
-function parseRuntimeMessage(data: string): ControlOrientationMessage | StationStateMessage | null {
+function readDocumentTitle(experienceId: string): string {
+	const title = document.title.trim();
+	return title === '' ? experienceId : title;
+}
+
+function parseRuntimeMessage(data: string): RuntimeMessage | null {
 	try {
 		const parsed: unknown = JSON.parse(data);
 
-		if (
-			typeof parsed === 'object' &&
-			parsed !== null &&
-			'type' in parsed &&
-			'payload' in parsed &&
-			parsed.type === 'control.orientation'
-		) {
-			const validation = validateControlOrientation(parsed.payload);
-			return validation.ok
-				? ({ ...parsed, payload: validation.value } as ControlOrientationMessage)
-				: null;
+		if (!isRuntimeEnvelope(parsed)) {
+			return null;
 		}
 
-		if (
-			typeof parsed === 'object' &&
-			parsed !== null &&
-			'type' in parsed &&
-			'payload' in parsed &&
-			parsed.type === 'station.state'
-		) {
+		if (parsed.type === 'client.registered') {
+			const validation = validateClientRegisteredPayload(parsed.payload);
+			return validation.ok ? { type: 'client.registered', payload: validation.value } : null;
+		}
+
+		if (parsed.type === 'client.rejected') {
+			const validation = validateClientRejectedPayload(parsed.payload);
+			return validation.ok ? { type: 'client.rejected', payload: validation.value } : null;
+		}
+
+		if (parsed.type === 'control.orientation') {
+			const validation = validateControlOrientation(parsed.payload);
+			return validation.ok ? { type: 'control.orientation', payload: validation.value } : null;
+		}
+
+		if (parsed.type === 'station.state') {
 			const validation = validateStationState(parsed.payload);
-			return validation.ok
-				? ({ ...parsed, payload: validation.value } as StationStateMessage)
-				: null;
+			return validation.ok ? { type: 'station.state', payload: validation.value } : null;
 		}
 	} catch {
 		return null;
 	}
 
 	return null;
+}
+
+function isRuntimeEnvelope(value: unknown): value is Readonly<{ type: string; payload: unknown }> {
+	return (
+		typeof value === 'object' &&
+		value !== null &&
+		'type' in value &&
+		'payload' in value &&
+		typeof value.type === 'string'
+	);
 }

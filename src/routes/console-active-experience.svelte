@@ -27,6 +27,7 @@
             />
         </div>
         <strong>{state.activeExperienceId ?? "none"}</strong>
+        <p>active client: {state.activeClientId ?? "none"}</p>
         <p>
             Nur diese Experience erhält normalisierte M5-Steuerdaten über den
             Runtime-Socket.
@@ -34,6 +35,7 @@
     </article>
 {:else}
     <section class="card" aria-labelledby="experience-title">
+        <p>Active client: <Kbd>{state.activeClientId ?? "none"}</Kbd></p>
         <div class="row">
             <form class="actions" method="POST" action="?/setActive">
                 <input

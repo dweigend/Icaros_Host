@@ -15,7 +15,7 @@ describe('RuntimeClientRegistry', () => {
 		const operator = registry.add(operatorSocket.socket);
 		registry.replaceRegistration(operator, { role: 'operator', id: 'host-console-debug' });
 
-		registry.sendControlToActiveExperienceAndOperators(createControlMessage(), null);
+		registry.sendControlToActiveClientAndOperators(createControlMessage(), null);
 
 		expect(readSentTypes(operatorSocket)).toEqual(['control.orientation']);
 	});
@@ -26,18 +26,30 @@ describe('RuntimeClientRegistry', () => {
 		const inactiveSocket = createOpenSocket();
 		const active = registry.add(activeSocket.socket);
 		const inactive = registry.add(inactiveSocket.socket);
-		registry.replaceRegistration(active, {
-			role: 'experience',
-			id: 'active-client',
-			experienceId: 'echo-flight'
-		});
-		registry.replaceRegistration(inactive, {
-			role: 'experience',
-			id: 'inactive-client',
-			experienceId: 'other-flight'
-		});
+		registry.registerHello(
+			active,
+			{
+				role: 'experience',
+				clientId: 'active-client',
+				experienceId: 'echo-flight',
+				title: 'Echo Flight',
+				url: 'https://client.local/active'
+			},
+			100
+		);
+		registry.registerHello(
+			inactive,
+			{
+				role: 'experience',
+				clientId: 'inactive-client',
+				experienceId: 'echo-flight',
+				title: 'Echo Flight',
+				url: 'https://client.local/inactive'
+			},
+			100
+		);
 
-		registry.sendControlToActiveExperienceAndOperators(createControlMessage(), 'echo-flight');
+		registry.sendControlToActiveClientAndOperators(createControlMessage(), 'active-client');
 
 		expect(readSentTypes(activeSocket)).toEqual(['control.orientation']);
 		expect(readSentTypes(inactiveSocket)).toEqual([]);
@@ -56,6 +68,55 @@ describe('RuntimeClientRegistry', () => {
 
 		expect(readSentTypes(operatorSocket)).toEqual(['control.orientation']);
 	});
+
+	it('lists concrete runtime clients and marks stale heartbeats', () => {
+		const registry = new RuntimeClientRegistry();
+		const socket = createOpenSocket();
+		const client = registry.add(socket.socket);
+		registry.registerHello(
+			client,
+			{
+				role: 'experience',
+				clientId: 'quest-client',
+				experienceId: 'mountain-flight',
+				title: 'Mountain Flight',
+				url: 'https://quest.local/'
+			},
+			1_000
+		);
+
+		expect(registry.listRuntimeClients()).toEqual([
+			{
+				clientId: 'quest-client',
+				experienceId: 'mountain-flight',
+				title: 'Mountain Flight',
+				url: 'https://quest.local/',
+				connectedAt: 1_000,
+				lastSeenAt: 1_000,
+				status: 'online'
+			}
+		]);
+
+		expect(registry.markStaleClients(10_000, 8_000)).toBe(true);
+		expect(registry.findSelectableClient('quest-client')).toBeNull();
+	});
+
+	it('keeps a reconnected client selectable when the old socket closes late', () => {
+		const registry = new RuntimeClientRegistry();
+		const firstSocket = createOpenSocket();
+		const secondSocket = createOpenSocket();
+		const firstConnection = registry.add(firstSocket.socket);
+		const firstClient = registry.registerHello(firstConnection, createHelloPayload(), 1_000);
+		const secondConnection = registry.add(secondSocket.socket);
+
+		registry.registerHello(secondConnection, createHelloPayload(), 2_000);
+
+		expect(registry.remove(firstClient)).toBeNull();
+		expect(registry.findSelectableClient('quest-client')).toMatchObject({
+			clientId: 'quest-client',
+			connectedAt: 2_000
+		});
+	});
 });
 
 function createControlMessage(): ReturnType<typeof createControlOrientationMessage> {
@@ -67,6 +128,16 @@ function createControlMessage(): ReturnType<typeof createControlOrientationMessa
 		safeMode: false,
 		timestamp: 123
 	});
+}
+
+function createHelloPayload() {
+	return {
+		role: 'experience' as const,
+		clientId: 'quest-client',
+		experienceId: 'mountain-flight',
+		title: 'Mountain Flight',
+		url: 'https://quest.local/'
+	};
 }
 
 type TestSocket = Readonly<{

@@ -1,0 +1,113 @@
+<!--
+	Purpose: route-local runtime client presence panel. It lets the operator pick
+	the concrete HTTPS browser or Quest instance that should receive controls.
+-->
+<script lang="ts">
+    import { Check, CircleStop } from "@lucide/svelte";
+
+    import { Button, Kbd, StatusDot } from "$lib/components";
+    import type { RuntimeClientSummary } from "$lib/protocol";
+    import type { ConsolePageState } from "./console-state.svelte";
+    import { formatAge } from "./runtime-debug";
+
+    type Props = Readonly<{
+        state: ConsolePageState;
+    }>;
+
+    let { state }: Props = $props();
+
+    function isActive(client: RuntimeClientSummary): boolean {
+        return state.activeClientId === client.clientId;
+    }
+
+    function formatClientId(clientId: string): string {
+        return clientId.length <= 12
+            ? clientId
+            : `${clientId.slice(0, 8)}...${clientId.slice(-4)}`;
+    }
+
+	function formatSeen(client: RuntimeClientSummary): string {
+		return formatAge(state.debugNow - client.lastSeenAt);
+	}
+</script>
+
+<section class="card" aria-labelledby="runtime-clients-title">
+    <div class="row">
+        <h2 id="runtime-clients-title">Available Clients</h2>
+        <div class="status">
+            <StatusDot
+                tone={state.runtimeClients.length === 0 ? "default" : "success"}
+                label={`${state.runtimeClients.length} runtime clients`}
+            />
+            <span>{state.runtimeClients.length} online/stale</span>
+        </div>
+        {#if state.activeClientId !== null}
+            <form method="POST" action="?/setActiveClient">
+                <input type="hidden" name="clientId" value="" />
+                <Button type="submit" variant="ghost">
+                    <CircleStop size={16} aria-hidden="true" />
+                    Clear Client
+                </Button>
+            </form>
+        {/if}
+    </div>
+
+    <div class="runtime-clients">
+        {#each state.runtimeClients as client (client.clientId)}
+            <article class="runtime-client" data-active={isActive(client)}>
+                <div class="row">
+                    <div class="stack">
+                        <strong>{client.title}</strong>
+                        <span>{client.experienceId}</span>
+                    </div>
+                    <StatusDot
+                        tone={client.status === "online" ? "success" : "warning"}
+                        label={`Runtime client ${client.status}`}
+                    />
+                </div>
+
+                <dl class="client-facts">
+                    <div>
+                        <dt>client</dt>
+                        <dd><Kbd>{formatClientId(client.clientId)}</Kbd></dd>
+                    </div>
+                    <div>
+                        <dt>last seen</dt>
+                        <dd>{formatSeen(client)}</dd>
+                    </div>
+                    <div>
+                        <dt>url</dt>
+                        <dd><Kbd>{client.url}</Kbd></dd>
+                    </div>
+                    {#if client.userAgent}
+                        <div>
+                            <dt>agent</dt>
+                            <dd>{client.userAgent}</dd>
+                        </div>
+                    {/if}
+                </dl>
+
+                <form method="POST" action="?/setActiveClient">
+                    <input
+                        type="hidden"
+                        name="clientId"
+                        value={client.clientId}
+                    />
+                    <Button
+                        type="submit"
+                        variant={isActive(client) ? "secondary" : "primary"}
+                        disabled={client.status !== "online" || isActive(client)}
+                    >
+                        <Check size={16} aria-hidden="true" />
+                        {isActive(client) ? "Active" : "Use Client"}
+                    </Button>
+                </form>
+            </article>
+        {:else}
+            <p>
+                Noch keine registrierten HTTPS Runtime Clients. Eine Experience
+                muss <code>client.hello</code> über <code>wss://</code> senden.
+            </p>
+        {/each}
+    </div>
+</section>

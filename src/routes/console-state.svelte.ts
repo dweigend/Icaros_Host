@@ -5,7 +5,7 @@
 import { invalidateAll } from '$app/navigation';
 
 import type { StatusDotTone } from '$lib/components/status-dot';
-import type { ControlOrientation } from '$lib/protocol';
+import type { ControlOrientation, RuntimeClientSummary } from '$lib/protocol';
 import type { PageData } from './$types';
 import {
 	createRuntimeDebugFrame,
@@ -54,6 +54,8 @@ export function createConsolePageState(readData: () => PageData) {
 	let debugLastMessageAt = $state<number | null>(null);
 	let debugFrameCount = $state(0);
 	let debugStationActiveExperienceId = $state<string | null | undefined>(undefined);
+	let debugStationActiveClientId = $state<string | null | undefined>(undefined);
+	let runtimeClients = $state<readonly RuntimeClientSummary[]>([]);
 	let debugLastControl = $state<ControlOrientation | null>(null);
 	let debugFrames = $state<RuntimeDebugFrame[]>([]);
 	let debugSocket: WebSocket | null = null;
@@ -72,6 +74,7 @@ export function createConsolePageState(readData: () => PageData) {
 	const station = $derived(readData().station);
 	const usbSetup = $derived(readData().usbSetup);
 	const activeExperienceId = $derived(station.activeExperienceId);
+	const activeClientId = $derived(station.activeClientId);
 	const connectionUrls = $derived<ConsoleConnectionUrls>({
 		consoleUrl: `${connection.httpOrigin}/`,
 		questLaunchUrl: connection.questLaunchUrl,
@@ -83,6 +86,9 @@ export function createConsolePageState(readData: () => PageData) {
 		debugStationActiveExperienceId === undefined
 			? activeExperienceId
 			: debugStationActiveExperienceId
+	);
+	const runtimeActiveClientId = $derived(
+		debugStationActiveClientId === undefined ? activeClientId : debugStationActiveClientId
 	);
 	const debugStatusTone = $derived(readDebugStatusTone(debugStatus));
 	const debugLastMessageAge = $derived(
@@ -136,6 +142,12 @@ export function createConsolePageState(readData: () => PageData) {
 
 		if (message.type === 'station.state') {
 			debugStationActiveExperienceId = message.payload.activeExperienceId;
+			debugStationActiveClientId = message.payload.activeClientId;
+			return;
+		}
+
+		if (message.type === 'runtime.clients') {
+			runtimeClients = message.payload.clients;
 			return;
 		}
 
@@ -191,6 +203,12 @@ export function createConsolePageState(readData: () => PageData) {
 		mountRuntimeDebugSocket,
 		get activeExperienceId() {
 			return activeExperienceId;
+		},
+		get activeClientId() {
+			return runtimeActiveClientId;
+		},
+		get runtimeClients() {
+			return runtimeClients;
 		},
 		get selectedExperienceId() {
 			return selectedExperienceId;

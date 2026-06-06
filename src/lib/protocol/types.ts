@@ -27,6 +27,7 @@ export type Message<TType extends string, TPayload> = Readonly<{
 
 export type StationState = Readonly<{
 	activeExperienceId: string | null;
+	activeClientId: string | null;
 }>;
 
 export type ExperienceMode = 'prototype' | 'production';
@@ -56,6 +57,47 @@ export type ClientRegisterPayload = Readonly<{
 	experienceId?: string;
 }>;
 
+export type RuntimeClientStatus = 'online' | 'stale';
+
+export type RuntimeClientSummary = Readonly<{
+	clientId: string;
+	experienceId: string;
+	title: string;
+	url: string;
+	userAgent?: string;
+	connectedAt: number;
+	lastSeenAt: number;
+	status: RuntimeClientStatus;
+}>;
+
+export type ClientHelloPayload = Readonly<{
+	role: 'experience';
+	clientId: string;
+	experienceId: string;
+	title: string;
+	url: string;
+	userAgent?: string;
+}>;
+
+export type ClientHeartbeatPayload = Readonly<{
+	clientId: string;
+}>;
+
+export type ClientRegisteredPayload = Readonly<{
+	clientId: string;
+	active: boolean;
+	activeClientId: string | null;
+}>;
+
+export type ClientRejectedPayload = Readonly<{
+	reason: string;
+}>;
+
+export type RuntimeClientsPayload = Readonly<{
+	activeClientId: string | null;
+	clients: readonly RuntimeClientSummary[];
+}>;
+
 export type OperatorSetActiveExperiencePayload = Readonly<{
 	activeExperienceId: string | null;
 }>;
@@ -67,6 +109,11 @@ export type ExperienceReadyPayload = Readonly<{
 export type StationStateMessage = Message<'station.state', StationState>;
 export type ControlOrientationMessage = Message<'control.orientation', ControlOrientation>;
 export type ClientRegisterMessage = Message<'client.register', ClientRegisterPayload>;
+export type ClientHelloMessage = Message<'client.hello', ClientHelloPayload>;
+export type ClientHeartbeatMessage = Message<'client.heartbeat', ClientHeartbeatPayload>;
+export type ClientRegisteredMessage = Message<'client.registered', ClientRegisteredPayload>;
+export type ClientRejectedMessage = Message<'client.rejected', ClientRejectedPayload>;
+export type RuntimeClientsMessage = Message<'runtime.clients', RuntimeClientsPayload>;
 export type OperatorSetActiveExperienceMessage = Message<
 	'operator.setActiveExperience',
 	OperatorSetActiveExperiencePayload

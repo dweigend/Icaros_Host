@@ -105,12 +105,12 @@ adapter repository. It may trigger Host actions and read Host-owned artifacts.
 
 | Area | Owner | Boundary |
 | --- | --- | --- |
-| Station state | Host | Stores `activeExperienceId` and broadcasts station state. |
+| Station state | Host | Stores `activeExperienceId` and `activeClientId`, then broadcasts station state. |
 | Device input | Host | Accepts raw M5 frames only on the paired `/ws/device` URL. |
 | M5 pairing and diagnosis | Host core | Owns USB setup state, pairing tokens, bounded debug snapshots, and device socket observations. |
 | Human operation | Web UI `/` | Starts pairing and shows current state for station operators. |
 | Automation operation | CLI | Calls Host actions and reads Host-owned diagnostics for repeatable checks. |
-| Runtime client API | Host | Accepts registered browser/WebXR clients on `/ws/runtime`. |
+| Runtime client API | Host | Accepts browser/WebXR clients on `/ws/runtime` through `client.hello`, heartbeat, and concrete client selection. |
 | Experience rendering | Experience client | Runs on its own origin, commonly port `5174`. |
 | Quest entrypoint | Host `/launch` | Redirects to an already running experience client. |
 

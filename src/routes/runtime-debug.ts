@@ -3,13 +3,21 @@
  * debug panel. This route-local module is transport-free and never exposes raw
  * M5 frames to the UI.
  */
-import type { ControlOrientation, StationState } from '$lib/protocol';
+import {
+	type ControlOrientation,
+	type RuntimeClientsPayload,
+	type StationState,
+	validateControlOrientation,
+	validateRuntimeClientsPayload,
+	validateStationState
+} from '$lib/protocol';
 
 export type RuntimeDebugStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
 export type RuntimeDebugMessage =
 	| Readonly<{ type: 'control.orientation'; payload: ControlOrientation }>
-	| Readonly<{ type: 'station.state'; payload: StationState }>;
+	| Readonly<{ type: 'station.state'; payload: StationState }>
+	| Readonly<{ type: 'runtime.clients'; payload: RuntimeClientsPayload }>;
 
 export type RuntimeDebugFrame = Readonly<{
 	id: number;
@@ -29,13 +37,18 @@ export function parseRuntimeDebugMessage(input: string): RuntimeDebugMessage | n
 		}
 
 		if (parsed.type === 'control.orientation') {
-			const payload = readControlOrientation(parsed.payload);
-			return payload === null ? null : { type: 'control.orientation', payload };
+			const validation = validateControlOrientation(parsed.payload);
+			return validation.ok ? { type: 'control.orientation', payload: validation.value } : null;
 		}
 
 		if (parsed.type === 'station.state') {
-			const payload = readStationState(parsed.payload);
-			return payload === null ? null : { type: 'station.state', payload };
+			const validation = validateStationState(parsed.payload);
+			return validation.ok ? { type: 'station.state', payload: validation.value } : null;
+		}
+
+		if (parsed.type === 'runtime.clients') {
+			const validation = validateRuntimeClientsPayload(parsed.payload);
+			return validation.ok ? { type: 'runtime.clients', payload: validation.value } : null;
 		}
 
 		return null;
@@ -78,56 +91,6 @@ export function toUnitPercent(value: number): number {
 
 export function toQualityPercent(value: number): number {
 	return Math.round(Math.max(0, Math.min(1, value)) * 100);
-}
-
-function readControlOrientation(payload: unknown): ControlOrientation | null {
-	if (!isRecord(payload) || payload.source !== 'm5') {
-		return null;
-	}
-
-	const pitch = readFiniteNumber(payload.pitch);
-	const roll = readFiniteNumber(payload.roll);
-	const quality = readFiniteNumber(payload.quality);
-	const timestamp = readFiniteNumber(payload.timestamp);
-
-	if (
-		pitch === null ||
-		roll === null ||
-		quality === null ||
-		timestamp === null ||
-		typeof payload.safeMode !== 'boolean'
-	) {
-		return null;
-	}
-
-	return {
-		pitch,
-		roll,
-		quality,
-		source: 'm5',
-		safeMode: payload.safeMode,
-		timestamp
-	};
-}
-
-function readStationState(payload: unknown): StationState | null {
-	if (!isRecord(payload)) {
-		return null;
-	}
-
-	if (payload.activeExperienceId === null || typeof payload.activeExperienceId === 'string') {
-		return { activeExperienceId: payload.activeExperienceId };
-	}
-
-	return null;
-}
-
-function readFiniteNumber(value: unknown): number | null {
-	if (typeof value !== 'number' || !Number.isFinite(value)) {
-		return null;
-	}
-
-	return value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

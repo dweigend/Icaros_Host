@@ -13,8 +13,9 @@ import {
 } from '$lib/server/device/pairing-service';
 import { resolveExperienceLaunchUrl } from '$lib/server/experiences';
 import { createQuestLaunchUrl, resolveConnectionInfo } from '$lib/server/network';
-import { setActiveExperience } from '$lib/server/station/active-experience';
+import { setActiveClient, setActiveExperience } from '$lib/server/station/active-experience';
 import { stationStateStore } from '$lib/server/station/state';
+import { runtimeClientRegistry } from '$lib/server/ws/runtime-clients';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
@@ -51,6 +52,23 @@ export const actions: Actions = {
 			return fail(400, { message: result.error });
 		}
 
+		return { ok: true };
+	},
+	setActiveClient: async ({ request }) => {
+		const formData = await request.formData();
+		const clientId = readOptionalFormValue(formData, 'clientId');
+
+		if (clientId === null) {
+			setActiveClient(null, null);
+			return { ok: true };
+		}
+
+		const client = runtimeClientRegistry.findSelectableClient(clientId);
+		if (client === null) {
+			return fail(400, { message: 'Runtime client is not online.' });
+		}
+
+		setActiveClient(client.clientId, client.experienceId);
 		return { ok: true };
 	},
 	connectUsb: async ({ request, url }) => {

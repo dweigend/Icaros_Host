@@ -9,6 +9,7 @@
     import ConsoleConnectionAddresses from "./console-connection-addresses.svelte";
     import ConsoleControllerSetup from "./console-controller-setup.svelte";
     import ConsoleLiveControllerData from "./console-live-controller-data.svelte";
+    import ConsoleRuntimeClients from "./console-runtime-clients.svelte";
     import { createConsolePageState } from "./console-state.svelte";
     import type { PageProps } from "./$types";
 
@@ -29,6 +30,7 @@
     </header>
     <ConsoleConnectionAddresses urls={consoleState.connectionUrls} />
     <ConsoleActiveExperience state={consoleState} />
+    <ConsoleRuntimeClients state={consoleState} />
     <ConsoleControllerSetup state={consoleState} />
     <ConsoleLiveControllerData state={consoleState} />
 </main>

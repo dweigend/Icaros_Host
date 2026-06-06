@@ -1,46 +1,104 @@
 /**
- * Purpose: manage connected runtime WebSocket clients.
- *
- * Runtime clients are browser-side participants: operator pages, Quest launchers,
- * and running experiences. All of them may need station state. Controls are
- * routed to the active experience for interaction and to operators for
- * diagnostics. Keeping those rules in one small registry makes the WebSocket
- * gateway easier to read.
+ * Purpose: manage browser runtime WebSocket clients for the single-station MVP.
+ * The registry owns concrete client presence and routing decisions, but leaves
+ * station state, device normalization, and rendering outside this boundary.
  */
 import { WebSocket } from 'ws';
 import type {
+	ClientHelloPayload,
 	ClientRegisterPayload,
 	ControlOrientationMessage,
+	RuntimeClientSummary,
+	RuntimeClientsMessage,
 	StationStateMessage
 } from '$lib/protocol';
+
+const RUNTIME_CLIENT_REGISTRY_KEY = '__icarosRuntimeClientRegistry';
+
+type IcarosGlobalRuntime = typeof globalThis & {
+	[RUNTIME_CLIENT_REGISTRY_KEY]?: RuntimeClientRegistry;
+};
 
 export type RuntimeClient = Readonly<{
 	socket: WebSocket;
 	registration: ClientRegisterPayload | null;
+	presence: RuntimeClientSummary | null;
 }>;
 
 export class RuntimeClientRegistry {
 	#clients = new Set<RuntimeClient>();
 
 	add(socket: WebSocket): RuntimeClient {
-		const client: RuntimeClient = { socket, registration: null };
+		const client: RuntimeClient = { socket, registration: null, presence: null };
 		this.#clients.add(client);
 		return client;
 	}
 
 	replaceRegistration(client: RuntimeClient, registration: ClientRegisterPayload): RuntimeClient {
-		const registeredClient: RuntimeClient = {
-			socket: client.socket,
-			registration
-		};
-
-		this.#clients.delete(client);
-		this.#clients.add(registeredClient);
-		return registeredClient;
+		return this.#replace(client, { registration, presence: null });
 	}
 
-	remove(client: RuntimeClient): void {
-		this.#clients.delete(client);
+	registerHello(client: RuntimeClient, payload: ClientHelloPayload, now: number): RuntimeClient {
+		this.#closeDuplicateClient(payload.clientId, client);
+
+		return this.#replace(client, {
+			registration: {
+				role: 'experience',
+				id: payload.clientId,
+				experienceId: payload.experienceId
+			},
+			presence: {
+				clientId: payload.clientId,
+				experienceId: payload.experienceId,
+				title: payload.title,
+				url: payload.url,
+				...(payload.userAgent === undefined ? {} : { userAgent: payload.userAgent }),
+				connectedAt: now,
+				lastSeenAt: now,
+				status: 'online'
+			}
+		});
+	}
+
+	recordHeartbeat(clientId: string, now: number): boolean {
+		const client = this.#findByClientId(clientId);
+		if (client?.presence === null || client === null) {
+			return false;
+		}
+
+		const statusChanged = client.presence.status !== 'online';
+		this.#replace(client, {
+			registration: client.registration,
+			presence: { ...client.presence, lastSeenAt: now, status: 'online' }
+		});
+		return statusChanged;
+	}
+
+	markStaleClients(now: number, staleAfterMs: number): boolean {
+		let changed = false;
+
+		for (const client of Array.from(this.#clients)) {
+			const presence = client.presence;
+			if (presence === null || presence.status === 'stale') {
+				continue;
+			}
+
+			if (now - presence.lastSeenAt <= staleAfterMs) {
+				continue;
+			}
+
+			this.#replace(client, {
+				registration: client.registration,
+				presence: { ...presence, status: 'stale' }
+			});
+			changed = true;
+		}
+
+		return changed;
+	}
+
+	remove(client: RuntimeClient): RuntimeClientSummary | null {
+		return this.#clients.delete(client) ? client.presence : null;
 	}
 
 	closeAll(): void {
@@ -51,22 +109,38 @@ export class RuntimeClientRegistry {
 		this.#clients.clear();
 	}
 
-	sendStationState(message: StationStateMessage): void {
-		const serialized = JSON.stringify(message);
-
-		for (const client of this.#clients) {
-			sendIfOpen(client.socket, serialized);
+	findSelectableClient(clientId: string): RuntimeClientSummary | null {
+		const presence = this.#findByClientId(clientId)?.presence;
+		if (presence === undefined || presence === null || presence.status !== 'online') {
+			return null;
 		}
+
+		return presence;
 	}
 
-	sendControlToActiveExperienceAndOperators(
+	listRuntimeClients(): readonly RuntimeClientSummary[] {
+		return Array.from(this.#clients)
+			.map((client) => client.presence)
+			.filter((presence): presence is RuntimeClientSummary => presence !== null)
+			.sort(compareRuntimeClients);
+	}
+
+	sendStationState(message: StationStateMessage): void {
+		this.#sendToAll(JSON.stringify(message));
+	}
+
+	sendRuntimeClients(message: RuntimeClientsMessage): void {
+		this.#sendToAll(JSON.stringify(message));
+	}
+
+	sendControlToActiveClientAndOperators(
 		message: ControlOrientationMessage,
-		activeExperienceId: string | null
+		activeClientId: string | null
 	): void {
 		const serialized = JSON.stringify(message);
 
 		for (const client of this.#clients) {
-			if (!canReceiveControl(client, activeExperienceId)) {
+			if (!canReceiveControl(client, activeClientId)) {
 				continue;
 			}
 
@@ -77,25 +151,80 @@ export class RuntimeClientRegistry {
 	sendControlToClient(
 		client: RuntimeClient,
 		message: ControlOrientationMessage,
-		activeExperienceId: string | null
+		activeClientId: string | null
 	): void {
-		if (!canReceiveControl(client, activeExperienceId)) {
+		if (!canReceiveControl(client, activeClientId)) {
 			return;
 		}
 
 		sendIfOpen(client.socket, JSON.stringify(message));
 	}
+
+	#replace(
+		client: RuntimeClient,
+		next: Pick<RuntimeClient, 'registration' | 'presence'>
+	): RuntimeClient {
+		const updatedClient: RuntimeClient = {
+			socket: client.socket,
+			registration: next.registration,
+			presence: next.presence
+		};
+
+		this.#clients.delete(client);
+		this.#clients.add(updatedClient);
+		return updatedClient;
+	}
+
+	#closeDuplicateClient(clientId: string, currentClient: RuntimeClient): void {
+		const duplicate = this.#findByClientId(clientId);
+		if (duplicate === null || duplicate === currentClient) {
+			return;
+		}
+
+		this.#clients.delete(duplicate);
+		duplicate.socket.close();
+	}
+
+	#findByClientId(clientId: string): RuntimeClient | null {
+		for (const client of this.#clients) {
+			if (client.presence?.clientId === clientId) {
+				return client;
+			}
+		}
+
+		return null;
+	}
+
+	#sendToAll(serializedMessage: string): void {
+		for (const client of this.#clients) {
+			sendIfOpen(client.socket, serializedMessage);
+		}
+	}
 }
 
-function canReceiveControl(client: RuntimeClient, activeExperienceId: string | null): boolean {
+export const runtimeClientRegistry =
+	(globalThis as IcarosGlobalRuntime)[RUNTIME_CLIENT_REGISTRY_KEY] ?? new RuntimeClientRegistry();
+
+(globalThis as IcarosGlobalRuntime)[RUNTIME_CLIENT_REGISTRY_KEY] = runtimeClientRegistry;
+
+function canReceiveControl(client: RuntimeClient, activeClientId: string | null): boolean {
 	if (client.registration?.role === 'operator') {
 		return true;
 	}
 
 	return (
-		client.registration?.role === 'experience' &&
-		client.registration.experienceId === activeExperienceId
+		activeClientId !== null &&
+		client.presence?.clientId === activeClientId &&
+		client.presence.status === 'online'
 	);
+}
+
+function compareRuntimeClients(a: RuntimeClientSummary, b: RuntimeClientSummary): number {
+	if (a.status !== b.status) {
+		return a.status === 'online' ? -1 : 1;
+	}
+
+	return b.lastSeenAt - a.lastSeenAt;
 }
 
 function sendIfOpen(socket: WebSocket, serializedMessage: string): void {

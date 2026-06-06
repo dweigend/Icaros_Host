@@ -3,11 +3,17 @@
  * the shared envelope consistent without hiding transport decisions.
  */
 import {
+	type ClientRegisteredMessage,
+	type ClientRegisteredPayload,
+	type ClientRejectedMessage,
+	type ClientRejectedPayload,
 	type ControlOrientation,
 	type ControlOrientationMessage,
 	type Message,
 	type MessageSource,
 	PROTOCOL_VERSION,
+	type RuntimeClientsMessage,
+	type RuntimeClientsPayload,
 	STATION_ID,
 	type StationState,
 	type StationStateMessage
@@ -41,4 +47,18 @@ export function createControlOrientationMessage(
 	control: ControlOrientation
 ): ControlOrientationMessage {
 	return createMessage('control.orientation', control);
+}
+
+export function createClientRegisteredMessage(
+	payload: ClientRegisteredPayload
+): ClientRegisteredMessage {
+	return createMessage('client.registered', payload);
+}
+
+export function createClientRejectedMessage(payload: ClientRejectedPayload): ClientRejectedMessage {
+	return createMessage('client.rejected', payload);
+}
+
+export function createRuntimeClientsMessage(payload: RuntimeClientsPayload): RuntimeClientsMessage {
+	return createMessage('runtime.clients', payload);
 }

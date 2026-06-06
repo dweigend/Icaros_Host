@@ -16,20 +16,38 @@ Experience-ID:
 
 Server-Verbindung:
 - WebSocket-Pfad: "/ws/runtime"
-- Wenn die Seite über http läuft, verwende ws://
-- Wenn die Seite über https läuft, verwende wss://
+- Verwende fuer Quest/WebXR HTTPS und WSS.
+- Die Experience-URL muss fuer den Host-Handshake mit https:// beginnen.
 - Baue die URL aus window.location:
-  - ws(s)://<aktueller-host>/ws/runtime
+  - wss://<aktueller-host>/ws/runtime
 
 Registrierung:
+Erzeuge eine stabile clientId pro Browser-Instanz:
+
+```ts
+localStorage.getItem("icaros.clientId") ?? crypto.randomUUID()
+```
+
 Nach dem Öffnen des WebSockets sende diese JSON-Nachricht:
 
 {
-  "type": "client.register",
+  "type": "client.hello",
   "payload": {
     "role": "experience",
-    "id": "<EINDEUTIGE-CLIENT-ID>",
-    "experienceId": "mountain-flight"
+    "clientId": "<STABILE-CLIENT-ID>",
+    "experienceId": "mountain-flight",
+    "title": "Mountain Flight",
+    "url": "https://<aktueller-host>/"
+  }
+}
+
+Setze die Runtime erst nach `client.registered` auf registriert. Sende danach
+alle 3-5 Sekunden:
+
+{
+  "type": "client.heartbeat",
+  "payload": {
+    "clientId": "<STABILE-CLIENT-ID>"
   }
 }
 
@@ -73,6 +91,6 @@ Architektur:
 Ergebnis:
 - Eine lauffähige Three.js/WebXR Experience.
 - Klare Stelle, an der experienceId gesetzt wird.
-- WebSocket-Registrierung beim Host.
+- WebSocket-Handshake per `client.hello`, `client.registered` und Heartbeat beim Host.
 - Anwendung der empfangenen pitch/roll-Steuerdaten auf die VR-Szene.
 - Sauberes Cleanup beim Verlassen der Seite.

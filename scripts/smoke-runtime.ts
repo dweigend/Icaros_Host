@@ -8,6 +8,12 @@
  */
 import WebSocket from 'ws';
 
+import {
+	type ClientRegisteredPayload,
+	type ControlOrientation,
+	validateClientRegisteredPayload,
+	validateControlOrientation
+} from '../src/lib/protocol';
 import { resolveDeviceWebSocketOrigin } from '../src/lib/server/device/pairing';
 
 type SmokeConfig = Readonly<{
@@ -17,26 +23,18 @@ type SmokeConfig = Readonly<{
 	pitch: number;
 	roll: number;
 	expectedExperienceUrl: string | null;
+	clientUrl: string;
 	devicePairingToken: string | null;
-}>;
-
-type ControlOrientationPayload = Readonly<{
-	pitch: number;
-	roll: number;
-	quality: number;
-	source: 'm5';
-	safeMode: boolean;
-	timestamp: number;
 }>;
 
 type RuntimeMessage =
 	| Readonly<{
 			type: 'control.orientation';
-			payload: ControlOrientationPayload;
+			payload: ControlOrientation;
 	  }>
 	| Readonly<{
-			type: 'station.state';
-			payload: Readonly<{ activeExperienceId: string | null }>;
+			type: 'client.registered';
+			payload: ClientRegisteredPayload;
 	  }>;
 
 const DEFAULT_HOST_ORIGIN = 'https://localhost:5183';
@@ -44,6 +42,7 @@ const DEFAULT_EXPERIENCE_ID = 'mountain-flight';
 const DEFAULT_TIMEOUT_MS = 5_000;
 const DEFAULT_PITCH = 22.5;
 const DEFAULT_ROLL = -11.25;
+const SMOKE_CLIENT_ID = 'smoke-runtime';
 
 async function main(): Promise<void> {
 	const config = readConfig();
@@ -60,13 +59,17 @@ async function main(): Promise<void> {
 }
 
 function readConfig(): SmokeConfig {
+	const hostOrigin = new URL(process.env.ICAROS_SMOKE_HOST_ORIGIN ?? DEFAULT_HOST_ORIGIN);
+
 	return {
-		hostOrigin: new URL(process.env.ICAROS_SMOKE_HOST_ORIGIN ?? DEFAULT_HOST_ORIGIN),
+		hostOrigin,
 		experienceId: process.env.ICAROS_SMOKE_EXPERIENCE_ID ?? DEFAULT_EXPERIENCE_ID,
 		timeoutMs: readNumber(process.env.ICAROS_SMOKE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS),
 		pitch: readNumber(process.env.ICAROS_SMOKE_PITCH, DEFAULT_PITCH),
 		roll: readNumber(process.env.ICAROS_SMOKE_ROLL, DEFAULT_ROLL),
 		expectedExperienceUrl: process.env.ICAROS_EXPECTED_EXPERIENCE_URL ?? null,
+		clientUrl:
+			process.env.ICAROS_SMOKE_CLIENT_URL ?? new URL('/smoke-runtime', hostOrigin).toString(),
 		devicePairingToken: process.env.ICAROS_DEVICE_PAIRING_TOKEN ?? null
 	};
 }
@@ -103,7 +106,7 @@ async function readLaunchRedirect(config: SmokeConfig): Promise<string> {
 	return location;
 }
 
-function verifyRuntimeControl(config: SmokeConfig): Promise<ControlOrientationPayload> {
+function verifyRuntimeControl(config: SmokeConfig): Promise<ControlOrientation> {
 	return new Promise((resolve, reject) => {
 		let settled = false;
 		const runtime = new WebSocket(toWebSocketUrl(config.hostOrigin, '/ws/runtime'));
@@ -112,7 +115,7 @@ function verifyRuntimeControl(config: SmokeConfig): Promise<ControlOrientationPa
 			fail(new Error(`timed out waiting for control.orientation after ${config.timeoutMs}ms`));
 		}, config.timeoutMs);
 
-		const finish = (control: ControlOrientationPayload): void => {
+		const finish = (control: ControlOrientation): void => {
 			if (settled) return;
 
 			settled = true;
@@ -135,19 +138,31 @@ function verifyRuntimeControl(config: SmokeConfig): Promise<ControlOrientationPa
 		runtime.on('open', () => {
 			runtime.send(
 				JSON.stringify({
-					type: 'client.register',
+					type: 'client.hello',
 					payload: {
 						role: 'experience',
-						id: 'smoke-runtime',
-						experienceId: config.experienceId
+						clientId: SMOKE_CLIENT_ID,
+						experienceId: config.experienceId,
+						title: 'Smoke Runtime',
+						url: config.clientUrl,
+						userAgent: 'icaros-smoke-runtime'
 					}
 				})
 			);
-			device = openDeviceSocket(config, fail);
 		});
 
-		runtime.on('message', (data) => {
+		runtime.on('message', async (data) => {
 			const message = parseRuntimeMessage(data.toString());
+
+			if (message?.type === 'client.registered') {
+				try {
+					await setActiveClient(config);
+					device = openDeviceSocket(config, fail);
+				} catch (error) {
+					fail(error instanceof Error ? error : new Error(String(error)));
+				}
+				return;
+			}
 
 			if (message?.type !== 'control.orientation') {
 				return;
@@ -164,6 +179,21 @@ function verifyRuntimeControl(config: SmokeConfig): Promise<ControlOrientationPa
 			fail(error);
 		});
 	});
+}
+
+async function setActiveClient(config: SmokeConfig): Promise<void> {
+	const response = await fetch(new URL('/?/setActiveClient', config.hostOrigin), {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/x-www-form-urlencoded',
+			Origin: config.hostOrigin.origin
+		},
+		body: new URLSearchParams({ clientId: SMOKE_CLIENT_ID })
+	});
+
+	if (!response.ok) {
+		throw new Error(`setActiveClient failed with ${response.status}: ${await response.text()}`);
+	}
 }
 
 function openDeviceSocket(config: SmokeConfig, fail: (error: Error) => void): WebSocket {
@@ -212,60 +242,16 @@ function parseRuntimeMessage(data: string): RuntimeMessage | null {
 		}
 
 		if (parsed.type === 'control.orientation') {
-			const payload = parseControlOrientationPayload(parsed.payload);
-			return payload === null ? null : { type: 'control.orientation', payload };
+			const validation = validateControlOrientation(parsed.payload);
+			return validation.ok ? { type: 'control.orientation', payload: validation.value } : null;
 		}
 
-		if (parsed.type === 'station.state') {
-			const payload = parseStationStatePayload(parsed.payload);
-			return payload === null ? null : { type: 'station.state', payload };
+		if (parsed.type === 'client.registered') {
+			const validation = validateClientRegisteredPayload(parsed.payload);
+			return validation.ok ? { type: 'client.registered', payload: validation.value } : null;
 		}
 	} catch {
 		return null;
-	}
-
-	return null;
-}
-
-function parseControlOrientationPayload(payload: unknown): ControlOrientationPayload | null {
-	if (!isRecord(payload) || payload.source !== 'm5') {
-		return null;
-	}
-
-	const pitch = readFiniteNumber(payload.pitch);
-	const roll = readFiniteNumber(payload.roll);
-	const quality = readFiniteNumber(payload.quality);
-	const timestamp = readFiniteNumber(payload.timestamp);
-
-	if (
-		pitch === null ||
-		roll === null ||
-		quality === null ||
-		timestamp === null ||
-		typeof payload.safeMode !== 'boolean'
-	) {
-		return null;
-	}
-
-	return {
-		pitch,
-		roll,
-		quality,
-		source: 'm5',
-		safeMode: payload.safeMode,
-		timestamp
-	};
-}
-
-function parseStationStatePayload(
-	payload: unknown
-): Readonly<{ activeExperienceId: string | null }> | null {
-	if (!isRecord(payload)) {
-		return null;
-	}
-
-	if (payload.activeExperienceId === null || typeof payload.activeExperienceId === 'string') {
-		return { activeExperienceId: payload.activeExperienceId };
 	}
 
 	return null;
@@ -283,10 +269,6 @@ function readNumber(value: string | undefined, fallback: number): number {
 
 	const parsed = Number(value);
 	return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function readFiniteNumber(value: unknown): number | null {
-	return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

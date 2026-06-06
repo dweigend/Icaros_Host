@@ -23,11 +23,13 @@ small:
 - Stack: Bun, SvelteKit, TypeScript strict, Biome, Bits UI.
 - UI: one page, terminal look, dense and technical.
 - Station model: one station, `station-a`.
-- Active state: one server-side `activeExperienceId`.
+- Active state: one server-side `activeExperienceId` plus one concrete
+  `activeClientId`.
 - Quest support: Meta Quest opens host and WebXR browser clients over HTTPS.
 - Experience clients: browser/WebXR clients open directly or through `/launch`,
   then register over `/ws/runtime`.
-- Active selection: operator sets `activeExperienceId` by id on `/`.
+- Active selection: operator selects a concrete runtime client on `/`;
+  `activeExperienceId` remains the launch-compatible experience id.
 - M5 input: raw frames connect to `/ws/device`.
 - Runtime clients: connect to `/ws/runtime`; HTTPS clients use WSS.
 - Experience API: normalized `pitch` and `roll` in `-1..1`.
@@ -84,16 +86,20 @@ type Message<TPayload> = {
 
 Initial message types:
 
-- `client.register`
+- `client.hello`
+- `client.heartbeat`
+- `client.registered`
+- `client.rejected`
+- `runtime.clients`
 - `station.state`
 - `control.orientation`
-- `experience.ready`
+- `client.register` remains a temporary legacy alias for operator diagnostics.
 
 ## Experience Routing
 
 The host does not serve experience assets in this slice. Experiences run as
-browser/WebXR clients, connect to `/ws/runtime`, and send `client.register` with
-their `experienceId`.
+browser/WebXR clients, connect to `/ws/runtime`, and send `client.hello` with
+their stable `clientId`, `experienceId`, title, and HTTPS URL.
 
 The Meta Quest remains a supported runtime device. It opens the host console or
 active WebXR experience over HTTPS. `/launch` redirects to the active experience
@@ -108,9 +114,9 @@ commonly `https://<host-lan-ip>:5174/` for Quest/WebXR, and must never be shown
 with a `/launch` path. Plain HTTP client URLs are desktop-only direct checks,
 not launch targets.
 
-The operator sets the active id in the console. The host forwards
-`control.orientation` only to registered experience clients whose
-`experienceId` matches `activeExperienceId`.
+The operator selects one concrete online runtime client in the console. The host
+sets `activeClientId` and derives `activeExperienceId` from that client. The
+host forwards `control.orientation` only to the selected `activeClientId`.
 
 ## TODO
 
@@ -124,7 +130,8 @@ The operator sets the active id in the console. The host forwards
   listens on `https://0.0.0.0:5183` when certificates are present.
 - Start the standalone experience client on port `5174` and keep
   `/ws/runtime` proxied back to the host.
-- Set `activeExperienceId` in the host console from one stable LAN origin.
+- Select the concrete runtime client in the host console from one stable LAN
+  origin.
 - Verify that `https://<mac-lan-ip>:5183/launch` returns a `307` redirect to
   `https://<mac-lan-ip>:5174/` only after the standalone client runs with TLS
   and the host is started with `ICAROS_EXPERIENCE_PROTOCOL=https` or
@@ -141,12 +148,12 @@ The operator sets the active id in the console. The host forwards
 1. Host starts.
 2. Operator opens `/`.
 3. Console shows station state and runtime connection URLs.
-4. Operator sets `activeExperienceId`.
+4. Runtime clients connect with `client.hello` and appear in the console.
 5. The Meta Quest opens `/launch` and is redirected to the active WebXR client.
 6. M5 connects to `/ws/device`.
-7. Runtime clients connect to `/ws/runtime` and register their role/id.
-8. Host forwards `station.state` to runtime clients.
-9. Host forwards `control.orientation` only to the active registered experience.
+7. Operator selects the active concrete runtime client.
+8. Host forwards `station.state` and `runtime.clients` to runtime clients.
+9. Host forwards `control.orientation` only to the active runtime client.
 10. Stale or disconnected M5 state produces neutral safe-mode controls.
 
 ## Acceptance Criteria
@@ -155,8 +162,8 @@ The operator sets the active id in the console. The host forwards
 - `/launch` redirects to the configured active experience URL.
 - Meta Quest can reach the host or active WebXR experience over HTTPS.
 - HTTPS runtime clients use WSS for `/ws/runtime`.
-- Operator can set and clear `activeExperienceId`.
+- Operator can set and clear the active concrete runtime client.
 - A simulated M5 can drive normalized control data.
-- Active registered experience receives `control.orientation`.
+- Active registered runtime client receives `control.orientation`.
 - Stale/disconnected M5 state produces safe neutral controls.
 - `bun run check`, `bun run lint`, `bun run test`, and `bun run build` pass.

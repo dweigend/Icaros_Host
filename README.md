@@ -38,7 +38,8 @@ M1 still targets one physical station:
 - one Meta Quest headset as HTTPS/WebXR runtime device
 - one M5 controller
 - one active experience id
-- browser-based experience clients that register over WebSocket
+- one active browser/Quest client instance
+- browser-based experience clients that register over WebSocket with `client.hello`
 - one operator-facing host console
 
 The host stores:
@@ -46,6 +47,7 @@ The host stores:
 ```ts
 {
   activeExperienceId: string | null;
+  activeClientId: string | null;
 }
 ```
 
@@ -56,11 +58,12 @@ action. No separate operator route or JSON API is needed for the MVP UI.
 
 The host does not statically serve experience builds in this MVP. An experience
 is a browser/WebXR client that opens its own page, connects to the host over
-`/ws/runtime`, and registers with an `experienceId`.
+`/ws/runtime`, and registers with `client.hello`.
 
-The operator console sets `activeExperienceId` directly. Only a registered
-experience client whose `experienceId` matches the active id receives
-`control.orientation` frames.
+The operator console shows concrete runtime clients and selects one
+`activeClientId`. Only that online client receives `control.orientation` frames.
+`activeExperienceId` is still stored for launch compatibility and is derived
+from the selected client when the operator chooses a concrete instance.
 
 The `/launch` endpoint is a thin Quest launcher for the active experience. It
 redirects the headset only to an explicitly configured HTTPS experience origin.

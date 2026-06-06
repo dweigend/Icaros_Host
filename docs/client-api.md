@@ -75,7 +75,8 @@ Options:
 | Option | Type | Required | Default | Purpose |
 | --- | --- | --- | --- | --- |
 | `experienceId` | `string` | yes | none | Unique id of the experience. It must match the id the operator marks active in the host console, for example `"echo-flight"`. |
-| `clientId` | `string` | no | `crypto.randomUUID()` | Runtime client id sent to the host during registration. Most experiences should leave this unset. |
+| `clientId` | `string` | no | stable `localStorage["icaros.clientId"]` id | Concrete browser/Quest instance id sent to the host during registration. Most experiences should leave this unset. |
+| `title` | `string` | no | `document.title` or `experienceId` | Human-readable title shown in the Host console's runtime client list. |
 | `runtimePath` | `string` | no | `"/ws/runtime"` | Runtime WebSocket path on the current host. Most experiences should leave this unset. |
 
 ## Client Methods
@@ -87,8 +88,14 @@ Starts the WebSocket connection to Icaros Host.
 Call this normally once when the experience loads. Calling `start()` again while
 the client already has a socket is a no-op.
 
-When the socket opens, the client registers itself as an experience with the
-configured `experienceId`.
+When the socket opens, the client sends `client.hello` with the configured
+`experienceId`, a stable concrete `clientId`, the page title, and the current
+HTTPS URL. The client treats the runtime as registered only after the host sends
+`client.registered`. If the host sends `client.rejected`, the socket closes and
+the experience remains neutral.
+
+After registration, the client sends `client.heartbeat` every few seconds so the
+Host can keep its available-client list fresh.
 
 The client does not reconnect automatically after a socket close. If the
 connection is lost, the experience must call `start()` again or reload.
@@ -104,7 +111,7 @@ const unsubscribe = client.onOrientation((control) => {
 ```
 
 The callback is called when the host sends a valid `control.orientation`
-message for the active registered experience.
+message for the active registered client instance.
 
 The method returns an unsubscribe function. Call it when this specific listener
 is no longer needed.

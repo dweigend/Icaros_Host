@@ -4,12 +4,18 @@
  * the M1 contract is proven.
  */
 import {
+	type ClientHeartbeatPayload,
+	type ClientHelloPayload,
+	type ClientRegisteredPayload,
 	type ClientRegisterPayload,
+	type ClientRejectedPayload,
 	type ControlOrientation,
 	type ExperienceManifest,
 	type ExperienceMode,
 	PROTOCOL_VERSION,
 	type RequiredDevice,
+	type RuntimeClientSummary,
+	type RuntimeClientsPayload,
 	type StationState
 } from './types';
 
@@ -91,18 +97,166 @@ export function validateClientRegisterPayload(
 	});
 }
 
+export function validateClientHelloPayload(input: unknown): ValidationResult<ClientHelloPayload> {
+	if (!isRecord(input)) {
+		return fail('client.hello payload must be an object');
+	}
+
+	if (input.role !== 'experience') {
+		return fail('client.hello role must be experience');
+	}
+
+	const clientId = readString(input.clientId, 'client.hello clientId must be a non-empty string');
+	if (!clientId.ok) {
+		return clientId;
+	}
+
+	const experienceId = readSlug(input.experienceId, 'client.hello experienceId must be a slug');
+	if (!experienceId.ok) {
+		return experienceId;
+	}
+
+	const title = readString(input.title, 'client.hello title must be a non-empty string');
+	if (!title.ok) {
+		return title;
+	}
+
+	const url = readHttpsUrl(input.url, 'client.hello url must be an https URL');
+	if (!url.ok) {
+		return url;
+	}
+
+	const userAgent = readOptionalString(input.userAgent, 'client.hello userAgent must be a string');
+	if (!userAgent.ok) {
+		return userAgent;
+	}
+
+	return ok({
+		role: 'experience',
+		clientId: clientId.value,
+		experienceId: experienceId.value,
+		title: title.value,
+		url: url.value,
+		...(userAgent.value === undefined ? {} : { userAgent: userAgent.value })
+	});
+}
+
+export function validateClientHeartbeatPayload(
+	input: unknown
+): ValidationResult<ClientHeartbeatPayload> {
+	if (!isRecord(input)) {
+		return fail('client.heartbeat payload must be an object');
+	}
+
+	const clientId = readString(
+		input.clientId,
+		'client.heartbeat clientId must be a non-empty string'
+	);
+	if (!clientId.ok) {
+		return clientId;
+	}
+
+	return ok({ clientId: clientId.value });
+}
+
+export function validateClientRegisteredPayload(
+	input: unknown
+): ValidationResult<ClientRegisteredPayload> {
+	if (!isRecord(input)) {
+		return fail('client.registered payload must be an object');
+	}
+
+	const clientId = readString(
+		input.clientId,
+		'client.registered clientId must be a non-empty string'
+	);
+	if (!clientId.ok) {
+		return clientId;
+	}
+
+	if (typeof input.active !== 'boolean') {
+		return fail('client.registered active must be boolean');
+	}
+
+	const activeClientId = readNullableString(
+		input.activeClientId,
+		'client.registered activeClientId must be a non-empty string or null'
+	);
+	if (!activeClientId.ok) {
+		return activeClientId;
+	}
+
+	return ok({
+		clientId: clientId.value,
+		active: input.active,
+		activeClientId: activeClientId.value
+	});
+}
+
+export function validateClientRejectedPayload(
+	input: unknown
+): ValidationResult<ClientRejectedPayload> {
+	if (!isRecord(input)) {
+		return fail('client.rejected payload must be an object');
+	}
+
+	const reason = readString(input.reason, 'client.rejected reason must be a non-empty string');
+	if (!reason.ok) {
+		return reason;
+	}
+
+	return ok({ reason: reason.value });
+}
+
 export function validateStationState(input: unknown): ValidationResult<StationState> {
 	if (!isRecord(input)) {
 		return fail('station.state payload must be an object');
 	}
 
 	const activeExperienceId = readNullableSlug(input.activeExperienceId);
-
 	if (!activeExperienceId.ok) {
 		return activeExperienceId;
 	}
 
-	return ok({ activeExperienceId: activeExperienceId.value });
+	const activeClientId = readNullableString(
+		input.activeClientId,
+		'station.state activeClientId must be a non-empty string or null'
+	);
+	if (!activeClientId.ok) {
+		return activeClientId;
+	}
+
+	return ok({
+		activeExperienceId: activeExperienceId.value,
+		activeClientId: activeClientId.value
+	});
+}
+
+export function validateRuntimeClientsPayload(
+	input: unknown
+): ValidationResult<RuntimeClientsPayload> {
+	if (!isRecord(input) || !Array.isArray(input.clients)) {
+		return fail('runtime.clients payload must contain a clients array');
+	}
+
+	const activeClientId = readNullableString(
+		input.activeClientId,
+		'runtime.clients activeClientId must be a non-empty string or null'
+	);
+	if (!activeClientId.ok) {
+		return activeClientId;
+	}
+
+	const clients: RuntimeClientSummary[] = [];
+	for (const client of input.clients) {
+		const validation = readRuntimeClientSummary(client);
+		if (!validation.ok) {
+			return validation;
+		}
+		clients.push(validation.value);
+	}
+
+	return ok({ activeClientId: activeClientId.value, clients });
 }
 
 export function validateControlOrientation(input: unknown): ValidationResult<ControlOrientation> {
@@ -168,7 +322,20 @@ function readString(value: unknown, error: string): ValidationResult<string> {
 		return fail(error);
 	}
 
-	return ok(value);
+	return ok(value.trim());
+}
+
+function readOptionalString(value: unknown, error: string): ValidationResult<string | undefined> {
+	if (value === undefined) {
+		return ok(undefined);
+	}
+
+	if (typeof value !== 'string') {
+		return fail(error);
+	}
+
+	const trimmed = value.trim();
+	return ok(trimmed === '' ? undefined : trimmed);
 }
 
 function readSlug(value: unknown, error: string): ValidationResult<string> {
@@ -193,6 +360,107 @@ function readNullableSlug(value: unknown): ValidationResult<string | null> {
 	}
 
 	return readSlug(value, 'station.state activeExperienceId must be a slug or null');
+}
+
+function readNullableString(value: unknown, error: string): ValidationResult<string | null> {
+	if (value === null) {
+		return ok(null);
+	}
+
+	return readString(value, error);
+}
+
+function readHttpsUrl(value: unknown, error: string): ValidationResult<string> {
+	if (typeof value !== 'string') {
+		return fail(error);
+	}
+
+	try {
+		const url = new URL(value);
+		if (url.protocol !== 'https:') {
+			return fail(error);
+		}
+
+		return ok(url.toString());
+	} catch {
+		return fail(error);
+	}
+}
+
+function readRuntimeClientSummary(input: unknown): ValidationResult<RuntimeClientSummary> {
+	if (!isRecord(input)) {
+		return fail('runtime.clients client must be an object');
+	}
+
+	const clientId = readString(
+		input.clientId,
+		'runtime.clients clientId must be a non-empty string'
+	);
+	if (!clientId.ok) {
+		return clientId;
+	}
+
+	const experienceId = readSlug(input.experienceId, 'runtime.clients experienceId must be a slug');
+	if (!experienceId.ok) {
+		return experienceId;
+	}
+
+	const title = readString(input.title, 'runtime.clients title must be a non-empty string');
+	if (!title.ok) {
+		return title;
+	}
+
+	const url = readHttpsUrl(input.url, 'runtime.clients url must be an https URL');
+	if (!url.ok) {
+		return url;
+	}
+
+	const userAgent = readOptionalString(
+		input.userAgent,
+		'runtime.clients userAgent must be a string'
+	);
+	if (!userAgent.ok) {
+		return userAgent;
+	}
+
+	const connectedAt = readFiniteNumber(
+		input.connectedAt,
+		'runtime.clients connectedAt must be finite'
+	);
+	if (!connectedAt.ok) {
+		return connectedAt;
+	}
+
+	const lastSeenAt = readFiniteNumber(
+		input.lastSeenAt,
+		'runtime.clients lastSeenAt must be finite'
+	);
+	if (!lastSeenAt.ok) {
+		return lastSeenAt;
+	}
+
+	if (input.status !== 'online' && input.status !== 'stale') {
+		return fail('runtime.clients status must be online or stale');
+	}
+
+	return ok({
+		clientId: clientId.value,
+		experienceId: experienceId.value,
+		title: title.value,
+		url: url.value,
+		...(userAgent.value === undefined ? {} : { userAgent: userAgent.value }),
+		connectedAt: connectedAt.value,
+		lastSeenAt: lastSeenAt.value,
+		status: input.status
+	});
+}
+
+function readFiniteNumber(value: unknown, error: string): ValidationResult<number> {
+	if (typeof value !== 'number' || !Number.isFinite(value)) {
+		return fail(error);
+	}
+
+	return ok(value);
 }
 
 function readManifestEntry(value: unknown, id: string): ValidationResult<string> {

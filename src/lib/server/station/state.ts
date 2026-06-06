@@ -14,7 +14,7 @@ type IcarosGlobalState = typeof globalThis & {
 };
 
 class StationStateStore {
-	#state: StationState = { activeExperienceId: null };
+	#state: StationState = { activeExperienceId: null, activeClientId: null };
 	#listeners = new Set<StationStateListener>();
 
 	get stationId(): typeof STATION_ID {
@@ -26,11 +26,27 @@ class StationStateStore {
 	}
 
 	setActiveExperience(activeExperienceId: string | null): StationState {
-		if (this.#state.activeExperienceId === activeExperienceId) {
+		if (
+			this.#state.activeExperienceId === activeExperienceId &&
+			this.#state.activeClientId === null
+		) {
 			return this.#state;
 		}
 
-		this.#state = { activeExperienceId };
+		this.#state = { activeExperienceId, activeClientId: null };
+		this.#emit();
+		return this.#state;
+	}
+
+	setActiveClient(activeClientId: string | null, activeExperienceId: string | null): StationState {
+		if (
+			this.#state.activeClientId === activeClientId &&
+			this.#state.activeExperienceId === activeExperienceId
+		) {
+			return this.#state;
+		}
+
+		this.#state = { activeExperienceId, activeClientId };
 		this.#emit();
 		return this.#state;
 	}

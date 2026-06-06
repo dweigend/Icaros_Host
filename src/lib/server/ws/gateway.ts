@@ -15,10 +15,17 @@ import type { Server as HttpsServer } from 'node:https';
 import type { Duplex } from 'node:stream';
 import { type WebSocket, WebSocketServer } from 'ws';
 import {
+	type ClientHeartbeatPayload,
+	type ClientHelloPayload,
 	type ClientRegisterPayload,
 	type ControlOrientation,
+	createClientRegisteredMessage,
+	createClientRejectedMessage,
 	createControlOrientationMessage,
+	createRuntimeClientsMessage,
 	createStationStateMessage,
+	validateClientHeartbeatPayload,
+	validateClientHelloPayload,
 	validateClientRegisterPayload
 } from '$lib/protocol';
 import {
@@ -41,22 +48,30 @@ import {
 	recordRejectedDeviceSocket
 } from '$lib/server/device/usb-setup';
 import { stationStateStore } from '$lib/server/station/state';
-import { RuntimeClientRegistry } from './runtime-clients';
+import { type RuntimeClient, runtimeClientRegistry } from './runtime-clients';
 
 const DEVICE_PATH = '/ws/device';
 const RUNTIME_PATH = '/ws/runtime';
 const STALE_CHECK_INTERVAL_MS = 250;
+const RUNTIME_PRESENCE_CHECK_INTERVAL_MS = 2_000;
+const RUNTIME_CLIENT_STALE_AFTER_MS = 8_000;
 
 type RuntimeHttpServer = HttpServer | HttpsServer;
 type GatewayUpgradeMode = 'all' | 'device-only';
+type RuntimeClientMessage =
+	| Readonly<{ type: 'client.hello'; payload: ClientHelloPayload }>
+	| Readonly<{ type: 'client.heartbeat'; payload: ClientHeartbeatPayload }>
+	| Readonly<{ type: 'client.register'; payload: ClientRegisterPayload }>
+	| Readonly<{ type: 'client.rejected'; reason: string }>;
 
 export class IcarosWebSocketGateway {
 	#deviceServer = new WebSocketServer({ noServer: true });
 	#runtimeServer = new WebSocketServer({ noServer: true });
-	#runtimeClients = new RuntimeClientRegistry();
+	#runtimeClients = runtimeClientRegistry;
 	#lastControl: ControlOrientation = createNeutralControl();
 	#lastDeviceFrameAt: number | null = null;
 	#staleTimer: ReturnType<typeof setInterval> | null = null;
+	#runtimePresenceTimer: ReturnType<typeof setInterval> | null = null;
 	#unsubscribeStation: (() => void) | null = null;
 	#handlersRegistered = false;
 
@@ -82,6 +97,10 @@ export class IcarosWebSocketGateway {
 			clearInterval(this.#staleTimer);
 			this.#staleTimer = null;
 		}
+		if (this.#runtimePresenceTimer !== null) {
+			clearInterval(this.#runtimePresenceTimer);
+			this.#runtimePresenceTimer = null;
+		}
 		this.#deviceServer.close();
 		this.#runtimeServer.close();
 		this.#runtimeClients.closeAll();
@@ -99,10 +118,15 @@ export class IcarosWebSocketGateway {
 		this.#runtimeServer.on('connection', (socket) => this.#handleRuntimeConnection(socket));
 		this.#unsubscribeStation = stationStateStore.subscribe((state) => {
 			this.#runtimeClients.sendStationState(createStationStateMessage(state));
+			this.#broadcastRuntimeClients();
 		});
 		this.#staleTimer = setInterval(
 			() => this.#publishStaleControlIfNeeded(),
 			STALE_CHECK_INTERVAL_MS
+		);
+		this.#runtimePresenceTimer = setInterval(
+			() => this.#markStaleRuntimeClients(),
+			RUNTIME_PRESENCE_CHECK_INTERVAL_MS
 		);
 	}
 
@@ -181,37 +205,80 @@ export class IcarosWebSocketGateway {
 		let client = this.#runtimeClients.add(socket);
 
 		socket.send(JSON.stringify(createStationStateMessage(stationStateStore.getState())));
-		this.#runtimeClients.sendControlToClient(
-			client,
-			createControlOrientationMessage(this.#lastControl),
-			stationStateStore.getState().activeExperienceId
-		);
+		this.#sendRuntimeClients(socket);
 
 		socket.on('message', (data) => {
-			const registration = readRegistration(data.toString());
+			const message = readRuntimeClientMessage(data.toString());
 
-			if (registration === null) {
+			if (message === null) {
 				return;
 			}
 
-			client = this.#runtimeClients.replaceRegistration(client, registration);
+			if (message.type === 'client.rejected') {
+				socket.send(JSON.stringify(createClientRejectedMessage({ reason: message.reason })));
+				socket.close();
+				return;
+			}
+
+			if (message.type === 'client.hello') {
+				client = this.#registerRuntimeClient(client, message.payload);
+				return;
+			}
+
+			if (message.type === 'client.heartbeat') {
+				this.#recordRuntimeHeartbeat(message.payload);
+				return;
+			}
+
+			client = this.#runtimeClients.replaceRegistration(client, message.payload);
 			this.#runtimeClients.sendControlToClient(
 				client,
 				createControlOrientationMessage(this.#lastControl),
-				stationStateStore.getState().activeExperienceId
+				stationStateStore.getState().activeClientId
 			);
 		});
 
 		socket.on('close', () => {
-			this.#runtimeClients.remove(client);
+			const removedClient = this.#runtimeClients.remove(client);
+			if (removedClient?.clientId === stationStateStore.getState().activeClientId) {
+				stationStateStore.setActiveClient(null, null);
+			}
+			this.#broadcastRuntimeClients();
 		});
+	}
+
+	#registerRuntimeClient(client: RuntimeClient, payload: ClientHelloPayload): RuntimeClient {
+		const registeredClient = this.#runtimeClients.registerHello(client, payload, Date.now());
+		const activeClientId = stationStateStore.getState().activeClientId;
+		const message = createClientRegisteredMessage({
+			clientId: payload.clientId,
+			active: activeClientId === payload.clientId,
+			activeClientId
+		});
+
+		registeredClient.socket.send(JSON.stringify(message));
+		this.#runtimeClients.sendControlToClient(
+			registeredClient,
+			createControlOrientationMessage(this.#lastControl),
+			activeClientId
+		);
+		this.#broadcastRuntimeClients();
+		return registeredClient;
+	}
+
+	#recordRuntimeHeartbeat(payload: ClientHeartbeatPayload): void {
+		if (!this.#runtimeClients.recordHeartbeat(payload.clientId, Date.now())) {
+			return;
+		}
+
+		this.#broadcastRuntimeClients();
 	}
 
 	#publishControl(control: ControlOrientation): void {
 		this.#lastControl = control;
-		this.#runtimeClients.sendControlToActiveExperienceAndOperators(
+		this.#runtimeClients.sendControlToActiveClientAndOperators(
 			createControlOrientationMessage(control),
-			stationStateStore.getState().activeExperienceId
+			stationStateStore.getState().activeClientId
 		);
 	}
 
@@ -227,13 +294,48 @@ export class IcarosWebSocketGateway {
 		this.#lastDeviceFrameAt = null;
 		this.#publishControl(createNeutralControl());
 	}
+
+	#markStaleRuntimeClients(): void {
+		const changed = this.#runtimeClients.markStaleClients(
+			Date.now(),
+			RUNTIME_CLIENT_STALE_AFTER_MS
+		);
+		const activeClientId = stationStateStore.getState().activeClientId;
+
+		if (
+			activeClientId !== null &&
+			this.#runtimeClients.findSelectableClient(activeClientId) === null
+		) {
+			stationStateStore.setActiveClient(null, null);
+			return;
+		}
+
+		if (changed) {
+			this.#broadcastRuntimeClients();
+		}
+	}
+
+	#broadcastRuntimeClients(): void {
+		this.#runtimeClients.sendRuntimeClients(this.#createRuntimeClientsMessage());
+	}
+
+	#sendRuntimeClients(socket: WebSocket): void {
+		socket.send(JSON.stringify(this.#createRuntimeClientsMessage()));
+	}
+
+	#createRuntimeClientsMessage(): ReturnType<typeof createRuntimeClientsMessage> {
+		return createRuntimeClientsMessage({
+			activeClientId: stationStateStore.getState().activeClientId,
+			clients: this.#runtimeClients.listRuntimeClients()
+		});
+	}
 }
 
 export function createIcarosWebSocketGateway(): IcarosWebSocketGateway {
 	return new IcarosWebSocketGateway();
 }
 
-function readRegistration(input: string): ClientRegisterPayload | null {
+function readRuntimeClientMessage(input: string): RuntimeClientMessage | null {
 	try {
 		const parsed: unknown = JSON.parse(input);
 
@@ -241,17 +343,33 @@ function readRegistration(input: string): ClientRegisterPayload | null {
 			typeof parsed !== 'object' ||
 			parsed === null ||
 			!('type' in parsed) ||
-			parsed.type !== 'client.register' ||
+			typeof parsed.type !== 'string' ||
 			!('payload' in parsed)
 		) {
 			return null;
 		}
 
-		const validation = validateClientRegisterPayload(parsed.payload);
-		return validation.ok ? validation.value : null;
+		if (parsed.type === 'client.hello') {
+			const validation = validateClientHelloPayload(parsed.payload);
+			return validation.ok
+				? { type: 'client.hello', payload: validation.value }
+				: { type: 'client.rejected', reason: validation.error };
+		}
+
+		if (parsed.type === 'client.heartbeat') {
+			const validation = validateClientHeartbeatPayload(parsed.payload);
+			return validation.ok ? { type: 'client.heartbeat', payload: validation.value } : null;
+		}
+
+		if (parsed.type === 'client.register') {
+			const validation = validateClientRegisterPayload(parsed.payload);
+			return validation.ok ? { type: 'client.register', payload: validation.value } : null;
+		}
 	} catch {
 		return null;
 	}
+
+	return null;
 }
 
 function formatRemoteAddress(request: IncomingMessage): string | null {

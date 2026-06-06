@@ -13,3 +13,10 @@ export function setActiveExperience(activeExperienceId: string | null): SetActiv
 	stationStateStore.setActiveExperience(activeExperienceId);
 	return { ok: true, activeExperienceId };
 }
+
+export function setActiveClient(
+	activeClientId: string | null,
+	activeExperienceId: string | null
+): void {
+	stationStateStore.setActiveClient(activeClientId, activeExperienceId);
+}

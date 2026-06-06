@@ -40,12 +40,52 @@ describe('runtime debug helpers', () => {
 			parseRuntimeDebugMessage(
 				JSON.stringify({
 					type: 'station.state',
-					payload: { activeExperienceId: 'mountain-flight' }
+					payload: { activeExperienceId: 'mountain-flight', activeClientId: 'quest-client' }
 				})
 			)
 		).toEqual({
 			type: 'station.state',
-			payload: { activeExperienceId: 'mountain-flight' }
+			payload: { activeExperienceId: 'mountain-flight', activeClientId: 'quest-client' }
+		});
+	});
+
+	it('parses runtime.clients messages', () => {
+		expect(
+			parseRuntimeDebugMessage(
+				JSON.stringify({
+					type: 'runtime.clients',
+					payload: {
+						activeClientId: 'quest-client',
+						clients: [
+							{
+								clientId: 'quest-client',
+								experienceId: 'mountain-flight',
+								title: 'Mountain Flight',
+								url: 'https://quest.local/',
+								connectedAt: 1,
+								lastSeenAt: 2,
+								status: 'online'
+							}
+						]
+					}
+				})
+			)
+		).toEqual({
+			type: 'runtime.clients',
+			payload: {
+				activeClientId: 'quest-client',
+				clients: [
+					{
+						clientId: 'quest-client',
+						experienceId: 'mountain-flight',
+						title: 'Mountain Flight',
+						url: 'https://quest.local/',
+						connectedAt: 1,
+						lastSeenAt: 2,
+						status: 'online'
+					}
+				]
+			}
 		});
 	});
 
