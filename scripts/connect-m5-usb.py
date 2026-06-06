@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Pair or probe an attached M5 controller over USB serial for Icaros Host.
+"""Pair, probe, or flash an attached M5 controller over USB serial for Icaros Host.
 
 The script discovers a likely USB serial port, can send one newline-delimited
 `configure` frame, reads serial JSON, and reports whether live controller frames
-are visible. It does not flash firmware or persist WiFi credentials on the host.
+are visible. Firmware upload is only performed in explicit `flash` mode.
 """
 
 from __future__ import annotations
@@ -32,8 +32,10 @@ CONFIGURE_RETRY_INTERVAL_SECONDS = 2.0
 FIRMWARE_CHECK_SECONDS = 3.0
 DIAGNOSE_RESULT_TIMEOUT_SECONDS = 2.5
 PAIRING_EVENT_PREFIX = "PAIRING_EVENT "
-REQUIRED_FIRMWARE_VERSION = os.environ.get("ICAROS_REQUIRED_M5_FIRMWARE", "0.1.0")
-DEFAULT_ADAPTER_DIR = Path("/Users/weigend/Documents/GitHub/M5_WebSocet_Adapter")
+REQUIRED_FIRMWARE_VERSION = os.environ.get(
+    "ICAROS_REQUIRED_M5_FIRMWARE", "0.2.1-icaros-minimal"
+)
+DEFAULT_FIRMWARE_DIR = Path("firmware/m5-controller")
 M5_PORT_PATTERNS = (
     "/dev/cu.usbserial*",
     "/dev/cu.wchusbserial*",
@@ -93,6 +95,12 @@ class ConfigureInput:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--mode",
+        choices=("configure", "probe", "flash"),
+        default="configure",
+        help="USB workflow to run. Configure preserves the existing pairing behavior.",
+    )
     parser.add_argument("--port", help="Serial device path, for example /dev/cu.usbserial-...")
     parser.add_argument("--baud", type=int, default=DEFAULT_BAUD_RATE)
     parser.add_argument("--seconds", type=float, default=DEFAULT_SECONDS)
@@ -134,14 +142,18 @@ def main() -> int:
     parser.add_argument("--dns", help="DNS server for optional static controller IP.")
     args = parser.parse_args()
     configure_input = read_configure_input(args)
-    if not args.server_url and configure_input is None:
+    if args.mode == "configure" and not args.server_url and configure_input is None:
         raise SystemExit("--server-url is required unless --config-stdin provides serverUrl.")
 
-    server_url = configure_input.server_url if configure_input is not None else str(args.server_url)
+    server_url = configure_input.server_url if configure_input is not None else (args.server_url or "")
     device_id = configure_input.device_id if configure_input is not None else args.device_id
+    if args.mode == "flash" and (not args.allow_firmware_update or args.skip_firmware_update):
+        raise SystemExit("Firmware flash requires --allow-firmware-update without --skip-firmware-update.")
 
     print("Icaros Host USB controller setup")
-    print(f"Runtime device endpoint: {redact_pairing_token(server_url)}")
+    print(f"Mode: {args.mode}")
+    if server_url:
+        print(f"Runtime device endpoint: {redact_pairing_token(server_url)}")
     if configure_input is None:
         print("This run checks USB telemetry only; WiFi credentials are not requested or stored.")
     else:
@@ -161,13 +173,25 @@ def main() -> int:
         step="USB verbunden",
         progress=10,
         deviceId=device_id,
+        usbConnected=True,
+        usbPort=port,
         message=f"USB serial port selected: {port}",
     )
-    firmware_version = check_and_update_firmware(
-        port=port,
-        baud_rate=args.baud,
-        allow_update=args.allow_firmware_update and not args.skip_firmware_update,
-    )
+
+    if args.mode == "flash":
+        firmware_version = flash_firmware(port=port)
+        emit_event(
+            state="firmware_update",
+            step="Firmware aktualisiert",
+            progress=100,
+            firmwareVersion=firmware_version,
+            flashState="succeeded",
+            message="Firmware upload finished and controller reset was triggered by upload.",
+        )
+        print("Firmware flash passed.")
+        return 0
+
+    firmware_version = check_firmware(port=port, baud_rate=args.baud)
     stats = probe_port(
         port=port,
         baud_rate=args.baud,
@@ -307,7 +331,7 @@ def read_optional_string(config: dict[object, object], key: str) -> str | None:
     return trimmed or None
 
 
-def check_and_update_firmware(*, port: str, baud_rate: int, allow_update: bool) -> str | None:
+def check_firmware(*, port: str, baud_rate: int) -> str | None:
     emit_event(
         state="firmware_check",
         step="Firmware prüfen",
@@ -323,39 +347,40 @@ def check_and_update_firmware(*, port: str, baud_rate: int, allow_update: bool) 
             firmwareVersion=firmware_version,
             message=f"Firmware version {firmware_version} detected.",
         )
+    else:
+        emit_event(
+            state="firmware_check",
+            step="Firmware nicht erkannt",
+            progress=30,
+            message="No firmware version was detected over USB.",
+        )
 
     if firmware_version == REQUIRED_FIRMWARE_VERSION:
         return firmware_version
 
-    if not allow_update:
-        emit_event(
-            state="firmware_check",
-            step="Firmware geprüft",
-            progress=35,
-            firmwareVersion=firmware_version,
-            message="Firmware update skipped by Host safety policy.",
-        )
-        return firmware_version
+    emit_event(
+        state="firmware_check",
+        step="Firmware geprüft",
+        progress=35,
+        firmwareVersion=firmware_version,
+        message="Firmware update skipped by Host safety policy.",
+    )
+    return firmware_version
 
-    adapter_dir = Path(os.environ.get("ICAROS_M5_ADAPTER_DIR", str(DEFAULT_ADAPTER_DIR)))
-    if not adapter_dir.exists():
-        raise SystemExit(f"M5 adapter repo not found at {adapter_dir}; cannot update firmware.")
+
+def flash_firmware(*, port: str) -> str:
+    firmware_dir = Path(os.environ.get("ICAROS_M5_FIRMWARE_DIR", str(DEFAULT_FIRMWARE_DIR)))
+    if not firmware_dir.exists():
+        raise SystemExit(f"M5 firmware project not found at {firmware_dir}; cannot update firmware.")
 
     emit_event(
         state="firmware_update",
         step="Firmware aktualisieren",
         progress=40,
-        firmwareVersion=firmware_version,
-        message="Firmware is missing or outdated. Building and uploading controller firmware.",
+        flashState="running",
+        message="Building and uploading local controller firmware.",
     )
-    run_firmware_update(adapter_dir=adapter_dir, port=port)
-    emit_event(
-        state="firmware_update",
-        step="Firmware aktualisiert",
-        progress=55,
-        firmwareVersion=REQUIRED_FIRMWARE_VERSION,
-        message="Firmware upload finished.",
-    )
+    run_firmware_update(firmware_dir=firmware_dir, port=port)
     time.sleep(2.0)
     return REQUIRED_FIRMWARE_VERSION
 
@@ -393,16 +418,15 @@ def read_firmware_version(*, port: str, baud_rate: int) -> str | None:
     return None
 
 
-def run_firmware_update(*, adapter_dir: Path, port: str) -> None:
+def run_firmware_update(*, firmware_dir: Path, port: str) -> None:
     command = [
-        "uv",
-        "run",
-        "--group",
-        "firmware",
-        "pio",
+        "uvx",
+        "--from",
+        "platformio",
+        "platformio",
         "run",
         "-d",
-        "firmware",
+        str(firmware_dir),
         "--target",
         "upload",
         "--upload-port",
@@ -410,7 +434,7 @@ def run_firmware_update(*, adapter_dir: Path, port: str) -> None:
     ]
     result = subprocess.run(
         command,
-        cwd=adapter_dir,
+        cwd=Path.cwd(),
         check=False,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -492,7 +516,10 @@ def probe_port(
 
 def send_configure_request(fd: int, configure_input: ConfigureInput) -> None:
     request = build_configure_request(configure_input)
-    safe_request = {key: value for key, value in request.items() if key != "password"}
+    safe_request = {
+        key: value for key, value in request.items() if key not in {"password", "ssid"}
+    }
+    safe_request["ssid"] = "<redacted>"
     safe_request["serverUrl"] = redact_pairing_token(str(safe_request["serverUrl"]))
     print(f"Sending configure frame: {json.dumps(safe_request, ensure_ascii=False)}")
 

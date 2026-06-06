@@ -4,10 +4,15 @@
  * requires a later WebSocket frame from the paired controller over WLAN/LAN.
  */
 
-import { spawn } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import {
+	type M5FirmwareStatus,
+	REQUIRED_M5_FIRMWARE_VERSION,
+	readM5FirmwareStatus
+} from './m5-firmware-version';
 import { readDevicePairingToken, redactDevicePairingToken } from './pairing';
 
 const USB_SETUP_SCRIPT = resolve(process.cwd(), 'scripts/connect-m5-usb.py');
@@ -25,13 +30,15 @@ const USB_SETUP_RUNTIME_GLOBAL_KEY = Symbol.for('icaros.host.usbSetupRuntime');
 export type PairingState =
 	| 'idle'
 	| 'usb_connected'
+	| 'usb_probe'
 	| 'firmware_check'
 	| 'firmware_update'
 	| 'configure'
 	| 'usb_test'
 	| 'wlan_test'
 	| 'ready'
-	| 'failed';
+	| 'failed'
+	| 'aborted';
 
 export type UsbSetupSnapshot = Readonly<{
 	state: PairingState;
@@ -45,11 +52,20 @@ export type UsbSetupSnapshot = Readonly<{
 	usbOk: boolean;
 	wlanOk: boolean;
 	lastFrameAt: number | null;
+	controllerIssue: string | null;
 	message: string;
 	error: string | null;
 	exitCode: number | null;
 	debugEnabled: boolean;
 	debugLines: readonly PairingDebugLine[];
+	usbConnected: boolean;
+	usbPort: string | null;
+	firmwareStatus: M5FirmwareStatus;
+	currentFirmwareVersion: string | null;
+	requiredFirmwareVersion: string;
+	flashState: FlashState;
+	canFlashFirmware: boolean;
+	canConfigure: boolean;
 }>;
 
 export type PairingDebugLine = Readonly<{
@@ -81,6 +97,7 @@ type MutablePairingStatus = {
 	usbOk: boolean;
 	wlanOk: boolean;
 	lastFrameAt: number | null;
+	controllerIssue: string | null;
 	message: string;
 	error: string | null;
 	exitCode: number | null;
@@ -90,6 +107,11 @@ type MutablePairingStatus = {
 	gateway: string | null;
 	subnet: string | null;
 	dns: string | null;
+	usbConnected: boolean;
+	usbPort: string | null;
+	firmwareStatus: M5FirmwareStatus;
+	currentFirmwareVersion: string | null;
+	flashState: FlashState;
 };
 
 type PairingEvent = Readonly<{
@@ -98,10 +120,17 @@ type PairingEvent = Readonly<{
 	progress?: number;
 	deviceId?: string;
 	firmwareVersion?: string;
+	usbConnected?: boolean;
+	usbPort?: string;
+	flashState?: FlashState;
 	usbOk?: boolean;
 	message?: string;
 	error?: string;
 }>;
+
+export type FlashState = 'idle' | 'running' | 'succeeded' | 'failed';
+type UsbScriptMode = 'configure' | 'probe' | 'flash';
+type UsbScriptStdio = 'pipe' | 'ignore';
 
 type SavedControllerConfig = Readonly<{
 	deviceId: string | null;
@@ -131,6 +160,7 @@ export type DeviceUpgradeDiagnostics = Readonly<{
 type UsbSetupRuntime = {
 	status: MutablePairingStatus;
 	wlanTimer: ReturnType<typeof setTimeout> | null;
+	currentChild: ChildProcess | null;
 	nextDebugId: number;
 };
 
@@ -147,6 +177,7 @@ function readSharedRuntime(): UsbSetupRuntime {
 	const nextRuntime = {
 		status: createInitialStatus(),
 		wlanTimer: null,
+		currentChild: null,
 		nextDebugId: 1
 	};
 	globalScope[USB_SETUP_RUNTIME_GLOBAL_KEY] = nextRuntime;
@@ -166,6 +197,7 @@ function createInitialStatus(): MutablePairingStatus {
 		usbOk: false,
 		wlanOk: false,
 		lastFrameAt: null,
+		controllerIssue: null,
 		message: 'Controller per USB anschließen und Pairing starten.',
 		error: null,
 		exitCode: null,
@@ -174,7 +206,12 @@ function createInitialStatus(): MutablePairingStatus {
 		staticIp: null,
 		gateway: null,
 		subnet: null,
-		dns: null
+		dns: null,
+		usbConnected: false,
+		usbPort: null,
+		firmwareStatus: 'missing',
+		currentFirmwareVersion: null,
+		flashState: 'idle'
 	};
 }
 
@@ -191,11 +228,20 @@ export function getUsbSetupSnapshot(): UsbSetupSnapshot {
 		usbOk: status.usbOk,
 		wlanOk: status.wlanOk,
 		lastFrameAt: status.lastFrameAt,
+		controllerIssue: status.controllerIssue,
 		message: status.message,
 		error: status.error,
 		exitCode: status.exitCode,
 		debugEnabled: status.debugEnabled,
-		debugLines: status.debugEnabled ? [...status.debugLines] : []
+		debugLines: status.debugEnabled ? [...status.debugLines] : [],
+		usbConnected: status.usbConnected,
+		usbPort: status.usbPort,
+		firmwareStatus: status.firmwareStatus,
+		currentFirmwareVersion: status.currentFirmwareVersion,
+		requiredFirmwareVersion: REQUIRED_M5_FIRMWARE_VERSION,
+		flashState: status.flashState,
+		canFlashFirmware: canFlashFirmware(),
+		canConfigure: canConfigureController()
 	};
 }
 
@@ -214,32 +260,37 @@ export function startUsbSetup(serverUrl: string, input: UsbPairingInput): UsbSet
 		return getUsbSetupSnapshot();
 	}
 
+	if (!canConfigureController()) {
+		status.state = 'failed';
+		status.step = 'Firmware prüfen';
+		status.progress = 0;
+		status.finishedAt = Date.now();
+		status.message = 'Einrichten blockiert.';
+		status.error = `Firmware muss zuerst auf ${REQUIRED_M5_FIRMWARE_VERSION} aktualisiert werden.`;
+		appendDebug('system', `Configure blocked: firmwareStatus=${status.firmwareStatus}.`);
+		writeDebugSnapshot();
+		return getUsbSetupSnapshot();
+	}
+
 	resetStatus(serverUrl, input);
 	writeControllerToml();
 	appendDebug('system', `Pairing started for ${redactDevicePairingToken(serverUrl)}.`);
 
-	const child = spawn('python3', buildScriptArgs(), {
-		cwd: process.cwd(),
-		stdio: ['pipe', 'pipe', 'pipe']
-	});
-
+	const child = startUsbScript('configure', 'pipe', 'Setup script error');
+	if (child.stdin === null) {
+		failPairing('Could not open stdin for USB setup script.');
+		return getUsbSetupSnapshot();
+	}
 	child.stdin.end(JSON.stringify(buildScriptConfig(serverUrl, input)));
-	child.stdout.setEncoding('utf8');
-	child.stderr.setEncoding('utf8');
-	child.stdout.on('data', (chunk: string) => readScriptChunk(chunk));
-	child.stderr.on('data', (chunk: string) => {
-		const text = chunk.trim();
-		if (text !== '') {
-			appendDebug('stderr', text);
-			failPairing(`Setup script error: ${text}`);
-		}
-	});
-
 	child.on('error', (error) => {
 		failPairing(`Could not start USB setup script: ${error.message}`);
 	});
 
 	child.on('close', (code) => {
+		clearCurrentChild(child);
+		if (status.state === 'aborted') {
+			return;
+		}
 		status.exitCode = code;
 		if (status.state === 'ready') {
 			return;
@@ -256,6 +307,139 @@ export function startUsbSetup(serverUrl: string, input: UsbPairingInput): UsbSet
 		status.usbOk = true;
 		status.message = 'USB-Test erfolgreich. Warte auf gepaarten Controller über WLAN/LAN.';
 		startWlanTimeout();
+	});
+
+	return getUsbSetupSnapshot();
+}
+
+export function abortUsbSetup(): UsbSetupSnapshot {
+	if (!isPairingBusy(status.state)) {
+		appendDebug('system', `Abort ignored while state=${status.state}.`);
+		return getUsbSetupSnapshot();
+	}
+
+	clearWlanTimeout();
+	const child = runtime.currentChild;
+	runtime.currentChild = null;
+
+	if (child !== null && !child.killed) {
+		child.kill('SIGTERM');
+	}
+
+	status.state = 'aborted';
+	status.step = 'Abgebrochen';
+	status.progress = 0;
+	status.finishedAt = Date.now();
+	status.message = 'Laufender Controller-Workflow wurde abgebrochen.';
+	status.error = null;
+	status.exitCode = null;
+	if (status.flashState === 'running') {
+		status.flashState = 'failed';
+	}
+	appendDebug('system', 'USB workflow aborted by operator.');
+	writeDebugSnapshot();
+	return getUsbSetupSnapshot();
+}
+
+export function startUsbProbe(): UsbSetupSnapshot {
+	if (isPairingBusy(status.state)) {
+		return getUsbSetupSnapshot();
+	}
+
+	clearWlanTimeout();
+	status.state = 'usb_probe';
+	status.step = 'USB prüfen';
+	status.progress = 5;
+	status.startedAt = Date.now();
+	status.finishedAt = null;
+	status.error = null;
+	status.exitCode = null;
+	status.controllerIssue = null;
+	status.message = 'USB-Probe gestartet.';
+	status.usbConnected = false;
+	status.usbPort = null;
+	status.usbOk = false;
+	status.flashState = status.flashState === 'running' ? 'idle' : status.flashState;
+	appendDebug('system', 'USB probe started.');
+
+	const child = startUsbScript('probe', 'ignore', 'USB probe script error');
+	child.on('error', (error) => {
+		failPairing(`Could not start USB probe script: ${error.message}`);
+	});
+	child.on('close', (code) => {
+		clearCurrentChild(child);
+		if (status.state === 'aborted') {
+			return;
+		}
+		status.exitCode = code;
+		if (status.state === 'failed' || code !== 0) {
+			failPairing(status.error ?? `USB probe failed with exit code ${code ?? 'unknown'}.`);
+			return;
+		}
+		status.state = 'idle';
+		status.step = 'USB geprüft';
+		status.progress = 100;
+		status.finishedAt = Date.now();
+		status.usbOk = status.usbConnected;
+		status.message = status.usbConnected
+			? 'Controller per USB erkannt.'
+			: 'Kein Controller per USB erkannt.';
+		writeDebugSnapshot();
+	});
+
+	return getUsbSetupSnapshot();
+}
+
+export function startFirmwareFlash(): UsbSetupSnapshot {
+	if (isPairingBusy(status.state)) {
+		return getUsbSetupSnapshot();
+	}
+
+	if (!canFlashFirmware()) {
+		status.flashState = 'failed';
+		failPairing('Firmware update disabled. Set ICAROS_ALLOW_M5_FIRMWARE_UPDATE=true.');
+		return getUsbSetupSnapshot();
+	}
+
+	clearWlanTimeout();
+	status.state = 'firmware_update';
+	status.step = 'Firmware aktualisieren';
+	status.progress = 35;
+	status.startedAt = Date.now();
+	status.finishedAt = null;
+	status.error = null;
+	status.exitCode = null;
+	status.controllerIssue = null;
+	status.message = 'Firmware-Update gestartet.';
+	status.flashState = 'running';
+	appendDebug('system', 'Firmware flash started.');
+
+	const child = startUsbScript('flash', 'ignore', 'Firmware flash script error');
+	child.on('error', (error) => {
+		status.flashState = 'failed';
+		failPairing(`Could not start firmware flash script: ${error.message}`);
+	});
+	child.on('close', (code) => {
+		clearCurrentChild(child);
+		if (status.state === 'aborted') {
+			return;
+		}
+		status.exitCode = code;
+		if (status.state === 'failed' || code !== 0) {
+			status.flashState = 'failed';
+			failPairing(status.error ?? `Firmware flash failed with exit code ${code ?? 'unknown'}.`);
+			return;
+		}
+		status.state = 'idle';
+		status.step = 'Firmware aktualisiert';
+		status.progress = 100;
+		status.finishedAt = Date.now();
+		status.flashState = 'succeeded';
+		status.currentFirmwareVersion = REQUIRED_M5_FIRMWARE_VERSION;
+		status.firmwareVersion = REQUIRED_M5_FIRMWARE_VERSION;
+		status.firmwareStatus = 'current';
+		status.message = 'Firmware aktualisiert. Controller wurde durch den Upload zurückgesetzt.';
+		writeDebugSnapshot();
 	});
 
 	return getUsbSetupSnapshot();
@@ -289,9 +473,12 @@ export function startSavedControllerDiscovery(now: number = Date.now()): UsbSetu
 	status.serverUrl = savedConfig.pairedUrl;
 	status.deviceId = savedConfig.deviceId ?? 'icaros-station-a-m5';
 	status.firmwareVersion = savedConfig.firmwareVersion;
+	status.currentFirmwareVersion = savedConfig.firmwareVersion;
+	status.firmwareStatus = readM5FirmwareStatus(savedConfig.firmwareVersion);
 	status.usbOk = true;
 	status.wlanOk = false;
 	status.lastFrameAt = null;
+	status.controllerIssue = null;
 	status.message = 'Gespeicherte Controller-Einrichtung geladen. Warte auf WLAN/WebSocket.';
 	status.error = null;
 	status.exitCode = null;
@@ -313,12 +500,17 @@ export function recordPairedDeviceFrame(frame: unknown, receivedAt: number = Dat
 	}
 
 	const deviceId = readStringProperty(frame, 'deviceId') ?? status.deviceId;
-	const firmwareVersion = readStringProperty(frame, 'firmwareVersion') ?? status.firmwareVersion;
+	const frameFirmwareVersion = readStringProperty(frame, 'firmwareVersion');
 	appendDebug('websocket', `Paired frame received: ${summarizeFrame(frame)}.`);
 
 	status.deviceId = deviceId;
-	status.firmwareVersion = firmwareVersion;
+	if (frameFirmwareVersion !== null) {
+		status.firmwareVersion = frameFirmwareVersion;
+		status.currentFirmwareVersion = frameFirmwareVersion;
+		status.firmwareStatus = readM5FirmwareStatus(frameFirmwareVersion);
+	}
 	status.lastFrameAt = receivedAt;
+	status.controllerIssue = null;
 	status.wlanOk = true;
 	status.state = 'ready';
 	status.step = 'Bereit';
@@ -363,6 +555,11 @@ function canAcceptPairedDeviceFrame(): boolean {
 }
 
 function resetStatus(serverUrl: string, input: UsbPairingInput): void {
+	const knownCurrentFirmware =
+		status.firmwareStatus === 'current'
+			? (status.currentFirmwareVersion ?? status.firmwareVersion)
+			: null;
+
 	clearWlanTimeout();
 	status.state = 'usb_connected';
 	status.step = 'USB verbinden';
@@ -371,10 +568,13 @@ function resetStatus(serverUrl: string, input: UsbPairingInput): void {
 	status.finishedAt = null;
 	status.serverUrl = redactDevicePairingToken(serverUrl);
 	status.deviceId = input.deviceId;
-	status.firmwareVersion = null;
+	status.firmwareVersion = knownCurrentFirmware;
+	status.currentFirmwareVersion = knownCurrentFirmware;
+	status.firmwareStatus = readM5FirmwareStatus(knownCurrentFirmware);
 	status.usbOk = false;
 	status.wlanOk = false;
 	status.lastFrameAt = null;
+	status.controllerIssue = null;
 	status.message = 'Pairing gestartet.';
 	status.error = null;
 	status.exitCode = null;
@@ -382,13 +582,22 @@ function resetStatus(serverUrl: string, input: UsbPairingInput): void {
 	status.gateway = input.gateway;
 	status.subnet = input.subnet;
 	status.dns = input.dns;
+	status.usbConnected = false;
+	status.usbPort = null;
 }
 
-function buildScriptArgs(): string[] {
-	const args = [USB_SETUP_SCRIPT, '--config-stdin'];
+function buildScriptArgs(mode: UsbScriptMode): string[] {
+	const args = [USB_SETUP_SCRIPT, '--mode', mode];
+	if (mode === 'configure') {
+		args.push('--config-stdin');
+	}
 
-	if (process.env.ICAROS_ALLOW_M5_FIRMWARE_UPDATE !== 'true') {
+	if (mode !== 'flash') {
 		args.push('--skip-firmware-update');
+	}
+
+	if (mode === 'flash') {
+		args.push('--allow-firmware-update');
 	}
 
 	if (process.env.ICAROS_M5_REBOOT_AFTER_CONFIGURE !== 'false') {
@@ -396,6 +605,36 @@ function buildScriptArgs(): string[] {
 	}
 
 	return args;
+}
+
+function startUsbScript(
+	mode: UsbScriptMode,
+	stdin: UsbScriptStdio,
+	stderrFailurePrefix: string
+): ChildProcess {
+	const child = spawn('python3', buildScriptArgs(mode), {
+		cwd: process.cwd(),
+		stdio: [stdin, 'pipe', 'pipe']
+	});
+	runtime.currentChild = child;
+	child.stdout?.setEncoding('utf8');
+	child.stderr?.setEncoding('utf8');
+	child.stdout?.on('data', (chunk: string) => readScriptChunk(chunk));
+	child.stderr?.on('data', (chunk: string) => readScriptErrorChunk(chunk, stderrFailurePrefix));
+	return child;
+}
+
+function readScriptErrorChunk(chunk: string, failurePrefix: string): void {
+	const text = chunk.trim();
+	if (text === '') {
+		return;
+	}
+
+	appendDebug('stderr', text);
+	if (status.state === 'firmware_update') {
+		status.flashState = 'failed';
+	}
+	failPairing(`${failurePrefix}: ${text}`);
 }
 
 function buildScriptConfig(
@@ -422,6 +661,7 @@ function readScriptChunk(chunk: string): void {
 		}
 
 		appendDebug('script', redactDevicePairingToken(trimmed));
+		applyControllerSerialHint(trimmed);
 
 		if (!trimmed.startsWith(PAIRING_EVENT_PREFIX)) {
 			continue;
@@ -437,7 +677,23 @@ function readScriptChunk(chunk: string): void {
 function parsePairingEvent(input: string): PairingEvent | null {
 	try {
 		const parsed: unknown = JSON.parse(input);
-		return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? parsed : null;
+		if (!isRecord(parsed)) {
+			return null;
+		}
+
+		return {
+			state: readPairingState(parsed.state),
+			step: readOptionalString(parsed.step),
+			progress: readOptionalNumber(parsed.progress),
+			deviceId: readOptionalString(parsed.deviceId),
+			firmwareVersion: readOptionalString(parsed.firmwareVersion),
+			usbConnected: readOptionalBoolean(parsed.usbConnected),
+			usbPort: readOptionalString(parsed.usbPort),
+			flashState: readFlashState(parsed.flashState),
+			usbOk: readOptionalBoolean(parsed.usbOk),
+			message: readOptionalString(parsed.message),
+			error: readOptionalString(parsed.error)
+		};
 	} catch {
 		return null;
 	}
@@ -459,6 +715,18 @@ function applyPairingEvent(event: PairingEvent): void {
 	}
 	if (event.firmwareVersion !== undefined) {
 		status.firmwareVersion = event.firmwareVersion;
+		status.currentFirmwareVersion = event.firmwareVersion;
+		status.firmwareStatus = readM5FirmwareStatus(event.firmwareVersion);
+	}
+	if (event.usbConnected !== undefined) {
+		status.usbConnected = event.usbConnected;
+	}
+	if (event.usbPort !== undefined) {
+		status.usbPort = event.usbPort;
+		status.usbConnected = true;
+	}
+	if (event.flashState !== undefined) {
+		status.flashState = event.flashState;
 	}
 	if (event.usbOk !== undefined) {
 		status.usbOk = event.usbOk;
@@ -474,6 +742,10 @@ function applyPairingEvent(event: PairingEvent): void {
 
 function failPairing(error: string): void {
 	clearWlanTimeout();
+	runtime.currentChild = null;
+	if (status.state === 'firmware_update') {
+		status.flashState = 'failed';
+	}
 	status.state = 'failed';
 	status.step = 'Fehler';
 	status.finishedAt = Date.now();
@@ -494,6 +766,7 @@ function failStartupDiscovery(error: string): void {
 	status.usbOk = false;
 	status.wlanOk = false;
 	status.lastFrameAt = null;
+	status.controllerIssue = null;
 	status.message = 'Controller beim Serverstart nicht gefunden.';
 	status.error = error;
 	status.exitCode = null;
@@ -505,7 +778,9 @@ function startWlanTimeout(timeoutMs: number = WLAN_VERIFY_TIMEOUT_MS): void {
 	clearWlanTimeout();
 	runtime.wlanTimer = setTimeout(() => {
 		if (status.state === 'wlan_test') {
-			failPairing('Controller did not connect over WLAN/LAN WebSocket in time.');
+			failPairing(
+				status.controllerIssue ?? 'Controller did not connect over WLAN/LAN WebSocket in time.'
+			);
 		}
 	}, timeoutMs);
 }
@@ -650,29 +925,61 @@ function emptyToNull(value: string | undefined): string | null {
 }
 
 function readStringProperty(value: unknown, key: string): string | null {
-	if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+	if (!isRecord(value)) {
 		return null;
 	}
 
-	const property = (value as Record<string, unknown>)[key];
+	const property = value[key];
 	return typeof property === 'string' && property.trim() !== '' ? property.trim() : null;
 }
 
 function summarizeFrame(frame: unknown): string {
-	if (typeof frame !== 'object' || frame === null || Array.isArray(frame)) {
+	if (!isRecord(frame)) {
 		return 'non-object frame';
 	}
 
-	const record = frame as Record<string, unknown>;
 	const summary = {
-		type: record.type,
-		deviceId: record.deviceId,
-		firmwareVersion: record.firmwareVersion,
-		pitch: record.pitch,
-		roll: record.roll,
-		quality: record.quality
+		type: frame.type,
+		deviceId: frame.deviceId,
+		firmwareVersion: frame.firmwareVersion,
+		pitch: frame.pitch,
+		roll: frame.roll,
+		quality: frame.quality
 	};
 	return JSON.stringify(summary);
+}
+
+function applyControllerSerialHint(line: string): void {
+	const issue = readControllerIssue(line);
+	if (issue === null) {
+		return;
+	}
+
+	status.controllerIssue = issue;
+	if (status.state === 'usb_test' || status.state === 'wlan_test') {
+		status.message = issue;
+	}
+	writeDebugSnapshot();
+}
+
+function readControllerIssue(line: string): string | null {
+	if (line.includes('NO_AP_FOUND')) {
+		return 'Controller findet die konfigurierte WLAN-SSID nicht.';
+	}
+
+	if (line.includes('AUTH_FAIL') || line.includes('AUTH_EXPIRE')) {
+		return 'Controller lehnt die WLAN-Anmeldung ab. Passwort/SSID prüfen.';
+	}
+
+	if (line.includes('Connection refused')) {
+		return 'Controller erreicht den WebSocket-Port, aber der Host lehnt die Verbindung ab.';
+	}
+
+	if (line.includes('Connection reset by peer')) {
+		return 'Controller erreicht den Host, aber der WebSocket wird vor dem Pairing-Frame getrennt.';
+	}
+
+	return null;
 }
 
 function formatDeviceUpgradeDiagnostics(details: DeviceUpgradeDiagnostics): string {
@@ -697,15 +1004,72 @@ function redactEvent(event: PairingEvent): PairingEvent {
 	};
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readPairingState(value: unknown): PairingState | undefined {
+	return isPairingState(value) ? value : undefined;
+}
+
+function isPairingState(value: unknown): value is PairingState {
+	return (
+		value === 'idle' ||
+		value === 'usb_connected' ||
+		value === 'usb_probe' ||
+		value === 'firmware_check' ||
+		value === 'firmware_update' ||
+		value === 'configure' ||
+		value === 'usb_test' ||
+		value === 'wlan_test' ||
+		value === 'ready' ||
+		value === 'failed' ||
+		value === 'aborted'
+	);
+}
+
+function readFlashState(value: unknown): FlashState | undefined {
+	return value === 'idle' || value === 'running' || value === 'succeeded' || value === 'failed'
+		? value
+		: undefined;
+}
+
+function readOptionalString(value: unknown): string | undefined {
+	return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
+}
+
+function readOptionalNumber(value: unknown): number | undefined {
+	return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function readOptionalBoolean(value: unknown): boolean | undefined {
+	return typeof value === 'boolean' ? value : undefined;
+}
+
 function isPairingBusy(state: PairingState): boolean {
 	return (
 		state === 'usb_connected' ||
+		state === 'usb_probe' ||
 		state === 'firmware_check' ||
 		state === 'firmware_update' ||
 		state === 'configure' ||
 		state === 'usb_test' ||
 		state === 'wlan_test'
 	);
+}
+
+function clearCurrentChild(child: ChildProcess): void {
+	if (runtime.currentChild === child) {
+		runtime.currentChild = null;
+	}
+}
+
+function canFlashFirmware(): boolean {
+	return process.env.ICAROS_ALLOW_M5_FIRMWARE_UPDATE === 'true';
+}
+
+function canConfigureController(): boolean {
+	return status.firmwareStatus === 'current';
 }
 
 function clampProgress(value: number): number {

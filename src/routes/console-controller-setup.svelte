@@ -2,7 +2,7 @@
 	Purpose: route-local M5 USB pairing form, status, and bounded debug output.
 -->
 <script lang="ts">
-    import { PlugZap } from "@lucide/svelte";
+    import { PlugZap, Search, Upload, XCircle } from "@lucide/svelte";
 
     import {
         Button,
@@ -52,6 +52,52 @@
             // exit {state.usbSetup.exitCode}
         {/if}
     </p>
+
+    <ol class="controller-checklist" aria-label="Controller setup checklist">
+        {#each state.controllerIndicators as indicator (indicator.label)}
+            <li class="controller-checklist-item" data-tone={indicator.tone}>
+                <div class="status">
+                    <StatusDot
+                        tone={indicator.tone}
+                        label={`${indicator.label} ${indicator.value}`}
+                    />
+                    <span>{indicator.label}</span>
+                </div>
+                <div>
+                    <strong>{indicator.value}</strong>
+                    <p>{indicator.detail}</p>
+                </div>
+            </li>
+        {/each}
+    </ol>
+
+    <div class="actions">
+        <form method="POST" action="?/probeUsbController">
+            <Button type="submit" disabled={state.usbSetupBusy}>
+                <Search size={16} aria-hidden="true" />
+                USB prüfen
+            </Button>
+        </form>
+        <form method="POST" action="?/flashM5Firmware">
+            <Button
+                type="submit"
+                disabled={state.usbSetupBusy ||
+                    !state.usbSetup.canFlashFirmware ||
+                    !state.usbSetup.usbConnected}
+            >
+                <Upload size={16} aria-hidden="true" />
+                Firmware aktualisieren
+            </Button>
+        </form>
+        {#if state.usbSetupBusy}
+            <form method="POST" action="?/abortUsbWorkflow">
+                <Button type="submit">
+                    <XCircle size={16} aria-hidden="true" />
+                    Abbrechen
+                </Button>
+            </form>
+        {/if}
+    </div>
 
     <form class="stack" method="POST" action="?/connectUsb">
         <div class="form-grid">
@@ -127,6 +173,7 @@
                 type="submit"
                 variant="primary"
                 disabled={state.usbSetupBusy ||
+                    !state.usbSetup.canConfigure ||
                     state.usbForm.ssid.trim() === "" ||
                     state.usbForm.password === ""}
             >
@@ -136,45 +183,11 @@
         </div>
     </form>
 
-    <div class="stack" aria-label="M5 pairing status">
+    <div class="stack compact-status" aria-label="M5 pairing status">
         <div class="progress" aria-label="Pairing progress">
             <span style:width={`${state.usbSetup.progress}%`}></span>
         </div>
-        <div class="stats">
-            <div>
-                <span>Schritt</span><strong>{state.usbSetup.step}</strong>
-            </div>
-            <div>
-                <span>Fortschritt</span><strong
-                    >{state.usbSetup.progress}%</strong
-                >
-            </div>
-            <div>
-                <span>Device ID</span><strong
-                    >{state.usbSetup.deviceId ?? state.usbForm.deviceId}</strong
-                >
-            </div>
-            <div>
-                <span>Firmware</span><strong
-                    >{state.usbSetup.firmwareVersion ?? "pending"}</strong
-                >
-            </div>
-            <div>
-                <span>USB</span><strong
-                    >{state.usbSetup.usbOk ? "ok" : "pending"}</strong
-                >
-            </div>
-            <div>
-                <span>WLAN/WebSocket</span><strong
-                    >{state.usbSetup.wlanOk ? "ok" : "pending"}</strong
-                >
-            </div>
-            <div>
-                <span>Letztes Frame</span><strong
-                    >{state.usbLastFrameAge}</strong
-                >
-            </div>
-        </div>
+        <p><strong>{state.usbSetup.step}</strong> // {state.usbSetup.progress}%</p>
         <p>{state.usbSetup.error ?? state.usbSetup.message}</p>
 
         {#if state.usbSetup.debugEnabled}
@@ -201,3 +214,48 @@
         {/if}
     </div>
 </section>
+
+<style>
+    .controller-checklist {
+        display: grid;
+        gap: 0.55rem;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .controller-checklist-item {
+        display: grid;
+        grid-template-columns: 12rem minmax(0, 1fr);
+        gap: 1rem;
+        align-items: start;
+        min-width: 0;
+        padding: 0.85rem 1rem;
+        border: 1px solid var(--color-border);
+        border-radius: 0.5rem;
+        background: var(--color-surface-raised);
+    }
+
+    .controller-checklist-item[data-tone="danger"] {
+        border-color: color-mix(in srgb, var(--color-danger), var(--color-border) 45%);
+    }
+
+    .controller-checklist-item[data-tone="success"] {
+        border-color: color-mix(in srgb, var(--color-success), var(--color-border) 55%);
+    }
+
+    .controller-checklist-item strong {
+        font-size: 1rem;
+        overflow-wrap: anywhere;
+    }
+
+    .compact-status {
+        gap: 0.5rem;
+    }
+
+    @media (max-width: 58rem) {
+        .controller-checklist-item {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>

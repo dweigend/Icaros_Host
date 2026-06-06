@@ -7,10 +7,14 @@ import { fail } from '@sveltejs/kit';
 
 import { isNonEmptySlug } from '$lib/protocol';
 import {
+	abortM5UsbWorkflow,
+	flashM5Firmware,
 	getM5PairingStatus,
+	probeM5UsbController,
 	setM5PairingDebug,
 	startM5UsbPairing
 } from '$lib/server/device/pairing-service';
+import type { UsbPairingInput } from '$lib/server/device/usb-setup';
 import { resolveExperienceLaunchUrl } from '$lib/server/experiences';
 import { createQuestLaunchUrl, resolveConnectionInfo } from '$lib/server/network';
 import { setActiveClient, setActiveExperience } from '$lib/server/station/active-experience';
@@ -86,6 +90,24 @@ export const actions: Actions = {
 
 		return { ok: true };
 	},
+	probeUsbController: async () => {
+		probeM5UsbController();
+
+		return { ok: true };
+	},
+	flashM5Firmware: async () => {
+		const result = flashM5Firmware();
+		if (!result.ok) {
+			return fail(400, { message: result.error });
+		}
+
+		return { ok: true };
+	},
+	abortUsbWorkflow: async () => {
+		abortM5UsbWorkflow();
+
+		return { ok: true };
+	},
 	setPairingDebug: async ({ request }) => {
 		const formData = await request.formData();
 		setM5PairingDebug(formData.get('enabled') === 'true');
@@ -94,7 +116,7 @@ export const actions: Actions = {
 	}
 };
 
-function readUsbPairingInput(formData: FormData) {
+function readUsbPairingInput(formData: FormData): UsbPairingInput | null {
 	const ssid = readOptionalFormValue(formData, 'ssid');
 	const password = readOptionalFormValue(formData, 'password');
 

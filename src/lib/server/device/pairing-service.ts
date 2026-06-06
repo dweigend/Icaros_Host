@@ -8,8 +8,11 @@ import {
 	redactDevicePairingToken
 } from '$lib/server/device/pairing';
 import {
+	abortUsbSetup,
 	getUsbSetupSnapshot,
 	setPairingDebugEnabled,
+	startFirmwareFlash,
+	startUsbProbe,
 	startUsbSetup,
 	type UsbPairingInput,
 	type UsbSetupSnapshot
@@ -42,12 +45,42 @@ export function setM5PairingDebug(enabled: boolean): UsbSetupSnapshot {
 	return setPairingDebugEnabled(enabled);
 }
 
+export function probeM5UsbController(): M5PairingStartResult {
+	return { ok: true, usbSetup: startUsbProbe() };
+}
+
+export function flashM5Firmware(): M5PairingStartResult {
+	const currentSetup = getUsbSetupSnapshot();
+	if (!currentSetup.canFlashFirmware) {
+		return {
+			ok: false,
+			error: 'Firmware update disabled. Set ICAROS_ALLOW_M5_FIRMWARE_UPDATE=true.',
+			usbSetup: currentSetup
+		};
+	}
+
+	return { ok: true, usbSetup: startFirmwareFlash() };
+}
+
+export function abortM5UsbWorkflow(): UsbSetupSnapshot {
+	return abortUsbSetup();
+}
+
 export function startM5UsbPairing(url: URL, input: UsbPairingInput): M5PairingStartResult {
 	if (input.ssid === null || input.password === null) {
 		return {
 			ok: false,
 			error: 'WiFi SSID and password are required for pairing.',
 			usbSetup: getUsbSetupSnapshot()
+		};
+	}
+
+	const currentSetup = getUsbSetupSnapshot();
+	if (!currentSetup.canConfigure) {
+		return {
+			ok: false,
+			error: `Firmware must be updated to ${currentSetup.requiredFirmwareVersion} before setup.`,
+			usbSetup: currentSetup
 		};
 	}
 

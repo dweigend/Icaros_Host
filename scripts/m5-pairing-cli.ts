@@ -30,9 +30,13 @@ type Command =
 	| 'lan'
 	| 'url'
 	| 'snapshot'
+	| 'checklist'
 	| 'debug-on'
 	| 'health'
 	| 'pair'
+	| 'probe'
+	| 'flash'
+	| 'abort'
 	| 'protocols';
 
 type CliConfig = Readonly<{
@@ -67,7 +71,12 @@ if (config.insecureTls) {
 	process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }
 
-await run(config);
+try {
+	await run(config);
+} catch (error) {
+	console.error(formatCliError(error));
+	process.exitCode = 1;
+}
 
 async function run(config: CliConfig): Promise<void> {
 	if (config.command === 'env') {
@@ -101,6 +110,11 @@ async function run(config: CliConfig): Promise<void> {
 		return;
 	}
 
+	if (config.command === 'checklist') {
+		printChecklist((await readPairingStatus(config)).usbSetup);
+		return;
+	}
+
 	if (config.command === 'debug-on') {
 		await setPairingDebug(config, true);
 		console.log('pairingDebug=enabled');
@@ -114,6 +128,22 @@ async function run(config: CliConfig): Promise<void> {
 
 	if (config.command === 'protocols') {
 		await runProtocolChecks(config);
+		return;
+	}
+
+	if (config.command === 'probe') {
+		await runProbe(config);
+		return;
+	}
+
+	if (config.command === 'flash') {
+		await runFlash(config);
+		return;
+	}
+
+	if (config.command === 'abort') {
+		await postPairingCommand(config, { action: 'abortUsb' });
+		console.log('abort=sent');
 		return;
 	}
 
@@ -189,9 +219,13 @@ function readCommand(value: string | undefined): Command | null {
 		value === 'help' ||
 		value === 'url' ||
 		value === 'snapshot' ||
+		value === 'checklist' ||
 		value === 'debug-on' ||
 		value === 'health' ||
 		value === 'pair' ||
+		value === 'probe' ||
+		value === 'flash' ||
+		value === 'abort' ||
 		value === 'protocols'
 	) {
 		return value;
@@ -208,9 +242,13 @@ function printHelp(): void {
 	console.log('  lan        Print non-secret LAN diagnostics for M5 reachability.');
 	console.log('  url        Show only the redacted generated pairing URL.');
 	console.log('  snapshot   Print the bounded pairing debug snapshot.');
+	console.log('  checklist  Print the LLM-readable controller setup checklist.');
 	console.log('  debug-on   Enable Host pairing debug mode through the web action.');
 	console.log('  health     Check Host /health locally and on the selected LAN origin.');
 	console.log('  protocols  Check /ws/runtime and paired /ws/device reachability.');
+	console.log('  probe      Probe USB controller presence and firmware without writing config.');
+	console.log('  flash      Upload local M5 firmware through the Host pairing service.');
+	console.log('  abort      Abort the running USB probe, flash, or setup workflow.');
 	console.log('  pair       Start USB setup through the same action as the web console.');
 	console.log('');
 	console.log('Options:');
@@ -333,6 +371,20 @@ async function runPairing(config: CliConfig): Promise<void> {
 	await pollPairing(config);
 }
 
+async function runProbe(config: CliConfig): Promise<void> {
+	await setPairingDebug(config, true);
+	await postPairingCommand(config, { action: 'probeUsb' });
+	console.log('probe=started');
+	await pollPairing(config, false);
+}
+
+async function runFlash(config: CliConfig): Promise<void> {
+	await setPairingDebug(config, true);
+	await postPairingCommand(config, { action: 'flashFirmware' });
+	console.log('flash=started');
+	await pollPairing(config, false);
+}
+
 async function postPairingCommand(config: CliConfig, command: unknown): Promise<void> {
 	const response = await fetch(new URL(PAIRING_API_PATH, config.hostOrigin), {
 		method: 'POST',
@@ -348,7 +400,7 @@ async function postPairingCommand(config: CliConfig, command: unknown): Promise<
 	}
 }
 
-async function pollPairing(config: CliConfig): Promise<void> {
+async function pollPairing(config: CliConfig, waitForReady: boolean = true): Promise<void> {
 	const startedAt = Date.now();
 	let lastLine = '';
 
@@ -361,7 +413,7 @@ async function pollPairing(config: CliConfig): Promise<void> {
 			lastLine = line;
 		}
 
-		if (status.state === 'ready') {
+		if (status.state === 'ready' || (!waitForReady && !isPairingBusyState(status.state))) {
 			return;
 		}
 
@@ -373,6 +425,18 @@ async function pollPairing(config: CliConfig): Promise<void> {
 	}
 
 	throw new Error(`Timed out after ${config.timeoutMs}ms waiting for pairing result.`);
+}
+
+function isPairingBusyState(state: UsbSetupSnapshot['state']): boolean {
+	return (
+		state === 'usb_connected' ||
+		state === 'usb_probe' ||
+		state === 'firmware_check' ||
+		state === 'firmware_update' ||
+		state === 'configure' ||
+		state === 'usb_test' ||
+		state === 'wlan_test'
+	);
 }
 
 async function readPairingStatus(config: CliConfig): Promise<M5PairingStatusView> {
@@ -405,10 +469,92 @@ function printSnapshot(view: M5PairingStatusView): void {
 	console.log(formatStatus(status));
 	console.log(`serverUrl=${status.serverUrl ?? '<none>'}`);
 	console.log(`lastFrameAt=${status.lastFrameAt ?? '<none>'}`);
+	console.log(`controllerIssue=${status.controllerIssue ?? '<none>'}`);
+	console.log(`usbConnected=${status.usbConnected}`);
+	console.log(`usbPort=${status.usbPort ?? '<none>'}`);
+	console.log(`requiredFirmware=${status.requiredFirmwareVersion}`);
+	console.log(`canFlashFirmware=${status.canFlashFirmware}`);
+	console.log(`canConfigure=${status.canConfigure}`);
+	console.log(`nextAction=${readNextAction(status)}`);
 	console.log(`debugLines=${status.debugLines.length}`);
 	for (const line of status.debugLines.slice(-8)) {
 		console.log(formatDebugLine(line));
 	}
+}
+
+function printChecklist(status: UsbSetupSnapshot): void {
+	for (const item of readChecklistItems(status)) {
+		console.log(`${item.ok ? 'PASS' : 'FAIL'} ${item.key}: ${item.detail}`);
+	}
+	console.log(`nextAction=${readNextAction(status)}`);
+}
+
+function readChecklistItems(
+	status: UsbSetupSnapshot
+): readonly Readonly<{ key: string; ok: boolean; detail: string }>[] {
+	return [
+		{
+			key: 'usb',
+			ok: status.usbConnected,
+			detail: status.usbPort ?? 'USB controller has not been detected'
+		},
+		{
+			key: 'firmware',
+			ok: status.firmwareStatus === 'current',
+			detail: `${status.currentFirmwareVersion ?? '<none>'} / required ${status.requiredFirmwareVersion}`
+		},
+		{
+			key: 'flash',
+			ok: status.flashState === 'succeeded' || status.firmwareStatus === 'current',
+			detail: status.canFlashFirmware
+				? `flashState=${status.flashState}`
+				: 'disabled by ICAROS_ALLOW_M5_FIRMWARE_UPDATE'
+		},
+		{
+			key: 'configure',
+			ok: status.canConfigure && status.usbOk && status.serverUrl !== null,
+			detail: status.canConfigure
+				? 'setup is allowed'
+				: 'setup is blocked until firmware is current'
+		},
+		{
+			key: 'wlan',
+			ok: status.wlanOk,
+			detail:
+				status.controllerIssue ??
+				(status.lastFrameAt === null
+					? 'no paired WLAN/WebSocket frame received'
+					: `lastFrameAt=${status.lastFrameAt}`)
+		}
+	];
+}
+
+function readNextAction(status: UsbSetupSnapshot): string {
+	if (isPairingBusyState(status.state)) {
+		return 'wait-or-abort';
+	}
+
+	if (status.state === 'ready' && status.wlanOk && status.firmwareStatus === 'current') {
+		return 'ready';
+	}
+
+	if (!status.usbConnected) {
+		return 'probe';
+	}
+
+	if (status.firmwareStatus !== 'current') {
+		return status.canFlashFirmware ? 'flash' : 'enable-flash-policy';
+	}
+
+	if (!status.usbOk || status.serverUrl === null) {
+		return 'pair';
+	}
+
+	if (!status.wlanOk) {
+		return 'wait-for-wlan-or-debug';
+	}
+
+	return 'ready';
 }
 
 function formatStatus(status: UsbSetupSnapshot): string {
@@ -416,14 +562,32 @@ function formatStatus(status: UsbSetupSnapshot): string {
 		`state=${status.state}`,
 		`step=${status.step}`,
 		`progress=${status.progress}`,
+		`usbConnected=${status.usbConnected}`,
+		`usbPort=${status.usbPort ?? '<none>'}`,
 		`usbOk=${status.usbOk}`,
 		`wlanOk=${status.wlanOk}`,
+		`firmware=${status.currentFirmwareVersion ?? '<none>'}`,
+		`requiredFirmware=${status.requiredFirmwareVersion}`,
+		`firmwareStatus=${status.firmwareStatus}`,
+		`flash=${status.flashState}`,
+		`canFlash=${status.canFlashFirmware}`,
+		`canConfigure=${status.canConfigure}`,
+		`controllerIssue=${status.controllerIssue ?? '<none>'}`,
+		`nextAction=${readNextAction(status)}`,
 		`error=${status.error ?? '<none>'}`
 	].join(' ');
 }
 
 function formatDebugLine(line: PairingDebugLine): string {
 	return `${new Date(line.timestamp).toISOString()} ${line.source}: ${line.message}`;
+}
+
+function formatCliError(error: unknown): string {
+	if (error instanceof Error) {
+		return `ERROR ${error.message}`;
+	}
+
+	return `ERROR ${String(error)}`;
 }
 
 async function runProtocolChecks(config: CliConfig): Promise<void> {

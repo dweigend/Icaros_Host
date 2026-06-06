@@ -8,7 +8,10 @@
 import { json } from '@sveltejs/kit';
 
 import {
+	abortM5UsbWorkflow,
+	flashM5Firmware,
 	getM5PairingStatus,
+	probeM5UsbController,
 	setM5PairingDebug,
 	startM5UsbPairing
 } from '$lib/server/device/pairing-service';
@@ -17,7 +20,10 @@ import type { RequestHandler } from './$types';
 
 type M5PairingCommand =
 	| Readonly<{ action: 'setDebug'; enabled: boolean }>
-	| Readonly<{ action: 'connectUsb'; input: UsbPairingInput }>;
+	| Readonly<{ action: 'connectUsb'; input: UsbPairingInput }>
+	| Readonly<{ action: 'probeUsb' }>
+	| Readonly<{ action: 'flashFirmware' }>
+	| Readonly<{ action: 'abortUsb' }>;
 
 export const GET: RequestHandler = ({ url }) => {
 	return json(getM5PairingStatus(url));
@@ -32,6 +38,19 @@ export const POST: RequestHandler = async ({ request, url }) => {
 
 	if (command.action === 'setDebug') {
 		return json({ ok: true, usbSetup: setM5PairingDebug(command.enabled) });
+	}
+
+	if (command.action === 'probeUsb') {
+		return json(probeM5UsbController());
+	}
+
+	if (command.action === 'flashFirmware') {
+		const result = flashM5Firmware();
+		return json(result, { status: result.ok ? 200 : 400 });
+	}
+
+	if (command.action === 'abortUsb') {
+		return json({ ok: true, usbSetup: abortM5UsbWorkflow() });
 	}
 
 	const result = startM5UsbPairing(url, command.input);
@@ -56,6 +75,18 @@ function parseCommand(value: unknown): M5PairingCommand | null {
 	if (value.action === 'connectUsb') {
 		const input = parseUsbPairingInput(value.input);
 		return input === null ? null : { action: 'connectUsb', input };
+	}
+
+	if (value.action === 'probeUsb') {
+		return { action: 'probeUsb' };
+	}
+
+	if (value.action === 'flashFirmware') {
+		return { action: 'flashFirmware' };
+	}
+
+	if (value.action === 'abortUsb') {
+		return { action: 'abortUsb' };
 	}
 
 	return null;
