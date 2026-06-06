@@ -103,16 +103,15 @@ their stable `clientId`, `experienceId`, title, and HTTPS URL.
 
 The Meta Quest remains a supported runtime device. It opens the host console or
 active WebXR experience over HTTPS. `/launch` redirects to the active experience
-client URL only when an HTTPS target is explicitly configured. There is no HTTP
-default or fallback. Start the host with `ICAROS_EXPERIENCE_ORIGIN=https://...`
-or `ICAROS_EXPERIENCE_PROTOCOL=https`; otherwise `/launch` returns a clear
-configuration error.
+client URL only when an HTTPS target is configured. There is no HTTP default or
+fallback. `bun start` supplies `ICAROS_EXPERIENCE_PROTOCOL=https` for the
+same-host client target; separate Quest/LAN client machines should use
+`ICAROS_EXPERIENCE_ORIGIN=https://...`.
 
 The Quest launch URL itself is always the HTTPS Host endpoint
 `https://<host-lan-ip-or-name>:5183/launch`. The experience client URL is
 separate, commonly `https://<client-lan-ip-or-name>:5174/` for Quest/WebXR, and
-must never be shown with a `/launch` path. Plain HTTP client URLs are
-desktop-only direct checks, not launch targets.
+must never be shown with a `/launch` path. Client URLs must use HTTPS.
 
 The operator selects one concrete online runtime client in the console. The host
 sets `activeClientId` and derives `activeExperienceId` from that client. The
@@ -129,7 +128,7 @@ host forwards `control.orientation` only to the selected `activeClientId`.
 - Install the mkcert root CA on the Meta Quest so the headset trusts
   `https://<host-lan-ip-or-name>:5183/launch` and the redirected client origin.
 - Restart the host with
-  `ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174 PORT=5183 bun run serve:lan`
+  `ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174 bun start`
   and confirm it listens on `https://0.0.0.0:5183` when certificates are
   present.
 - Start the standalone experience client on port `5174` with

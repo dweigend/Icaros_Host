@@ -2,14 +2,14 @@
  * Purpose: focused tests for the Quest launch routing boundary so active
  * experience redirects stay explicit and LAN-safe.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { createQuestLaunchUrl, resolveConnectionInfo } from '$lib/server/network';
 import { resolveExperienceLaunchUrl } from './launch-routing';
 
 describe('resolveExperienceLaunchUrl', () => {
 	afterEach(() => {
-		vi.unstubAllEnvs();
+		restoreEnv();
 	});
 
 	it('requires an explicit HTTPS experience target', () => {
@@ -24,7 +24,7 @@ describe('resolveExperienceLaunchUrl', () => {
 	});
 
 	it('keeps Host launch and experience target URLs on their own origins', () => {
-		vi.stubEnv('ICAROS_EXPERIENCE_PROTOCOL', 'https');
+		stubEnv('ICAROS_EXPERIENCE_PROTOCOL', 'https');
 
 		const requestUrl = new URL('https://192.168.50.194:5183/launch');
 		const connection = resolveConnectionInfo(requestUrl);
@@ -40,13 +40,27 @@ describe('resolveExperienceLaunchUrl', () => {
 	});
 
 	it('supports an explicit HTTPS experience protocol when the client runs TLS', () => {
-		vi.stubEnv('ICAROS_EXPERIENCE_PROTOCOL', 'https');
+		stubEnv('ICAROS_EXPERIENCE_PROTOCOL', 'https');
 
 		expect(
 			resolveExperienceLaunchUrl('mountain-flight', new URL('https://192.168.50.194:5183/launch'))
 		).toEqual({
 			ok: true,
 			url: 'https://192.168.50.194:5174/'
+		});
+	});
+
+	it('treats blank routing environment values as unset', () => {
+		stubEnv('ICAROS_EXPERIENCE_ORIGIN', ' ');
+		stubEnv('ICAROS_EXPERIENCE_PROTOCOL', ' ');
+
+		expect(
+			resolveExperienceLaunchUrl('mountain-flight', new URL('https://192.168.50.194:5183/launch'))
+		).toEqual({
+			ok: false,
+			status: 500,
+			message:
+				'Quest launch requires an HTTPS experience target. Set ICAROS_EXPERIENCE_ORIGIN=https://... or ICAROS_EXPERIENCE_PROTOCOL=https.'
 		});
 	});
 
@@ -61,8 +75,8 @@ describe('resolveExperienceLaunchUrl', () => {
 	});
 
 	it('supports explicit origin and path templates', () => {
-		vi.stubEnv('ICAROS_EXPERIENCE_ORIGIN', 'https://client.local:9443/');
-		vi.stubEnv('ICAROS_EXPERIENCE_PATH', '/experiences/{experienceId}/');
+		stubEnv('ICAROS_EXPERIENCE_ORIGIN', 'https://client.local:9443/');
+		stubEnv('ICAROS_EXPERIENCE_PATH', '/experiences/{experienceId}/');
 
 		expect(
 			resolveExperienceLaunchUrl('mountain-flight', new URL('https://host.local:5183/launch'))
@@ -72,8 +86,33 @@ describe('resolveExperienceLaunchUrl', () => {
 		});
 	});
 
+	it('rejects explicit origins with paths', () => {
+		stubEnv('ICAROS_EXPERIENCE_ORIGIN', 'https://client.local:9443/base');
+
+		expect(
+			resolveExperienceLaunchUrl('mountain-flight', new URL('https://host.local:5183/launch'))
+		).toEqual({
+			ok: false,
+			status: 500,
+			message: 'ICAROS_EXPERIENCE_ORIGIN must not include a path, query, or hash.'
+		});
+	});
+
+	it('rejects network-relative experience paths', () => {
+		stubEnv('ICAROS_EXPERIENCE_ORIGIN', 'https://client.local:9443/');
+		stubEnv('ICAROS_EXPERIENCE_PATH', '//evil.example/{experienceId}');
+
+		expect(
+			resolveExperienceLaunchUrl('mountain-flight', new URL('https://host.local:5183/launch'))
+		).toEqual({
+			ok: false,
+			status: 500,
+			message: 'ICAROS_EXPERIENCE_PATH must start with a single /.'
+		});
+	});
+
 	it('rejects explicit HTTP experience origins', () => {
-		vi.stubEnv('ICAROS_EXPERIENCE_ORIGIN', 'http://client.local:5174/');
+		stubEnv('ICAROS_EXPERIENCE_ORIGIN', 'http://client.local:5174/');
 
 		const requestUrl = new URL('https://host.local:5183/launch');
 		const connection = resolveConnectionInfo(requestUrl);
@@ -87,7 +126,7 @@ describe('resolveExperienceLaunchUrl', () => {
 	});
 
 	it('rejects explicit HTTP experience protocol', () => {
-		vi.stubEnv('ICAROS_EXPERIENCE_PROTOCOL', 'http');
+		stubEnv('ICAROS_EXPERIENCE_PROTOCOL', 'http');
 
 		expect(
 			resolveExperienceLaunchUrl('mountain-flight', new URL('https://192.168.50.194:5183/launch'))
@@ -97,4 +136,39 @@ describe('resolveExperienceLaunchUrl', () => {
 			message: 'ICAROS_EXPERIENCE_PROTOCOL must be https for Quest launch.'
 		});
 	});
+
+	it('rejects out-of-range experience ports', () => {
+		stubEnv('ICAROS_EXPERIENCE_PROTOCOL', 'https');
+		stubEnv('ICAROS_EXPERIENCE_PORT', '99999');
+
+		expect(
+			resolveExperienceLaunchUrl('mountain-flight', new URL('https://192.168.50.194:5183/launch'))
+		).toEqual({
+			ok: false,
+			status: 500,
+			message: 'ICAROS_EXPERIENCE_PORT must be a TCP port number.'
+		});
+	});
 });
+
+const originalEnv = new Map<string, string | undefined>();
+
+function stubEnv(key: string, value: string): void {
+	if (!originalEnv.has(key)) {
+		originalEnv.set(key, process.env[key]);
+	}
+
+	process.env[key] = value;
+}
+
+function restoreEnv(): void {
+	for (const [key, value] of originalEnv) {
+		if (value === undefined) {
+			delete process.env[key];
+		} else {
+			process.env[key] = value;
+		}
+	}
+
+	originalEnv.clear();
+}

@@ -137,7 +137,7 @@ export class IcarosWebSocketGateway {
 		head: Buffer,
 		mode: GatewayUpgradeMode
 	): void {
-		const url = new URL(request.url ?? '/', 'http://localhost');
+		const url = new URL(request.url ?? '/', 'https://localhost');
 		const pathname = url.pathname;
 
 		if (pathname === DEVICE_PATH) {

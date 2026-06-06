@@ -11,7 +11,6 @@ import {
 } from 'node:http';
 import {
 	createServer as createHttpsServer,
-	type Server as HttpsServer,
 	type ServerOptions as HttpsServerOptions
 } from 'node:https';
 
@@ -29,22 +28,15 @@ const DEFAULT_TLS_CERT_FILE = '.certs/icaros-host.pem';
 const DEFAULT_TLS_KEY_FILE = '.certs/icaros-host-key.pem';
 const PROTOCOL_HEADER = 'x-forwarded-proto';
 
-type RuntimeServer = HttpServer | HttpsServer;
-
-type RuntimeServerConfig = Readonly<{
-	protocol: 'http' | 'https';
-	server: RuntimeServer;
-}>;
-
 async function start(): Promise<void> {
 	process.env.PROTOCOL_HEADER ??= PROTOCOL_HEADER;
 
 	const { handler } = await import('../build/handler.js');
 	const tlsOptions = loadTlsOptions();
-	const protocol = tlsOptions === null ? 'http' : 'https';
-	const { server } = createRuntimeServer(createProtocolAwareHandler(handler, protocol), tlsOptions);
+	const protocol = 'https';
+	const server = createHttpsServer(tlsOptions, createProtocolAwareHandler(handler));
 	const gateway = createIcarosWebSocketGateway();
-	const plainDeviceWsPort = resolvePlainDeviceWsPort(protocol);
+	const plainDeviceWsPort = resolvePlainDeviceWsPort();
 	let pendingListeners = plainDeviceWsPort === null ? 1 : 2;
 	const markListening = (): void => {
 		pendingListeners -= 1;
@@ -100,39 +92,21 @@ function createPlainDeviceServer(
 
 await start();
 
-function createProtocolAwareHandler(
-	handler: RequestListener,
-	protocol: RuntimeServerConfig['protocol']
-): RequestListener {
+function createProtocolAwareHandler(handler: RequestListener): RequestListener {
 	return (request, response) => {
-		request.headers[PROTOCOL_HEADER] ??= protocol;
+		request.headers[PROTOCOL_HEADER] ??= 'https';
 		handler(request, response);
 	};
 }
 
-function createRuntimeServer(
-	handler: RequestListener,
-	tlsOptions: HttpsServerOptions | null
-): RuntimeServerConfig {
-	if (tlsOptions === null) {
-		return {
-			protocol: 'http',
-			server: createHttpServer(handler)
-		};
-	}
-
-	return {
-		protocol: 'https',
-		server: createHttpsServer(tlsOptions, handler)
-	};
-}
-
-function loadTlsOptions(): HttpsServerOptions | null {
+function loadTlsOptions(): HttpsServerOptions {
 	const keyFile = process.env.ICAROS_TLS_KEY_FILE ?? DEFAULT_TLS_KEY_FILE;
 	const certFile = process.env.ICAROS_TLS_CERT_FILE ?? DEFAULT_TLS_CERT_FILE;
 
 	if (!existsSync(keyFile) || !existsSync(certFile)) {
-		return null;
+		throw new Error(
+			`Host requires HTTPS. Missing TLS files: key=${keyFile}, cert=${certFile}. Run the HTTPS setup before starting Icaros Host.`
+		);
 	}
 
 	return {
@@ -141,11 +115,7 @@ function loadTlsOptions(): HttpsServerOptions | null {
 	};
 }
 
-function resolvePlainDeviceWsPort(protocol: RuntimeServerConfig['protocol']): number | null {
-	if (protocol !== 'https') {
-		return null;
-	}
-
+function resolvePlainDeviceWsPort(): number | null {
 	const explicitOrigin = process.env.ICAROS_DEVICE_WS_ORIGIN?.trim();
 	if (explicitOrigin !== undefined && explicitOrigin !== '') {
 		return null;
@@ -156,16 +126,27 @@ function resolvePlainDeviceWsPort(protocol: RuntimeServerConfig['protocol']): nu
 		return null;
 	}
 
-	return readPort(configuredPort ?? DEFAULT_HTTPS_DEVICE_WS_PORT, DEFAULT_HTTPS_DEVICE_WS_PORT);
+	const devicePort = readPort(
+		configuredPort ?? DEFAULT_HTTPS_DEVICE_WS_PORT,
+		'ICAROS_DEVICE_WS_PORT'
+	);
+
+	if (devicePort === port) {
+		throw new Error(
+			'ICAROS_DEVICE_WS_PORT must differ from PORT, or use ICAROS_DEVICE_WS_PORT=none.'
+		);
+	}
+
+	return devicePort;
 }
 
-function readPort(value: string, fallback: string): number {
+function readPort(value: string, name: string): number {
 	const parsed = Number(value);
 	if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65_535) {
 		return parsed;
 	}
 
-	return Number(fallback);
+	throw new Error(`${name} must be a TCP port number.`);
 }
 
 function formatRemoteAddress(address: string | undefined, port: number | undefined): string | null {

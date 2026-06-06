@@ -9,6 +9,90 @@ Icaros Host is the station router, gateway, and translator for one local
 station. The host owns station state, device input, runtime sockets, and
 active experience routing. The UI is intentionally one page:
 
+## Installation
+
+Install the project dependencies with Bun:
+
+```sh
+bun install
+```
+
+The hardware Host requires local TLS files before it can start:
+
+```txt
+.certs/icaros-host.pem
+.certs/icaros-host-key.pem
+```
+
+Create them with the local HTTPS setup described in
+[Quest HTTPS Launch Routing](docs/quest-https-launch-routing.md). The Host and
+the standalone VR client each need their own certificate files; do not share or
+symlink certificates between repos.
+
+## Start
+
+Use one command for the real Host, M5 pairing, and operator console:
+
+```sh
+bun start
+```
+
+This cleans ports `5183` and `5184`, builds the app, verifies TLS files, and
+starts:
+
+```txt
+https://localhost:5183/              operator console
+https://<host-lan-ip-or-name>:5183/  LAN operator console
+ws://<host-lan-ip-or-name>:5184/ws/device
+```
+
+The process stays attached to the terminal while the Host is running. Stop it
+with `Ctrl-C`.
+
+Use `bun start` for hardware. `bun run dev` and `bun run dev:lan` are disabled
+as Host start commands so they cannot accidentally start a plain HTTP workflow.
+For isolated Svelte UI work only, use:
+
+```sh
+bun run dev:ui-only
+```
+
+## Diagnostics
+
+The controller CLI uses the same Host actions as the web console:
+
+```sh
+bun run m5:pairing -- health
+bun run m5:pairing -- protocols
+bun run m5:pairing -- snapshot
+bun run m5:pairing -- checklist
+```
+
+For USB and firmware work:
+
+```sh
+bun run m5:pairing -- probe
+bun run m5:pairing -- flash
+bun run m5:pairing -- pair
+bun run m5:pairing -- abort
+```
+
+Pairing debug output is written to:
+
+```txt
+.icaros/debug/m5-pairing-debug.json
+```
+
+For low-level M5 reachability only, the isolated plain-WebSocket probe listens
+on the M5 device boundary:
+
+```sh
+bun scripts/m5-device-probe.ts
+```
+
+Plain `ws://` is allowed only for the M5 device endpoint. Operator UI,
+runtime clients, Quest launch, and experience clients use HTTPS/WSS.
+
 ```txt
 /
   single operator console
@@ -67,10 +151,10 @@ from the selected client when the operator chooses a concrete instance.
 
 The `/launch` endpoint is a thin Quest launcher for the active experience. It
 redirects the headset only to an explicitly configured HTTPS experience origin.
-There is no HTTP default or fallback. If the host is not started with
-`ICAROS_EXPERIENCE_PROTOCOL=https` or
-`ICAROS_EXPERIENCE_ORIGIN=https://...`, `/launch` returns a clear
-configuration error instead of redirecting.
+There is no HTTP default or fallback. `bun start` automatically configures the
+same-host HTTPS client target with `ICAROS_EXPERIENCE_PROTOCOL=https` when no
+explicit origin is set. For separate Quest/LAN client machines, start with
+`ICAROS_EXPERIENCE_ORIGIN=https://...`.
 
 ## Quest And HTTPS
 
@@ -84,17 +168,14 @@ https://<experience-origin>/
 wss://<host-lan-name-or-ip>:<port>/ws/runtime
 ```
 
-`http://localhost` is not enough for the headset because `localhost` on the
-Quest points to the headset itself. Quest-facing browser surfaces must support
-HTTPS, and runtime sockets loaded from HTTPS must use WSS. The M5 device
-boundary remains separate and may use its firmware-compatible WebSocket input
-path.
+The headset must use the LAN HTTPS address because `localhost` on the Quest
+points to the headset itself. Quest-facing browser surfaces must support HTTPS,
+and runtime sockets loaded from HTTPS must use WSS. The M5 device boundary
+remains separate and may use its firmware-compatible plain WebSocket input path.
 
-For desktop smoke tests the client can still be opened directly on plain
-desktop-only origins, but `/launch` never targets HTTP. WebXR on Quest requires
-the client origin itself to be HTTPS. The Host and standalone VR client each own
-their own certificate files; do not share or symlink Host certificates into the
-Client repo.
+`/launch` never targets HTTP. WebXR on Quest requires the client origin itself
+to be HTTPS. The Host and standalone VR client each own their own certificate
+files; do not share or symlink Host certificates into the Client repo.
 
 ## Control API
 

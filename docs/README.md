@@ -39,13 +39,12 @@ close to the code while the top-level README stays short.
 
 | Surface | Local development | Quest/LAN development |
 | --- | --- | --- |
-| Host console | `http://localhost:5183/` for desktop-only checks | `https://<host-lan-ip-or-name>:5183/` |
+| Host console | HTTPS only | `https://<host-lan-ip-or-name>:5183/` |
 | Quest launch endpoint | no HTTP launch path; use HTTPS | `https://<host-lan-ip-or-name>:5183/launch` |
-| Experience client | local desktop checks only | `https://<client-lan-ip-or-name>:5174/` |
-| Runtime WebSocket | `ws://localhost:5183/ws/runtime` for desktop-only checks | `wss://<host-lan-ip-or-name>:5183/ws/runtime` |
-| M5 WebSocket | `ws://<host-lan-ip-or-name>:5183/ws/device` when Host is plain HTTP | `ws://<host-lan-ip-or-name>:5184/ws/device` when Host runs HTTPS |
+| Experience client | HTTPS only | `https://<client-lan-ip-or-name>:5174/` |
+| Runtime WebSocket | WSS only | `wss://<host-lan-ip-or-name>:5183/ws/runtime` |
+| M5 WebSocket | plain device boundary only | `ws://<host-lan-ip-or-name>:5184/ws/device` |
 
-Use plain HTTP only for direct desktop development of non-launch pages.
 `/launch` does not redirect to HTTP and should not be advertised as an HTTP
 URL. For the Meta Quest and WebXR, use HTTPS on the LAN address and make the
 headset trust the development certificate authority.

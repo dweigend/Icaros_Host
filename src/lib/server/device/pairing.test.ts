@@ -2,7 +2,7 @@
  * Purpose: focused tests for M5 pairing URL resolution so USB setup does not
  * accidentally configure the controller against a UI-only Vite origin.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import {
 	createDevicePairingTokenFingerprint,
@@ -12,20 +12,36 @@ import {
 
 describe('resolveDeviceWebSocketOrigin', () => {
 	afterEach(() => {
-		vi.unstubAllEnvs();
+		restoreEnv();
 	});
 
 	it('prefers the explicit device WebSocket origin', () => {
-		vi.stubEnv('ICAROS_DEVICE_WS_ORIGIN', 'ws://192.168.50.194:8787/');
-		vi.stubEnv('ICAROS_DEVICE_WS_PORT', '5183');
+		stubEnv('ICAROS_DEVICE_WS_ORIGIN', 'ws://192.168.50.194:8787/');
+		stubEnv('ICAROS_DEVICE_WS_PORT', '5183');
 
 		expect(resolveDeviceWebSocketOrigin('wss://192.168.50.194:5173')).toBe(
 			'ws://192.168.50.194:8787'
 		);
 	});
 
+	it('rejects non-plain explicit device WebSocket origins', () => {
+		stubEnv('ICAROS_DEVICE_WS_ORIGIN', 'wss://192.168.50.194:8787/');
+
+		expect(() => resolveDeviceWebSocketOrigin('wss://192.168.50.194:5183')).toThrow(
+			'ICAROS_DEVICE_WS_ORIGIN must use ws:// for the M5 device boundary.'
+		);
+	});
+
+	it('rejects explicit device origins with paths', () => {
+		stubEnv('ICAROS_DEVICE_WS_ORIGIN', 'ws://192.168.50.194:8787/ws/device');
+
+		expect(() => resolveDeviceWebSocketOrigin('wss://192.168.50.194:5183')).toThrow(
+			'ICAROS_DEVICE_WS_ORIGIN must be an origin like ws://host:port.'
+		);
+	});
+
 	it('uses the configured device port on the request LAN host', () => {
-		vi.stubEnv('ICAROS_DEVICE_WS_PORT', '8787');
+		stubEnv('ICAROS_DEVICE_WS_PORT', '8787');
 
 		expect(resolveDeviceWebSocketOrigin('wss://192.168.50.194:5173')).toBe(
 			'ws://192.168.50.194:8787'
@@ -34,7 +50,7 @@ describe('resolveDeviceWebSocketOrigin', () => {
 
 	it('does not leak the Vite dev port into hardware pairing URLs', () => {
 		expect(resolveDeviceWebSocketOrigin('ws://192.168.50.194:5173')).toBe(
-			'ws://192.168.50.194:5183'
+			'ws://192.168.50.194:5184'
 		);
 	});
 
@@ -44,26 +60,48 @@ describe('resolveDeviceWebSocketOrigin', () => {
 		);
 	});
 
-	it('keeps the gateway port for plain HTTP runtime origins', () => {
+	it('routes plain runtime origins to the M5 device port too', () => {
 		expect(resolveDeviceWebSocketOrigin('ws://192.168.50.194:5183')).toBe(
-			'ws://192.168.50.194:5183'
+			'ws://192.168.50.194:5184'
 		);
 	});
 });
 
 describe('createPairedDeviceWebSocketUrl', () => {
 	afterEach(() => {
-		vi.unstubAllEnvs();
+		restoreEnv();
 	});
 
 	it('creates a paired device path on the resolved origin', () => {
 		const url = new URL(createPairedDeviceWebSocketUrl('ws://192.168.50.194:5173'));
 
-		expect(url.origin).toBe('ws://192.168.50.194:5183');
+		expect(url.origin).toBe('ws://192.168.50.194:5184');
 		expect(url.pathname).toBe('/ws/device');
 		expect(url.searchParams.get('pairing')).toEqual(expect.any(String));
 	});
 });
+
+const originalEnv = new Map<string, string | undefined>();
+
+function stubEnv(key: string, value: string): void {
+	if (!originalEnv.has(key)) {
+		originalEnv.set(key, process.env[key]);
+	}
+
+	process.env[key] = value;
+}
+
+function restoreEnv(): void {
+	for (const [key, value] of originalEnv) {
+		if (value === undefined) {
+			delete process.env[key];
+		} else {
+			process.env[key] = value;
+		}
+	}
+
+	originalEnv.clear();
+}
 
 describe('createDevicePairingTokenFingerprint', () => {
 	it('creates a stable non-secret fingerprint for diagnostics', () => {

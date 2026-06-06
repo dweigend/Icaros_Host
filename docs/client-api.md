@@ -179,8 +179,8 @@ experience assets itself.
 
 The client resolves the runtime socket from the current page:
 
-- Direct desktop HTTP pages use `ws://.../ws/runtime`.
-- Quest/WebXR HTTPS pages use `wss://.../ws/runtime`.
+- Runtime pages use `wss://.../ws/runtime`.
+- Plain `ws://` is reserved for the M5 device boundary only.
 
 If the host sends a station state where the active experience id no longer
 matches this client, the client navigates to `/`. This keeps inactive
@@ -207,7 +207,7 @@ point for socket testing:
 
 ```sh
 bun run build
-ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174 PORT=5183 bun run serve:lan
+ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174 bun start
 ```
 
 ## Local Demo Client
@@ -227,11 +227,9 @@ https://<host-lan-ip-or-name>:5183/launch
 ```
 
 The experience URL is separate and must match the standalone client server.
-Plain HTTP is only for direct desktop checks. `/launch` requires an explicit
-HTTPS experience target and returns a configuration error instead of redirecting
-to HTTP.
+`/launch` requires an explicit HTTPS experience target and returns a
+configuration error instead of redirecting to non-HTTPS targets.
 
 ```text
 https://<client-lan-ip-or-name>:5174/    Quest/WebXR experience target
-http://localhost:5174/                  desktop-only fallback if a separate plain client exists
 ```

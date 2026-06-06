@@ -38,25 +38,31 @@ export function resolveExperienceLaunchUrl(
 		return path;
 	}
 
+	const target = new URL(path.value, origin.value);
+
+	if (target.origin !== origin.value.origin) {
+		return fail(500, 'ICAROS_EXPERIENCE_PATH must stay on the configured experience origin.');
+	}
+
 	return {
 		ok: true,
-		url: new URL(path.value, origin.value).toString()
+		url: target.toString()
 	};
 }
 
 function resolveExperienceOrigin(
 	requestUrl: URL
 ): Readonly<{ ok: true; value: URL }> | Readonly<{ ok: false; status: 500; message: string }> {
-	const configuredOrigin = process.env.ICAROS_EXPERIENCE_ORIGIN;
+	const configuredOrigin = readOptionalEnvironmentValue('ICAROS_EXPERIENCE_ORIGIN');
 
-	if (configuredOrigin !== undefined) {
+	if (configuredOrigin !== null) {
 		return readExperienceOrigin(configuredOrigin);
 	}
 
-	const protocol = process.env.ICAROS_EXPERIENCE_PROTOCOL;
-	const port = process.env.ICAROS_EXPERIENCE_PORT ?? DEFAULT_EXPERIENCE_PORT;
+	const protocol = readOptionalEnvironmentValue('ICAROS_EXPERIENCE_PROTOCOL');
+	const port = readOptionalEnvironmentValue('ICAROS_EXPERIENCE_PORT') ?? DEFAULT_EXPERIENCE_PORT;
 
-	if (protocol === undefined) {
+	if (protocol === null) {
 		return fail(
 			500,
 			'Quest launch requires an HTTPS experience target. Set ICAROS_EXPERIENCE_ORIGIN=https://... or ICAROS_EXPERIENCE_PROTOCOL=https.'
@@ -67,7 +73,7 @@ function resolveExperienceOrigin(
 		return fail(500, 'ICAROS_EXPERIENCE_PROTOCOL must be https for Quest launch.');
 	}
 
-	if (!/^\d{1,5}$/.test(port)) {
+	if (!isTcpPort(port)) {
 		return fail(500, 'ICAROS_EXPERIENCE_PORT must be a TCP port number.');
 	}
 
@@ -88,6 +94,10 @@ function readExperienceOrigin(
 			return fail(500, 'ICAROS_EXPERIENCE_ORIGIN must use https for Quest launch.');
 		}
 
+		if (url.pathname !== '/' || url.search !== '' || url.hash !== '') {
+			return fail(500, 'ICAROS_EXPERIENCE_ORIGIN must not include a path, query, or hash.');
+		}
+
 		return { ok: true, value: url };
 	} catch {
 		return fail(500, 'ICAROS_EXPERIENCE_ORIGIN must be a valid URL.');
@@ -97,10 +107,15 @@ function readExperienceOrigin(
 function resolveExperiencePath(
 	experienceId: string
 ): Readonly<{ ok: true; value: string }> | Readonly<{ ok: false; status: 500; message: string }> {
-	const pathTemplate = process.env.ICAROS_EXPERIENCE_PATH ?? DEFAULT_EXPERIENCE_PATH;
+	const pathTemplate =
+		readOptionalEnvironmentValue('ICAROS_EXPERIENCE_PATH') ?? DEFAULT_EXPERIENCE_PATH;
 
 	if (!pathTemplate.startsWith('/')) {
 		return fail(500, 'ICAROS_EXPERIENCE_PATH must start with /.');
+	}
+
+	if (pathTemplate.startsWith('//')) {
+		return fail(500, 'ICAROS_EXPERIENCE_PATH must start with a single /.');
 	}
 
 	return {
@@ -114,4 +129,14 @@ function fail<TStatus extends 400 | 409 | 500>(
 	message: string
 ): Readonly<{ ok: false; status: TStatus; message: string }> {
 	return { ok: false, status, message };
+}
+
+function readOptionalEnvironmentValue(key: string): string | null {
+	const value = process.env[key]?.trim();
+	return value === undefined || value === '' ? null : value;
+}
+
+function isTcpPort(value: string): boolean {
+	const parsed = Number(value);
+	return /^\d{1,5}$/.test(value) && Number.isInteger(parsed) && parsed >= 1 && parsed <= 65_535;
 }

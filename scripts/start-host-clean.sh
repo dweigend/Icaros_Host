@@ -8,19 +8,90 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-5183}"
 ICAROS_DEVICE_WS_PORT="${ICAROS_DEVICE_WS_PORT:-5184}"
+ICAROS_DEVICE_WS_ORIGIN="${ICAROS_DEVICE_WS_ORIGIN:-}"
+ICAROS_TLS_KEY_FILE="${ICAROS_TLS_KEY_FILE:-.certs/icaros-host-key.pem}"
+ICAROS_TLS_CERT_FILE="${ICAROS_TLS_CERT_FILE:-.certs/icaros-host.pem}"
+ICAROS_EXPERIENCE_ORIGIN="${ICAROS_EXPERIENCE_ORIGIN:-}"
+ICAROS_EXPERIENCE_PROTOCOL="${ICAROS_EXPERIENCE_PROTOCOL:-}"
+ICAROS_EXPERIENCE_PORT="${ICAROS_EXPERIENCE_PORT:-5174}"
 PORTS_TO_FREE=("$PORT")
 
-if [[ "$ICAROS_DEVICE_WS_PORT" != "none" && "$ICAROS_DEVICE_WS_PORT" != "$PORT" ]]; then
+is_tcp_port() {
+	local value="$1"
+	[[ "$value" =~ ^[0-9]{1,5}$ && "$value" -ge 1 && "$value" -le 65535 ]]
+}
+
+if ! is_tcp_port "$PORT"; then
+	echo "PORT must be a TCP port number." >&2
+	exit 1
+fi
+
+if [[ -z "$ICAROS_DEVICE_WS_ORIGIN" && "$ICAROS_DEVICE_WS_PORT" != "none" ]] && ! is_tcp_port "$ICAROS_DEVICE_WS_PORT"; then
+	echo "ICAROS_DEVICE_WS_PORT must be a TCP port number or none." >&2
+	exit 1
+fi
+
+if [[ -z "$ICAROS_DEVICE_WS_ORIGIN" && "$ICAROS_DEVICE_WS_PORT" == "$PORT" ]]; then
+	echo "ICAROS_DEVICE_WS_PORT must differ from PORT, or use ICAROS_DEVICE_WS_PORT=none." >&2
+	exit 1
+fi
+
+if [[ ! -f "$ICAROS_TLS_KEY_FILE" || ! -f "$ICAROS_TLS_CERT_FILE" ]]; then
+	echo "Missing Host TLS certificate files." >&2
+	echo "Expected key:  $ICAROS_TLS_KEY_FILE" >&2
+	echo "Expected cert: $ICAROS_TLS_CERT_FILE" >&2
+	echo "Run the HTTPS setup first; M5 hardware pairing needs the Bun Host on https://... plus ws://...:5184." >&2
+	exit 1
+fi
+
+if [[ -z "$ICAROS_DEVICE_WS_ORIGIN" && "$ICAROS_DEVICE_WS_PORT" != "none" ]]; then
 	PORTS_TO_FREE+=("$ICAROS_DEVICE_WS_PORT")
 fi
 
+if [[ -n "$ICAROS_EXPERIENCE_ORIGIN" && "$ICAROS_EXPERIENCE_ORIGIN" != https://* ]]; then
+	echo "ICAROS_EXPERIENCE_ORIGIN must use https:// for Quest launch." >&2
+	exit 1
+fi
+
+if [[ -z "$ICAROS_EXPERIENCE_ORIGIN" ]]; then
+	if [[ -z "$ICAROS_EXPERIENCE_PROTOCOL" ]]; then
+		ICAROS_EXPERIENCE_PROTOCOL="https"
+	fi
+
+	if [[ "$ICAROS_EXPERIENCE_PROTOCOL" != "https" ]]; then
+		echo "ICAROS_EXPERIENCE_PROTOCOL must be https for Quest launch." >&2
+		exit 1
+	fi
+
+	if ! is_tcp_port "$ICAROS_EXPERIENCE_PORT"; then
+		echo "ICAROS_EXPERIENCE_PORT must be a TCP port number." >&2
+		exit 1
+	fi
+fi
+
 echo "Icaros Host clean start"
+echo "Repo: $REPO_ROOT"
 echo "Host: $HOST"
 echo "UI/HTTPS port: $PORT"
-echo "M5 plain WS port: $ICAROS_DEVICE_WS_PORT"
+if [[ -n "$ICAROS_DEVICE_WS_ORIGIN" ]]; then
+	echo "M5 device WS origin: $ICAROS_DEVICE_WS_ORIGIN"
+else
+	echo "M5 plain WS port: $ICAROS_DEVICE_WS_PORT"
+fi
+echo "TLS key: $ICAROS_TLS_KEY_FILE"
+echo "TLS cert: $ICAROS_TLS_CERT_FILE"
+if [[ -n "$ICAROS_EXPERIENCE_ORIGIN" ]]; then
+	echo "Experience target: $ICAROS_EXPERIENCE_ORIGIN"
+else
+	echo "Experience target: https://<host>:$ICAROS_EXPERIENCE_PORT/"
+fi
 
 kill_port_listeners() {
 	local port="$1"
@@ -71,4 +142,23 @@ echo "Building Host..."
 bun run build
 
 echo "Starting Host..."
-exec env HOST="$HOST" PORT="$PORT" ICAROS_DEVICE_WS_PORT="$ICAROS_DEVICE_WS_PORT" bun server/index.ts
+echo "Host stays attached to this terminal. Press Ctrl-C to stop it."
+START_ENV=(
+	HOST="$HOST"
+	PORT="$PORT"
+	ICAROS_DEVICE_WS_PORT="$ICAROS_DEVICE_WS_PORT"
+	ICAROS_DEVICE_WS_ORIGIN="$ICAROS_DEVICE_WS_ORIGIN"
+	ICAROS_TLS_KEY_FILE="$ICAROS_TLS_KEY_FILE"
+	ICAROS_TLS_CERT_FILE="$ICAROS_TLS_CERT_FILE"
+)
+
+if [[ -n "$ICAROS_EXPERIENCE_ORIGIN" ]]; then
+	START_ENV+=(ICAROS_EXPERIENCE_ORIGIN="$ICAROS_EXPERIENCE_ORIGIN")
+else
+	START_ENV+=(
+		ICAROS_EXPERIENCE_PROTOCOL="$ICAROS_EXPERIENCE_PROTOCOL"
+		ICAROS_EXPERIENCE_PORT="$ICAROS_EXPERIENCE_PORT"
+	)
+fi
+
+exec env "${START_ENV[@]}" bun server/index.ts

@@ -129,11 +129,12 @@ Non-loopback hostnames are preserved. If the operator opens
 ## HTTPS Launch Target Policy
 
 The launch resolver never falls back to HTTP. Quest-facing launch redirects
-require an explicit HTTPS experience target. The preferred two-machine form is
+require an HTTPS experience target. `bun start` configures the same-machine
+HTTPS target automatically. The preferred two-machine form is
 `ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174`:
 
-- Without `ICAROS_EXPERIENCE_ORIGIN=https://...` or
-  `ICAROS_EXPERIENCE_PROTOCOL=https`, `/launch` returns `500` with a
+- Direct server entrypoints without `ICAROS_EXPERIENCE_ORIGIN=https://...` or
+  `ICAROS_EXPERIENCE_PROTOCOL=https` return `500` from `/launch` with a
   configuration message.
 - `ICAROS_EXPERIENCE_ORIGIN=http://...` and
   `ICAROS_EXPERIENCE_PROTOCOL=http` are rejected.

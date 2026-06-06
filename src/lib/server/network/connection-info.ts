@@ -11,28 +11,20 @@ export type HostConnectionInfo = Readonly<{
 	lanHostname: string;
 }>;
 
-export type HttpProtocol = 'http' | 'https';
+export type HttpProtocol = 'https';
 
 export type ServerOpenUrl = Readonly<{
-	label:
-		| 'Open locally'
-		| 'Open locally (desktop HTTP)'
-		| 'Open on LAN'
-		| 'Open on LAN (desktop HTTP)'
-		| 'Open at'
-		| 'Open at (desktop HTTP)';
+	label: 'Open locally' | 'Open on LAN' | 'Open at';
 	url: string;
 }>;
 
 export function resolveConnectionInfo(url: URL): HostConnectionInfo {
 	const lanHostname = resolveLanHostname(url.hostname);
 	const host = formatHost(lanHostname, url.port);
-	const httpProtocol = readHttpProtocol(url.protocol);
-	const wsProtocol = httpProtocol === 'https' ? 'wss' : 'ws';
 
 	return {
-		httpOrigin: `${httpProtocol}://${host}`,
-		wsOrigin: `${wsProtocol}://${host}`,
+		httpOrigin: `https://${host}`,
+		wsOrigin: `wss://${host}`,
 		lanHostname
 	};
 }
@@ -53,23 +45,25 @@ export function resolveServerOpenUrls(
 	if (hostname === '0.0.0.0') {
 		return [
 			{
-				label: readServerOpenLabel(protocol, 'local'),
+				label: readServerOpenLabel('local'),
 				url: createHttpUrl(protocol, 'localhost', portValue)
 			},
 			...resolveLanIpv4Hostnames().map((lanHostname) => ({
-				label: readServerOpenLabel(protocol, 'lan'),
+				label: readServerOpenLabel('lan'),
 				url: createHttpUrl(protocol, lanHostname, portValue)
 			}))
 		];
 	}
 
-	const label = readServerOpenLabel(protocol, isLocalHostname(hostname) ? 'local' : 'custom');
+	const label = readServerOpenLabel(isLocalHostname(hostname) ? 'local' : 'custom');
 	return [{ label, url: createHttpUrl(protocol, hostname, portValue) }];
 }
 
 export function resolveLanHostname(hostname: string): string {
-	if (!isLocalHostname(hostname)) {
-		return hostname;
+	const normalizedHostname = normalizeHostname(hostname);
+
+	if (!isLocalHostname(normalizedHostname)) {
+		return normalizedHostname;
 	}
 
 	const [lanHostname] = resolveLanIpv4Hostnames();
@@ -82,16 +76,27 @@ export function resolveLanHostname(hostname: string): string {
 }
 
 export function formatHost(hostname: string, port: string): string {
-	const formattedHostname = hostname.includes(':') ? `[${hostname}]` : hostname;
+	const normalizedHostname = normalizeHostname(hostname);
+	const formattedHostname = normalizedHostname.includes(':')
+		? `[${normalizedHostname}]`
+		: normalizedHostname;
 	return port === '' ? formattedHostname : `${formattedHostname}:${port}`;
 }
 
-export function readHttpProtocol(protocol: string): HttpProtocol {
-	return protocol === 'https:' || protocol === 'https' ? 'https' : 'http';
+export function readHttpProtocol(_protocol: string): HttpProtocol {
+	return 'https';
 }
 
 function isLocalHostname(hostname: string): boolean {
 	return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
+function normalizeHostname(hostname: string): string {
+	if (hostname.startsWith('[') && hostname.endsWith(']')) {
+		return hostname.slice(1, -1);
+	}
+
+	return hostname;
 }
 
 function resolveLanIpv4Hostnames(): readonly string[] {
@@ -112,17 +117,8 @@ function createHttpUrl(protocol: HttpProtocol, hostname: string, port: string): 
 	return `${protocol}://${formatHost(hostname, port)}/`;
 }
 
-function readServerOpenLabel(
-	protocol: HttpProtocol,
-	target: 'local' | 'lan' | 'custom'
-): ServerOpenUrl['label'] {
-	if (protocol === 'https') {
-		if (target === 'local') return 'Open locally';
-		if (target === 'lan') return 'Open on LAN';
-		return 'Open at';
-	}
-
-	if (target === 'local') return 'Open locally (desktop HTTP)';
-	if (target === 'lan') return 'Open on LAN (desktop HTTP)';
-	return 'Open at (desktop HTTP)';
+function readServerOpenLabel(target: 'local' | 'lan' | 'custom'): ServerOpenUrl['label'] {
+	if (target === 'local') return 'Open locally';
+	if (target === 'lan') return 'Open on LAN';
+	return 'Open at';
 }

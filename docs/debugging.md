@@ -60,12 +60,12 @@ Start the Host before using CLI commands that call the console or WebSocket
 endpoints:
 
 ```sh
-bun run serve:lan
+bun start
 ```
 
 For Quest `/launch` debugging, the Host must also have an explicit HTTPS
 experience target, for example
-`ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174 PORT=5183 bun run serve:lan`.
+`ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174 bun start`.
 
 Use one stable origin per run. For Quest/LAN debugging, prefer the LAN HTTPS
 origin:

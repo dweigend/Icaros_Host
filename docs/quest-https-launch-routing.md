@@ -49,10 +49,14 @@ only to the Host origin on port `5183`.
 Build once, then run the host with the WebSocket gateway:
 
 ```sh
-bun run build
-ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174 \
-PORT=5183 \
-bun run serve:lan
+bun start
+```
+
+`bun start` defaults the same-machine experience target to HTTPS on port `5174`.
+For a separate Quest/LAN client machine, pass the explicit client origin:
+
+```sh
+ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174 bun start
 ```
 
 Use this built server path for end-to-end runtime checks. The normal SvelteKit
@@ -109,7 +113,7 @@ Then restart both servers. Host machine:
 bun run build
 ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174 \
 PORT=5183 \
-bun run serve:lan
+bun start
 ```
 
 Client machine:
@@ -129,9 +133,11 @@ It only redirects when the standalone VR client is also running with TLS and the
 host has an explicit HTTPS experience target. Without that configuration,
 `/launch` returns `500` with a clear message instead of falling back to HTTP.
 
-Without the explicit HTTPS experience target, the Host refuses `/launch` with a
-configuration error. This keeps Quest sessions from silently opening
-`http://<client-lan-ip-or-name>:5174/`.
+Without an HTTPS experience target, the Host refuses `/launch` with a
+configuration error. `bun start` supplies the same-host HTTPS target
+automatically; direct server entrypoints still require explicit HTTPS
+configuration. This keeps Quest sessions from silently opening a non-HTTPS
+client target.
 
 The Quest must trust the mkcert root certificate. Find it with:
 
@@ -175,7 +181,7 @@ Examples:
 | none | `https://192.168.50.194:5183/launch` | `500 Quest launch requires an HTTPS experience target...` |
 | `ICAROS_EXPERIENCE_PROTOCOL=https` | `https://192.168.50.194:5183/launch` | `https://192.168.50.194:5174/` for same-machine client checks |
 | `ICAROS_EXPERIENCE_ORIGIN=https://client.local:9443` | `https://host.local:5183/launch` | `https://client.local:9443/` |
-| `ICAROS_EXPERIENCE_ORIGIN=http://client.local:5174` | `https://host.local:5183/launch` | `500 ICAROS_EXPERIENCE_ORIGIN must use https for Quest launch.` |
+| non-HTTPS `ICAROS_EXPERIENCE_ORIGIN` | `https://host.local:5183/launch` | `500 ICAROS_EXPERIENCE_ORIGIN must use https for Quest launch.` |
 
 Loopback hostnames are rewritten to the first non-internal IPv4 address so the
 console can show Quest-safe URLs even when the operator opens the host locally.
@@ -187,11 +193,11 @@ Host process:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PORT` | `3000` for `server/index.ts`; use `5183` for this MVP | Host HTTP/HTTPS port. |
-| `HOST` | `0.0.0.0` | Network bind address for `bun run serve:lan`. |
+| `HOST` | `0.0.0.0` | Network bind address for `bun start`. |
 | `ICAROS_TLS_KEY_FILE` | `.certs/icaros-host-key.pem` | TLS key used by the Host process. Do not reuse this for the VR client. |
 | `ICAROS_TLS_CERT_FILE` | `.certs/icaros-host.pem` | TLS certificate used by the Host process. Do not reuse this for the VR client. |
 | `ICAROS_EXPERIENCE_ORIGIN` | none | Full HTTPS client origin override, for example `https://client.local:5174`. Required for two-machine setups. HTTP origins are rejected. |
-| `ICAROS_EXPERIENCE_PROTOCOL` | none | Same-machine convenience when no full origin override is set. Must be `https`; HTTP is rejected. |
+| `ICAROS_EXPERIENCE_PROTOCOL` | `https` through `bun start`; none for direct server entrypoints | Same-machine convenience when no full origin override is set. Must be `https`; HTTP is rejected. |
 | `ICAROS_EXPERIENCE_PORT` | `5174` | Experience client port when no full origin override is set. |
 | `ICAROS_EXPERIENCE_PATH` | `/` | Experience path; may contain `{experienceId}`. |
 
@@ -213,8 +219,8 @@ Standalone VR client:
 
 The experience client resolves the runtime socket from the current page:
 
-- Direct desktop HTTP pages resolve to `ws://.../ws/runtime`.
-- Quest/WebXR HTTPS pages resolve to `wss://.../ws/runtime`.
+- Runtime pages resolve to `wss://.../ws/runtime`.
+- Plain `ws://` is reserved for the M5 device boundary only.
 
 The standalone VR client proxies `/ws/runtime` back to the host during local
 development. That lets the browser experience use the same-origin socket path
@@ -227,7 +233,7 @@ directly or parse raw M5 frames.
 
 `ERR_CONNECTION_REFUSED` for `https://<host-lan-ip-or-name>:5183` usually means the host
 process is not running, is on another port, or is bound to loopback only. Start
-with `ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174 PORT=5183 bun run serve:lan`
+with `ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174 bun start`
 and confirm the process logs the bind address plus at least one openable URL,
 for example:
 
@@ -267,7 +273,7 @@ The HTTPS client-target regression was introduced in commit
 `src/lib/server/experiences/launch-routing.ts` and defaulted the experience
 target protocol to `readHttpProtocol(requestUrl.protocol)`. As a result,
 opening `https://<host>:5183/launch` also generated
-`https://<host>:5174/`, even when the client server on `5174` was plain HTTP or
+`https://<host>:5174/`, even when the client server on `5174` was non-HTTPS or
 running on a different machine.
 
 The current rule is stricter: `/launch` is always on the Host origin and never

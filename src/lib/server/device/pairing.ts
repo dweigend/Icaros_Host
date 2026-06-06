@@ -10,9 +10,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 const DEVICE_PAIRING_QUERY_KEY = 'pairing';
-const DEFAULT_DEVICE_WS_PORT = '5183';
 export const DEFAULT_HTTPS_DEVICE_WS_PORT = '5184';
-const VITE_DEV_PORT = '5173';
 const FALLBACK_TOKEN_BYTES = 18;
 const PERSISTED_PAIRING_TOKEN_FILE = resolve(
 	process.cwd(),
@@ -47,7 +45,7 @@ export function createPairedDeviceWebSocketUrl(wsOrigin: string): string {
 export function resolveDeviceWebSocketOrigin(wsOrigin: string): string {
 	const configuredOrigin = process.env.ICAROS_DEVICE_WS_ORIGIN?.trim();
 	if (configuredOrigin !== undefined && configuredOrigin !== '') {
-		return new URL(configuredOrigin).origin;
+		return readConfiguredDeviceWebSocketOrigin(configuredOrigin);
 	}
 
 	const url = new URL(wsOrigin);
@@ -58,13 +56,18 @@ export function resolveDeviceWebSocketOrigin(wsOrigin: string): string {
 		return url.origin;
 	}
 
-	if (wsOrigin.startsWith('wss://')) {
-		url.port = DEFAULT_HTTPS_DEVICE_WS_PORT;
-		return url.origin;
+	url.port = DEFAULT_HTTPS_DEVICE_WS_PORT;
+	return url.origin;
+}
+
+function readConfiguredDeviceWebSocketOrigin(origin: string): string {
+	const url = new URL(origin);
+	if (url.protocol !== 'ws:') {
+		throw new Error('ICAROS_DEVICE_WS_ORIGIN must use ws:// for the M5 device boundary.');
 	}
 
-	if (url.port === VITE_DEV_PORT) {
-		url.port = DEFAULT_DEVICE_WS_PORT;
+	if (url.pathname !== '/' || url.search !== '' || url.hash !== '') {
+		throw new Error('ICAROS_DEVICE_WS_ORIGIN must be an origin like ws://host:port.');
 	}
 
 	return url.origin;

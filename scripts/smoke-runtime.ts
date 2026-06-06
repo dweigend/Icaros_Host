@@ -258,8 +258,7 @@ function parseRuntimeMessage(data: string): RuntimeMessage | null {
 }
 
 function toWebSocketUrl(origin: URL, path: string): string {
-	const protocol = origin.protocol === 'https:' ? 'wss:' : 'ws:';
-	return `${protocol}//${origin.host}${path}`;
+	return `wss://${origin.host}${path}`;
 }
 
 function readNumber(value: string | undefined, fallback: number): number {

@@ -493,8 +493,7 @@ function createBrowserRuntimeSocketUrl(fallbackWsOrigin: string): string {
 		return `${fallbackWsOrigin}/ws/runtime`;
 	}
 
-	const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-	return `${protocol}//${window.location.host}/ws/runtime`;
+	return `wss://${window.location.host}/ws/runtime`;
 }
 
 function isControllerFrameFresh(usbSetup: UsbSetup, now: number): boolean {

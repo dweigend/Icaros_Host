@@ -1,10 +1,11 @@
 /**
  * Purpose: isolated plain-WebSocket probe for M5 controller debugging.
  *
- * The probe opens `ws://<mac-lan-ip>:8787/ws/device`, logs every connection and
+ * The probe opens `ws://<mac-lan-ip>:5184/ws/device`, logs every connection and
  * frame, and prints a normalized pitch/roll preview for orientation-like frames.
- * It is intentionally not wired into the Host runtime; use it only to prove that
- * an M5 can reach the Mac over plain WebSocket before changing production code.
+ * It is intentionally not wired into the Host runtime. Plain WS is allowed here
+ * only because this script isolates the M5 device boundary from HTTPS runtime
+ * and WebXR surfaces.
  */
 import { networkInterfaces } from 'node:os';
 import { type RawData, type WebSocket, WebSocketServer } from 'ws';
@@ -24,7 +25,7 @@ type OrientationPreview = Readonly<{
 }>;
 
 const DEFAULT_HOST = '0.0.0.0';
-const DEFAULT_PORT = 8787;
+const DEFAULT_PORT = 5184;
 const DEFAULT_PATH = '/ws/device';
 const MAX_ANGLE_DEGREES = 45;
 

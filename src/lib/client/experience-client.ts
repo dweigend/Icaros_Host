@@ -174,8 +174,7 @@ export function createIcarosExperienceClient(
 }
 
 function resolveRuntimeUrl(runtimePath: string): string {
-	const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-	return `${protocol}//${window.location.host}${runtimePath}`;
+	return `wss://${window.location.host}${runtimePath}`;
 }
 
 function readStableClientId(): string {
