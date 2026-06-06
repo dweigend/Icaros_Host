@@ -87,7 +87,7 @@ export function createConsolePageState(readData: () => PageData) {
 		questLaunchUrl: connection.questLaunchUrl,
 		experienceTargetUrl: connection.experienceTargetUrl,
 		m5SocketUrl: connection.pairedDeviceUrl,
-		runtimeSocketUrl: `${connection.wsOrigin}/ws/runtime`
+		runtimeSocketUrl: createBrowserRuntimeSocketUrl(connection.wsOrigin)
 	});
 	const debugTargetExperienceId = $derived(
 		debugStationActiveExperienceId === undefined
@@ -476,6 +476,15 @@ function createIndicator(
 	detail: string
 ): ControllerStatusIndicator {
 	return { label, value, tone, detail };
+}
+
+function createBrowserRuntimeSocketUrl(fallbackWsOrigin: string): string {
+	if (typeof window === 'undefined') {
+		return `${fallbackWsOrigin}/ws/runtime`;
+	}
+
+	const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+	return `${protocol}//${window.location.host}/ws/runtime`;
 }
 
 function formatUsbSetupDuration(
