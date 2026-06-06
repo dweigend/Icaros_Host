@@ -109,10 +109,10 @@ or `ICAROS_EXPERIENCE_PROTOCOL=https`; otherwise `/launch` returns a clear
 configuration error.
 
 The Quest launch URL itself is always the HTTPS Host endpoint
-`https://<host-lan-ip>:5183/launch`. The experience client URL is separate,
-commonly `https://<host-lan-ip>:5174/` for Quest/WebXR, and must never be shown
-with a `/launch` path. Plain HTTP client URLs are desktop-only direct checks,
-not launch targets.
+`https://<host-lan-ip-or-name>:5183/launch`. The experience client URL is
+separate, commonly `https://<client-lan-ip-or-name>:5174/` for Quest/WebXR, and
+must never be shown with a `/launch` path. Plain HTTP client URLs are
+desktop-only direct checks, not launch targets.
 
 The operator selects one concrete online runtime client in the console. The host
 sets `activeClientId` and derives `activeExperienceId` from that client. The
@@ -120,22 +120,27 @@ host forwards `control.orientation` only to the selected `activeClientId`.
 
 ## TODO
 
-- Create local HTTPS certificates for the Mac LAN address with `mkcert` and
-  store them at `.certs/icaros-host.pem` and
+- Create local HTTPS certificates for the Host LAN address with `mkcert` and
+  store them in the Host repo at `.certs/icaros-host.pem` and
   `.certs/icaros-host-key.pem`.
+- Create autonomous HTTPS certificates for the standalone VR client in the
+  Client repo with `bun run setup:https`. Do not reuse or symlink Host
+  certificate files.
 - Install the mkcert root CA on the Meta Quest so the headset trusts
-  `https://<mac-lan-ip>:5183/launch` and the redirected experience origin.
+  `https://<host-lan-ip-or-name>:5183/launch` and the redirected client origin.
 - Restart the host with
-  `ICAROS_EXPERIENCE_PROTOCOL=https PORT=5183 bun run serve:lan` and confirm it
-  listens on `https://0.0.0.0:5183` when certificates are present.
-- Start the standalone experience client on port `5174` and keep
+  `ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174 PORT=5183 bun run serve:lan`
+  and confirm it listens on `https://0.0.0.0:5183` when certificates are
+  present.
+- Start the standalone experience client on port `5174` with
+  `ICAROS_HOST_ORIGIN=https://<host-lan-ip-or-name>:5183` and keep
   `/ws/runtime` proxied back to the host.
 - Select the concrete runtime client in the host console from one stable LAN
   origin.
-- Verify that `https://<mac-lan-ip>:5183/launch` returns a `307` redirect to
-  `https://<mac-lan-ip>:5174/` only after the standalone client runs with TLS
-  and the host is started with `ICAROS_EXPERIENCE_PROTOCOL=https` or
-  `ICAROS_EXPERIENCE_ORIGIN=https://<mac-lan-ip>:5174`.
+- Verify that `https://<host-lan-ip-or-name>:5183/launch` returns a `307`
+  redirect to `https://<client-lan-ip-or-name>:5174/` only after the standalone
+  client runs with TLS and the host is started with
+  `ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174`.
 - Verify that `/launch` returns `500` with a configuration message when no
   HTTPS experience target is configured.
 - Open the launch URL on the Quest and confirm the WebXR experience connects to

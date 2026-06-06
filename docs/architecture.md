@@ -129,7 +129,8 @@ Non-loopback hostnames are preserved. If the operator opens
 ## HTTPS Launch Target Policy
 
 The launch resolver never falls back to HTTP. Quest-facing launch redirects
-require an explicit HTTPS experience target:
+require an explicit HTTPS experience target. The preferred two-machine form is
+`ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174`:
 
 - Without `ICAROS_EXPERIENCE_ORIGIN=https://...` or
   `ICAROS_EXPERIENCE_PROTOCOL=https`, `/launch` returns `500` with a
@@ -137,7 +138,9 @@ require an explicit HTTPS experience target:
 - `ICAROS_EXPERIENCE_ORIGIN=http://...` and
   `ICAROS_EXPERIENCE_PROTOCOL=http` are rejected.
 - With `ICAROS_EXPERIENCE_PROTOCOL=https`, `/launch` targets
-  `https://<host>:5174/` unless `ICAROS_EXPERIENCE_PORT` changes the port.
+  `https://<host>:5174/` unless `ICAROS_EXPERIENCE_PORT` changes the port. Treat
+  that as a same-machine convenience; do not use it when Host and Client run on
+  different machines.
 
 Browser pages loaded from HTTPS must use WSS for `/ws/runtime`. The public
 experience client derives that automatically from `window.location.protocol`.

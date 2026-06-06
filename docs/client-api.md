@@ -207,23 +207,23 @@ point for socket testing:
 
 ```sh
 bun run build
-ICAROS_EXPERIENCE_PROTOCOL=https PORT=5183 bun run serve:lan
+ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174 PORT=5183 bun run serve:lan
 ```
 
 ## Local Demo Client
 
-An intentionally plain desktop-only client can be opened directly at:
+The standalone VR client normally runs HTTPS-only with its own local
+certificates:
 
 ```text
-http://localhost:5174/
+https://<client-lan-ip-or-name>:5174/
 ```
 
-That URL is only for direct desktop checks. When opened through the Quest launch
-route, the headset must use the host HTTPS LAN origin instead. The host owns
-`/launch`:
+When opened through the Quest launch route, the headset must use the host HTTPS
+LAN origin first. The host owns `/launch`:
 
 ```text
-https://<mac-lan-ip>:5183/launch
+https://<host-lan-ip-or-name>:5183/launch
 ```
 
 The experience URL is separate and must match the standalone client server.
@@ -232,6 +232,6 @@ HTTPS experience target and returns a configuration error instead of redirecting
 to HTTP.
 
 ```text
-http://<mac-lan-ip>:5174/      direct desktop only; never a /launch target
-https://<mac-lan-ip>:5174/     Quest/WebXR experience target
+https://<client-lan-ip-or-name>:5174/    Quest/WebXR experience target
+http://localhost:5174/                  desktop-only fallback if a separate plain client exists
 ```

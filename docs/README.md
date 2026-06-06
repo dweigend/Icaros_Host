@@ -39,15 +39,16 @@ close to the code while the top-level README stays short.
 
 | Surface | Local development | Quest/LAN development |
 | --- | --- | --- |
-| Host console | `http://localhost:5183/` | `https://<mac-lan-ip>:5183/` |
-| Quest launch endpoint | no HTTP launch path; use HTTPS | `https://<mac-lan-ip>:5183/launch` |
-| Experience client | `http://localhost:5174/` for direct desktop checks | `https://<mac-lan-ip>:5174/` for Quest/WebXR |
-| Runtime WebSocket | `ws://localhost:5183/ws/runtime` | `wss://<mac-lan-ip>:5183/ws/runtime` |
-| M5 WebSocket | `ws://<mac-lan-ip>:5183/ws/device` | `ws://<mac-lan-ip>:5184/ws/device` when Host runs HTTPS |
+| Host console | `http://localhost:5183/` for desktop-only checks | `https://<host-lan-ip-or-name>:5183/` |
+| Quest launch endpoint | no HTTP launch path; use HTTPS | `https://<host-lan-ip-or-name>:5183/launch` |
+| Experience client | local desktop checks only | `https://<client-lan-ip-or-name>:5174/` |
+| Runtime WebSocket | `ws://localhost:5183/ws/runtime` for desktop-only checks | `wss://<host-lan-ip-or-name>:5183/ws/runtime` |
+| M5 WebSocket | `ws://<host-lan-ip-or-name>:5183/ws/device` when Host is plain HTTP | `ws://<host-lan-ip-or-name>:5184/ws/device` when Host runs HTTPS |
 
 Use plain HTTP only for direct desktop development of non-launch pages.
 `/launch` does not redirect to HTTP and should not be advertised as an HTTP
 URL. For the Meta Quest and WebXR, use HTTPS on the LAN address and make the
 headset trust the development certificate authority.
 The `/launch` endpoint is always on the Host origin. Do not use
-`<mac-lan-ip>:5174/launch`; port `5174` is the experience client origin only.
+`<client-lan-ip-or-name>:5174/launch`; port `5174` is the experience client
+origin only. The Host and Client own separate certificates.

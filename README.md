@@ -91,8 +91,10 @@ boundary remains separate and may use its firmware-compatible WebSocket input
 path.
 
 For desktop smoke tests the client can still be opened directly on plain
-`http://<mac-lan-ip>:5174/`, but `/launch` never targets that HTTP origin.
-WebXR on Quest requires the client origin itself to be HTTPS.
+desktop-only origins, but `/launch` never targets HTTP. WebXR on Quest requires
+the client origin itself to be HTTPS. The Host and standalone VR client each own
+their own certificate files; do not share or symlink Host certificates into the
+Client repo.
 
 ## Control API
 

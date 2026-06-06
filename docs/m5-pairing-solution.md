@@ -93,8 +93,8 @@ startup discovery timeout.
 
 For Quest/WebXR:
 
-- keep the Host UI/runtime on HTTPS/WSS at `https://<mac-lan-ip>:5183`
-- keep the M5 on plain WS at `ws://<mac-lan-ip>:5184/ws/device?...`
+- keep the Host UI/runtime on HTTPS/WSS at `https://<host-lan-ip-or-name>:5183`
+- keep the M5 on plain WS at `ws://<host-lan-ip-or-name>:5184/ws/device?...`
 - do not connect experiences directly to the M5
 - route raw M5 frames only through the Host
 
@@ -102,11 +102,11 @@ When pairing fails:
 
 1. Enable debug:
    ```sh
-   bun run m5:pairing -- debug-on --host-origin https://<mac-lan-ip>:5183
+   bun run m5:pairing -- debug-on --host-origin https://<host-lan-ip-or-name>:5183
    ```
 2. Read the snapshot:
    ```sh
-   bun run m5:pairing -- snapshot --host-origin https://<mac-lan-ip>:5183
+   bun run m5:pairing -- snapshot --host-origin https://<host-lan-ip-or-name>:5183
    ```
 3. Check the controller diagnose output:
    - `wifiStatus=3`
