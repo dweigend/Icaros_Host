@@ -18,6 +18,9 @@ close to the code while the top-level README stays short.
   agents.
 - [M5 Pairing Solution](m5-pairing-solution.md): confirmed root cause, fix,
   verification matrix, and best practices for the USB/WLAN/WebSocket pairing.
+- [Station Orchestration Roadmap](station-orchestration-roadmap.md): optional
+  post-MVP expansion path for multiple clients, devices, outputs, and
+  externally offered experiences.
 
 ## Current MVP Rules
 
