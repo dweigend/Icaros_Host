@@ -44,6 +44,7 @@ import {
 import {
 	recordDeviceSocketUpgrade,
 	recordPairedDeviceFrame,
+	recordPairedDeviceSocketClose,
 	recordPairedDeviceSocketOpen,
 	recordRejectedDeviceSocket
 } from '$lib/server/device/usb-setup';
@@ -197,6 +198,7 @@ export class IcarosWebSocketGateway {
 
 		socket.on('close', () => {
 			this.#lastDeviceFrameAt = null;
+			recordPairedDeviceSocketClose(formatRemoteAddress(request));
 			this.#publishControl(createNeutralControl());
 		});
 	}

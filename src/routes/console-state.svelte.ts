@@ -22,6 +22,7 @@ const DEBUG_CLIENT_ID = 'host-console-debug';
 const DEFAULT_USB_DEVICE_ID = 'icaros-station-a-m5';
 const USB_SETUP_REFRESH_MS = 1_000;
 const CONSOLE_CLOCK_MS = 250;
+const CONTROLLER_FRAME_FRESH_MS = 5_000;
 
 export type ConsoleConnectionUrls = Readonly<{
 	consoleUrl: string;
@@ -104,7 +105,7 @@ export function createConsolePageState(readData: () => PageData) {
 	const debugPitchPercent = $derived(toUnitPercent(debugLastControl?.pitch ?? 0));
 	const debugRollPercent = $derived(toUnitPercent(debugLastControl?.roll ?? 0));
 	const debugQualityPercent = $derived(toQualityPercent(debugLastControl?.quality ?? 0));
-	const usbSetupTone = $derived(readUsbSetupTone(usbSetup.state));
+	const usbSetupTone = $derived(readUsbSetupTone(usbSetup, usbNow));
 	const usbSetupDuration = $derived(
 		formatUsbSetupDuration(usbSetup.startedAt, usbSetup.finishedAt, usbNow)
 	);
@@ -121,7 +122,7 @@ export function createConsolePageState(readData: () => PageData) {
 	});
 
 	$effect(() => {
-		if (!isUsbSetupBusy(usbSetup.state)) {
+		if (!isUsbSetupBusy(usbSetup.state) && usbSetup.state !== 'ready') {
 			return;
 		}
 
@@ -310,16 +311,16 @@ function readDebugStatusTone(status: RuntimeDebugStatus): StatusDotTone {
 	return 'default';
 }
 
-function readUsbSetupTone(state: UsbSetupState): StatusDotTone {
-	if (state === 'ready') {
-		return 'success';
+function readUsbSetupTone(usbSetup: UsbSetup, now: number): StatusDotTone {
+	if (usbSetup.state === 'ready') {
+		return isControllerFrameFresh(usbSetup, now) ? 'success' : 'warning';
 	}
 
-	if (isUsbSetupBusy(state)) {
+	if (isUsbSetupBusy(usbSetup.state)) {
 		return 'warning';
 	}
 
-	if (state === 'failed') {
+	if (usbSetup.state === 'failed') {
 		return 'danger';
 	}
 
@@ -444,8 +445,17 @@ function readUsbStatusIndicator(usbSetup: UsbSetup): ControllerStatusIndicator {
 }
 
 function readWlanIndicator(usbSetup: UsbSetup, usbLastFrameAge: string): ControllerStatusIndicator {
-	if (usbSetup.wlanOk) {
+	if (usbSetup.wlanOk && isControllerFrameFresh(usbSetup, Date.now())) {
 		return createIndicator('WLAN/WebSocket', 'ok', 'success', `Frame ${usbLastFrameAge}`);
+	}
+
+	if (usbSetup.wlanOk) {
+		return createIndicator(
+			'WLAN/WebSocket',
+			'stale',
+			'warning',
+			`Letzter Frame ${usbLastFrameAge}`
+		);
 	}
 
 	if (usbSetup.state === 'wlan_test') {
@@ -485,6 +495,14 @@ function createBrowserRuntimeSocketUrl(fallbackWsOrigin: string): string {
 
 	const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 	return `${protocol}//${window.location.host}/ws/runtime`;
+}
+
+function isControllerFrameFresh(usbSetup: UsbSetup, now: number): boolean {
+	return (
+		usbSetup.lastFrameAt !== null &&
+		usbSetup.wlanOk &&
+		now - usbSetup.lastFrameAt <= CONTROLLER_FRAME_FRESH_MS
+	);
 }
 
 function formatUsbSetupDuration(

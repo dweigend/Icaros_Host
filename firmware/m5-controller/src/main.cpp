@@ -21,7 +21,7 @@
 
 namespace {
 
-constexpr const char *FirmwareVersion = "0.2.1-icaros-minimal";
+constexpr const char *FirmwareVersion = "0.2.2-icaros-ws-reconnect";
 constexpr const char *DeviceRole = "controller";
 constexpr const char *PreferencesNamespace = "icaros-m5";
 constexpr const char *FallbackDeviceId = "icaros-station-a-m5";
@@ -352,10 +352,12 @@ void handleWebSocketEvent(WStype_t type, uint8_t *, size_t) {
       break;
     case WStype_DISCONNECTED:
       webSocketConnected = false;
+      webSocketConfigured = false;
       lastWebSocketError = "disconnected";
       break;
     case WStype_ERROR:
       webSocketConnected = false;
+      webSocketConfigured = false;
       lastWebSocketError = "websocket error";
       break;
     default:

@@ -4,7 +4,7 @@
  * sync with this value; this module does not perform USB or PlatformIO work.
  */
 
-export const REQUIRED_M5_FIRMWARE_VERSION = '0.2.1-icaros-minimal';
+export const REQUIRED_M5_FIRMWARE_VERSION = '0.2.2-icaros-ws-reconnect';
 
 export type M5FirmwareStatus = 'unknown' | 'current' | 'outdated' | 'missing';
 

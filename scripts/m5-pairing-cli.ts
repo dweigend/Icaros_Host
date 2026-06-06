@@ -21,6 +21,7 @@ const DEFAULT_DEVICE_ID = 'icaros-station-a-m5';
 const DEFAULT_TIMEOUT_MS = 125_000;
 const DEFAULT_POLL_INTERVAL_MS = 1_000;
 const PAIRING_API_PATH = '/api/m5-pairing';
+const CONTROLLER_FRAME_FRESH_MS = 5_000;
 const execFileAsync = promisify(execFile);
 
 type Command =
@@ -413,7 +414,11 @@ async function pollPairing(config: CliConfig, waitForReady: boolean = true): Pro
 			lastLine = line;
 		}
 
-		if (status.state === 'ready' || (!waitForReady && !isPairingBusyState(status.state))) {
+		if (status.state === 'ready' && status.flashState !== 'running') {
+			return;
+		}
+
+		if (!waitForReady && status.flashState !== 'running' && !isPairingBusyState(status.state)) {
 			return;
 		}
 
@@ -519,7 +524,7 @@ function readChecklistItems(
 		},
 		{
 			key: 'wlan',
-			ok: status.wlanOk,
+			ok: isControllerFrameFresh(status),
 			detail:
 				status.controllerIssue ??
 				(status.lastFrameAt === null
@@ -534,7 +539,11 @@ function readNextAction(status: UsbSetupSnapshot): string {
 		return 'wait-or-abort';
 	}
 
-	if (status.state === 'ready' && status.wlanOk && status.firmwareStatus === 'current') {
+	if (
+		status.state === 'ready' &&
+		isControllerFrameFresh(status) &&
+		status.firmwareStatus === 'current'
+	) {
 		return 'ready';
 	}
 
@@ -554,6 +563,10 @@ function readNextAction(status: UsbSetupSnapshot): string {
 		return 'wait-for-wlan-or-debug';
 	}
 
+	if (!isControllerFrameFresh(status)) {
+		return 'wait-for-fresh-frame';
+	}
+
 	return 'ready';
 }
 
@@ -566,6 +579,7 @@ function formatStatus(status: UsbSetupSnapshot): string {
 		`usbPort=${status.usbPort ?? '<none>'}`,
 		`usbOk=${status.usbOk}`,
 		`wlanOk=${status.wlanOk}`,
+		`wlanFresh=${isControllerFrameFresh(status)}`,
 		`firmware=${status.currentFirmwareVersion ?? '<none>'}`,
 		`requiredFirmware=${status.requiredFirmwareVersion}`,
 		`firmwareStatus=${status.firmwareStatus}`,
@@ -580,6 +594,14 @@ function formatStatus(status: UsbSetupSnapshot): string {
 
 function formatDebugLine(line: PairingDebugLine): string {
 	return `${new Date(line.timestamp).toISOString()} ${line.source}: ${line.message}`;
+}
+
+function isControllerFrameFresh(status: UsbSetupSnapshot): boolean {
+	return (
+		status.lastFrameAt !== null &&
+		status.wlanOk &&
+		Date.now() - status.lastFrameAt <= CONTROLLER_FRAME_FRESH_MS
+	);
 }
 
 function formatCliError(error: unknown): string {

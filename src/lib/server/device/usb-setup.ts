@@ -376,11 +376,22 @@ export function startUsbProbe(): UsbSetupSnapshot {
 			failPairing(status.error ?? `USB probe failed with exit code ${code ?? 'unknown'}.`);
 			return;
 		}
+		status.finishedAt = Date.now();
+		status.usbOk = status.usbConnected;
+		if (status.usbConnected && status.serverUrl !== null && status.firmwareStatus === 'current') {
+			status.state = 'wlan_test';
+			status.step = 'WLAN/WebSocket prüfen';
+			status.progress = 85;
+			status.finishedAt = null;
+			status.message = 'USB geprüft. Warte auf frischen Controller-Frame über WLAN/LAN.';
+			startWlanTimeout();
+			writeDebugSnapshot();
+			return;
+		}
+
 		status.state = 'idle';
 		status.step = 'USB geprüft';
 		status.progress = 100;
-		status.finishedAt = Date.now();
-		status.usbOk = status.usbConnected;
 		status.message = status.usbConnected
 			? 'Controller per USB erkannt.'
 			: 'Kein Controller per USB erkannt.';
@@ -430,15 +441,16 @@ export function startFirmwareFlash(): UsbSetupSnapshot {
 			failPairing(status.error ?? `Firmware flash failed with exit code ${code ?? 'unknown'}.`);
 			return;
 		}
-		status.state = 'idle';
-		status.step = 'Firmware aktualisiert';
-		status.progress = 100;
-		status.finishedAt = Date.now();
+		status.state = 'wlan_test';
+		status.step = 'WLAN/WebSocket prüfen';
+		status.progress = 85;
+		status.finishedAt = null;
 		status.flashState = 'succeeded';
 		status.currentFirmwareVersion = REQUIRED_M5_FIRMWARE_VERSION;
 		status.firmwareVersion = REQUIRED_M5_FIRMWARE_VERSION;
 		status.firmwareStatus = 'current';
-		status.message = 'Firmware aktualisiert. Controller wurde durch den Upload zurückgesetzt.';
+		status.message = 'Firmware aktualisiert. Warte auf gepaarten Controller über WLAN/LAN.';
+		startWlanTimeout();
 		writeDebugSnapshot();
 	});
 
@@ -530,6 +542,24 @@ export function recordPairedDeviceSocketOpen(remote: string | null): void {
 	appendDebug('websocket', `Paired device WebSocket connected from ${remote ?? 'unknown remote'}.`);
 }
 
+export function recordPairedDeviceSocketClose(remote: string | null): void {
+	appendDebug('websocket', `Paired device WebSocket closed from ${remote ?? 'unknown remote'}.`);
+	if (!status.wlanOk && status.state !== 'ready') {
+		return;
+	}
+
+	status.wlanOk = false;
+	status.state = 'wlan_test';
+	status.step = 'WLAN/WebSocket prüfen';
+	status.progress = 85;
+	status.finishedAt = null;
+	status.controllerIssue = 'Controller-WebSocket wurde getrennt. Warte auf erneuten Frame.';
+	status.message = status.controllerIssue;
+	status.error = null;
+	startWlanTimeout();
+	writeDebugSnapshot();
+}
+
 export function recordPairedDeviceTcpConnection(remote: string | null): void {
 	appendDebug('websocket', `Plain device TCP connection from ${remote ?? 'unknown remote'}.`);
 }
@@ -543,15 +573,11 @@ export function recordDeviceSocketUpgrade(details: DeviceUpgradeDiagnostics): vo
 }
 
 function canAcceptPairedDeviceFrame(): boolean {
-	if (status.state === 'idle') {
-		return false;
-	}
-
-	if (status.state !== 'failed') {
+	if (status.state === 'wlan_test' || status.state === 'ready') {
 		return status.startedAt !== null;
 	}
 
-	return status.startedAt !== null && status.usbOk && status.serverUrl !== null;
+	return false;
 }
 
 function resetStatus(serverUrl: string, input: UsbPairingInput): void {

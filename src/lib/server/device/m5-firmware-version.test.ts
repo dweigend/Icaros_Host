@@ -10,11 +10,11 @@ import { REQUIRED_M5_FIRMWARE_VERSION, readM5FirmwareStatus } from './m5-firmwar
 
 describe('readM5FirmwareStatus', () => {
 	it('marks the required local firmware as current', () => {
-		expect(readM5FirmwareStatus('0.2.1-icaros-minimal')).toBe('current');
+		expect(readM5FirmwareStatus('0.2.2-icaros-ws-reconnect')).toBe('current');
 	});
 
 	it('marks old firmware as outdated', () => {
-		expect(readM5FirmwareStatus('0.1.0')).toBe('outdated');
+		expect(readM5FirmwareStatus('0.2.1-icaros-minimal')).toBe('outdated');
 	});
 
 	it('marks a missing firmware version as missing', () => {
