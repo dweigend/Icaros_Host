@@ -1,4 +1,4 @@
-# Icaros Host
+# Icaros Host ✈️
 
 Dies ist ein Host-Server für VR Experiences.
 
@@ -16,7 +16,7 @@ Die wichtigsten Aufgaben sind:
 Der Host rendert keine VR Experience. Die Experiences laufen als eigene Clients
 und verbinden sich über die dokumentierte Runtime-Schnittstelle mit dem Host.
 
-## Architektur
+## Architektur 🧭
 
 ```mermaid
 flowchart LR
