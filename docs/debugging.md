@@ -45,10 +45,12 @@ boundary:
 
 The CLI must stay a thin automation surface over the running Host. It should call
 the Host JSON diagnostics endpoint at `/api/m5-pairing`, while the web console
-uses Svelte actions. Both transports must call the same Host core. The CLI must
-not fork its own pairing state machine, generate an independent pairing token,
-parse raw M5 frames as a second authority, or write firmware/configuration
-through a separate adapter-repo workflow.
+uses Svelte actions. `/api/m5-pairing` is diagnostics-only for CLI and
+automation; it is not a public UI helper API, not an experience API, and not a
+second pairing implementation. Both transports must call the same Host core.
+The CLI must not fork its own pairing state machine, generate an independent
+pairing token, parse raw M5 frames as a second authority, or write
+firmware/configuration through a separate adapter-repo workflow.
 
 Anti-pattern: do not duplicate M5 pairing logic in the CLI. If pairing behavior
 changes, change the Host core first and keep the web UI and CLI as clients of
@@ -63,9 +65,10 @@ endpoints:
 bun start
 ```
 
-For Quest `/launch` debugging, the Host must also have an explicit HTTPS
-experience target, for example
-`ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174 bun start`.
+For Quest `/launch` debugging, follow
+[Quest HTTPS Launch Routing](quest-https-launch-routing.md): the experience
+client must register an HTTPS `url`, and the operator must select that concrete
+online runtime client before opening `/launch`.
 
 Use one stable origin per run. For Quest/LAN debugging, prefer the LAN HTTPS
 origin:

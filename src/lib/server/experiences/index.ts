@@ -1,5 +1,4 @@
 /**
- * Purpose: public experience-discovery entrypoint for the single host console.
+ * Purpose: public launch-routing entrypoint for registered experience clients.
  */
-export * from './discovery';
 export * from './launch-routing';

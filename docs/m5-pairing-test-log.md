@@ -4,6 +4,10 @@ Purpose: this log captures the M5 USB/WiFi/WebSocket diagnostic runs, observed
 failure modes, and working hypotheses. It is the source material for a later
 diagnosis and best-practice report.
 
+Historical status: this is an archival investigation log, not current setup
+guidance. For the maintained summary use [M5 Pairing Solution](m5-pairing-solution.md);
+for current diagnostics workflow use [Debugging](debugging.md).
+
 Safety boundary:
 
 - Do not store WiFi passwords in this file.
@@ -55,7 +59,7 @@ HTTPS/TLS port fails before the WebSocket upgrade.
 The Web UI and CLI use the same Host pairing core:
 
 - Human UI: Svelte actions.
-- LLM/automation CLI: JSON API at `/api/m5-pairing`.
+- LLM/automation CLI: diagnostics-only JSON API at `/api/m5-pairing`.
 - Shared server core: `src/lib/server/device/pairing-service.ts`.
 
 Best-practice note: keep CLI as a diagnostic adapter. Do not duplicate pairing

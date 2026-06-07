@@ -3,98 +3,39 @@
  * WebSocket boundaries. They keep external data out of typed runtime state until
  * the M1 contract is proven.
  */
-import {
-	type ClientHeartbeatPayload,
-	type ClientHelloPayload,
-	type ClientRegisteredPayload,
-	type ClientRegisterPayload,
-	type ClientRejectedPayload,
-	type ControlOrientation,
-	type ExperienceManifest,
-	type ExperienceMode,
-	PROTOCOL_VERSION,
-	type RequiredDevice,
-	type RuntimeClientSummary,
-	type RuntimeClientsPayload,
-	type StationState
+import type {
+	ClientHeartbeatPayload,
+	ClientHelloPayload,
+	ClientRegisteredPayload,
+	ClientRejectedPayload,
+	ControlOrientation,
+	OperatorDiagnosticRegistrationPayload,
+	RuntimeClientSummary,
+	RuntimeClientsPayload,
+	StationState
 } from './types';
 
 export type ValidationResult<TValue> =
 	| Readonly<{ ok: true; value: TValue }>
 	| Readonly<{ ok: false; error: string }>;
 
-export function validateExperienceManifest(input: unknown): ValidationResult<ExperienceManifest> {
-	if (!isRecord(input)) {
-		return fail('manifest must be an object');
-	}
-
-	const id = readSlug(input.id, 'manifest.id must be a non-empty slug');
-	if (!id.ok) {
-		return id;
-	}
-
-	const title = readString(input.title, 'manifest.title must be a non-empty string');
-	if (!title.ok) {
-		return title;
-	}
-
-	const entry = readManifestEntry(input.entry, id.value);
-	if (!entry.ok) {
-		return entry;
-	}
-
-	const protocol = readProtocol(input.protocol);
-	if (!protocol.ok) {
-		return protocol;
-	}
-
-	const mode = readExperienceMode(input.mode);
-	if (!mode.ok) {
-		return mode;
-	}
-
-	const requiredDevices = readRequiredDevices(input.requiredDevices);
-	if (!requiredDevices.ok) {
-		return requiredDevices;
-	}
-
-	return ok({
-		id: id.value,
-		title: title.value,
-		entry: entry.value,
-		requiredDevices: requiredDevices.value,
-		protocol: protocol.value,
-		mode: mode.value
-	});
-}
-
-export function validateClientRegisterPayload(
+export function validateOperatorDiagnosticRegistrationPayload(
 	input: unknown
-): ValidationResult<ClientRegisterPayload> {
+): ValidationResult<OperatorDiagnosticRegistrationPayload> {
 	if (!isRecord(input)) {
-		return fail('client.register payload must be an object');
+		return fail('operator.diagnostic.register payload must be an object');
 	}
 
-	const role = readClientRole(input.role);
-	if (!role.ok) {
-		return role;
+	if ('role' in input || 'clientId' in input || 'experienceId' in input) {
+		return fail('operator.diagnostic.register payload must not include client identity fields');
 	}
 
-	const id = readString(input.id, 'client.register id must be a non-empty string');
+	const id = readString(input.id, 'operator.diagnostic.register id must be a non-empty string');
 	if (!id.ok) {
 		return id;
 	}
 
-	const experienceId = readOptionalSlug(input.experienceId);
-	if (!experienceId.ok) {
-		return experienceId;
-	}
-
-	return ok({
-		role: role.value,
-		id: id.value,
-		...(experienceId.value === undefined ? {} : { experienceId: experienceId.value })
-	});
+	return ok({ id: id.value });
 }
 
 export function validateClientHelloPayload(input: unknown): ValidationResult<ClientHelloPayload> {
@@ -301,7 +242,7 @@ export function validateControlOrientation(input: unknown): ValidationResult<Con
 	});
 }
 
-export function isNonEmptySlug(value: unknown): value is string {
+function isNonEmptySlug(value: unknown): value is string {
 	return typeof value === 'string' && /^[a-z0-9][a-z0-9-]*$/.test(value);
 }
 
@@ -344,14 +285,6 @@ function readSlug(value: unknown, error: string): ValidationResult<string> {
 	}
 
 	return ok(value);
-}
-
-function readOptionalSlug(value: unknown): ValidationResult<string | undefined> {
-	if (value === undefined) {
-		return ok(undefined);
-	}
-
-	return readSlug(value, 'client.register experienceId must be a slug when present');
 }
 
 function readNullableSlug(value: unknown): ValidationResult<string | null> {
@@ -463,46 +396,6 @@ function readFiniteNumber(value: unknown, error: string): ValidationResult<numbe
 	return ok(value);
 }
 
-function readManifestEntry(value: unknown, id: string): ValidationResult<string> {
-	if (!isNonEmptyString(value)) {
-		return fail(`manifest.entry must be a non-empty metadata string for ${id}`);
-	}
-
-	return ok(value);
-}
-
-function readProtocol(value: unknown): ValidationResult<typeof PROTOCOL_VERSION> {
-	if (value !== PROTOCOL_VERSION) {
-		return fail(`manifest.protocol must be ${PROTOCOL_VERSION}`);
-	}
-
-	return ok(value);
-}
-
-function readExperienceMode(value: unknown): ValidationResult<ExperienceMode> {
-	if (!isExperienceMode(value)) {
-		return fail('manifest.mode must be prototype or production');
-	}
-
-	return ok(value);
-}
-
-function readRequiredDevices(value: unknown): ValidationResult<readonly RequiredDevice[]> {
-	if (!Array.isArray(value) || !value.every(isRequiredDevice)) {
-		return fail('manifest.requiredDevices must contain quest and/or m5');
-	}
-
-	return ok(value);
-}
-
-function readClientRole(value: unknown): ValidationResult<ClientRegisterPayload['role']> {
-	if (value !== 'operator' && value !== 'quest' && value !== 'experience') {
-		return fail('client.register role must be operator, quest, or experience');
-	}
-
-	return ok(value);
-}
-
 function readUnitNumber(value: unknown, error: string): ValidationResult<number> {
 	if (typeof value !== 'number' || !Number.isFinite(value) || value < -1 || value > 1) {
 		return fail(error);
@@ -521,12 +414,4 @@ function readQualityNumber(value: unknown): ValidationResult<number> {
 
 function isNonEmptyString(value: unknown): value is string {
 	return typeof value === 'string' && value.trim().length > 0;
-}
-
-function isExperienceMode(value: unknown): value is ExperienceMode {
-	return value === 'prototype' || value === 'production';
-}
-
-function isRequiredDevice(value: unknown): value is RequiredDevice {
-	return value === 'quest' || value === 'm5';
 }

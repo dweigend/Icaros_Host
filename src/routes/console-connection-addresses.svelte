@@ -40,7 +40,7 @@
                     <span><ExternalLink size={16} aria-hidden="true" /></span>
                     <div>
                         {urls.experienceTargetUrl ??
-                            "pending active experience"}
+                            "pending selected runtime client"}
                     </div>
                 </li>
                 <li>

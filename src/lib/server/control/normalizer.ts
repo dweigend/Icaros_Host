@@ -13,13 +13,13 @@ export const STALE_AFTER_MS = 1_000;
  * true = pitch and roll are softened across frames.
  * false = each normalized frame is forwarded without smoothing.
  */
-export const SMOOTH_NORMALIZED_CONTROLS = true;
+const SMOOTH_NORMALIZED_CONTROLS = true;
 
 /**
  * Smoothing factor for pitch and roll in the range 0..1.
  * 1 = no visible smoothing, 0 = stays almost entirely at the previous value.
  */
-export const NORMALIZED_CONTROL_SMOOTHING = 0.25;
+const NORMALIZED_CONTROL_SMOOTHING = 0.25;
 
 const MAX_ANGLE_DEGREES = 45;
 

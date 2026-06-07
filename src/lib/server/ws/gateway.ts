@@ -17,16 +17,16 @@ import { type WebSocket, WebSocketServer } from 'ws';
 import {
 	type ClientHeartbeatPayload,
 	type ClientHelloPayload,
-	type ClientRegisterPayload,
 	type ControlOrientation,
 	createClientRegisteredMessage,
 	createClientRejectedMessage,
 	createControlOrientationMessage,
 	createRuntimeClientsMessage,
 	createStationStateMessage,
+	type OperatorDiagnosticRegistrationPayload,
 	validateClientHeartbeatPayload,
 	validateClientHelloPayload,
-	validateClientRegisterPayload
+	validateOperatorDiagnosticRegistrationPayload
 } from '$lib/protocol';
 import {
 	createNeutralControl,
@@ -62,10 +62,13 @@ type GatewayUpgradeMode = 'all' | 'device-only';
 type RuntimeClientMessage =
 	| Readonly<{ type: 'client.hello'; payload: ClientHelloPayload }>
 	| Readonly<{ type: 'client.heartbeat'; payload: ClientHeartbeatPayload }>
-	| Readonly<{ type: 'client.register'; payload: ClientRegisterPayload }>
+	| Readonly<{
+			type: 'operator.diagnostic.register';
+			payload: OperatorDiagnosticRegistrationPayload;
+	  }>
 	| Readonly<{ type: 'client.rejected'; reason: string }>;
 
-export class IcarosWebSocketGateway {
+class IcarosWebSocketGateway {
 	#deviceServer = new WebSocketServer({ noServer: true });
 	#runtimeServer = new WebSocketServer({ noServer: true });
 	#runtimeClients = runtimeClientRegistry;
@@ -232,7 +235,10 @@ export class IcarosWebSocketGateway {
 				return;
 			}
 
-			client = this.#runtimeClients.replaceRegistration(client, message.payload);
+			client = this.#runtimeClients.replaceRegistration(client, {
+				role: 'operator',
+				id: message.payload.id
+			});
 			this.#runtimeClients.sendControlToClient(
 				client,
 				createControlOrientationMessage(this.#lastControl),
@@ -363,9 +369,11 @@ function readRuntimeClientMessage(input: string): RuntimeClientMessage | null {
 			return validation.ok ? { type: 'client.heartbeat', payload: validation.value } : null;
 		}
 
-		if (parsed.type === 'client.register') {
-			const validation = validateClientRegisterPayload(parsed.payload);
-			return validation.ok ? { type: 'client.register', payload: validation.value } : null;
+		if (parsed.type === 'operator.diagnostic.register') {
+			const validation = validateOperatorDiagnosticRegistrationPayload(parsed.payload);
+			return validation.ok
+				? { type: 'operator.diagnostic.register', payload: validation.value }
+				: { type: 'client.rejected', reason: validation.error };
 		}
 	} catch {
 		return null;

@@ -174,7 +174,8 @@ changing the device protocol or adding multi-session behavior.
 - Keep `activeExperienceId` for compatibility, but add `activeClientId` for
   precise routing.
 - Show available runtime clients in the existing single console page.
-- Continue supporting legacy `client.register` during migration.
+- Keep the runtime handshake singular: public clients use `client.hello`;
+  operator diagnostics use `operator.diagnostic.register`.
 
 Success criteria:
 

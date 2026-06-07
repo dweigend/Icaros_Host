@@ -33,11 +33,11 @@
 
 <section class="card" aria-labelledby="runtime-clients-title">
     <div class="row">
-        <h2 id="runtime-clients-title">Available Clients</h2>
+        <h2 id="runtime-clients-title">Runtime Clients</h2>
         <div class="status">
             <StatusDot
                 tone={state.runtimeClients.length === 0 ? "default" : "success"}
-                label={`${state.runtimeClients.length} runtime clients`}
+                label={`${state.runtimeClients.length} registered runtime clients`}
             />
             <span>{state.runtimeClients.length} online/stale</span>
         </div>
@@ -46,7 +46,7 @@
                 <input type="hidden" name="clientId" value="" />
                 <Button type="submit" variant="ghost">
                     <CircleStop size={16} aria-hidden="true" />
-                    Clear Client
+                    Clear Selection
                 </Button>
             </form>
         {/if}
@@ -99,13 +99,13 @@
                         disabled={client.status !== "online" || isActive(client)}
                     >
                         <Check size={16} aria-hidden="true" />
-                        {isActive(client) ? "Active" : "Use Client"}
+                        {isActive(client) ? "Selected" : "Select Client"}
                     </Button>
                 </form>
             </article>
         {:else}
             <p>
-                Noch keine registrierten HTTPS Runtime Clients. Eine Experience
+                Noch keine registrierten HTTPS Runtime Clients. Ein Runtime Client
                 muss <code>client.hello</code> über <code>wss://</code> senden.
             </p>
         {/each}

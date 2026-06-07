@@ -1,18 +1,9 @@
 /**
- * Purpose: apply single-console active-experience changes. Experience clients
- * register over `/ws/runtime` with the same id; local build discovery is not a
- * runtime requirement for routing controls.
+ * Purpose: apply single-console active runtime client changes. The selected
+ * client derives activeExperienceId; standalone experience-id routing is not
+ * exposed in the M1 station model.
  */
 import { stationStateStore } from './state';
-
-export type SetActiveExperienceResult =
-	| Readonly<{ ok: true; activeExperienceId: string | null }>
-	| Readonly<{ ok: false; error: string }>;
-
-export function setActiveExperience(activeExperienceId: string | null): SetActiveExperienceResult {
-	stationStateStore.setActiveExperience(activeExperienceId);
-	return { ok: true, activeExperienceId };
-}
 
 export function setActiveClient(
 	activeClientId: string | null,

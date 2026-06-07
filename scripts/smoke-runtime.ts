@@ -1,20 +1,26 @@
 /**
  * Purpose: executable smoke test for the local Icaros Host runtime contract.
  *
- * The script talks to a running Host process, sets one active experience id,
- * checks `/launch`, registers a runtime client, simulates one M5 frame, and
- * verifies that normalized `control.orientation` reaches the active client.
- * It does not replace Quest, certificate, or real firmware testing.
+ * The script talks to a running Host process, registers and selects one runtime
+ * client, verifies `/launch` redirects to that client's HTTPS URL, simulates one
+ * M5 frame, and verifies normalized `control.orientation` reaches the active
+ * client. It does not replace Quest, certificate, or real firmware testing.
  */
 import WebSocket from 'ws';
 
 import {
 	type ClientRegisteredPayload,
+	type ClientRejectedPayload,
 	type ControlOrientation,
+	createMessage,
 	validateClientRegisteredPayload,
+	validateClientRejectedPayload,
 	validateControlOrientation
 } from '../src/lib/protocol';
-import { resolveDeviceWebSocketOrigin } from '../src/lib/server/device/pairing';
+import {
+	readDevicePairingToken,
+	resolveDeviceWebSocketOrigin
+} from '../src/lib/server/device/pairing';
 
 type SmokeConfig = Readonly<{
 	hostOrigin: URL;
@@ -22,9 +28,8 @@ type SmokeConfig = Readonly<{
 	timeoutMs: number;
 	pitch: number;
 	roll: number;
-	expectedExperienceUrl: string | null;
 	clientUrl: string;
-	devicePairingToken: string | null;
+	devicePairingToken: string;
 }>;
 
 type RuntimeMessage =
@@ -35,7 +40,16 @@ type RuntimeMessage =
 	| Readonly<{
 			type: 'client.registered';
 			payload: ClientRegisteredPayload;
+	  }>
+	| Readonly<{
+			type: 'client.rejected';
+			payload: ClientRejectedPayload;
 	  }>;
+
+type SmokeRuntimeResult = Readonly<{
+	launchUrl: string;
+	control: ControlOrientation;
+}>;
 
 const DEFAULT_HOST_ORIGIN = 'https://localhost:5183';
 const DEFAULT_EXPERIENCE_ID = 'mountain-flight';
@@ -44,22 +58,33 @@ const DEFAULT_PITCH = 22.5;
 const DEFAULT_ROLL = -11.25;
 const SMOKE_CLIENT_ID = 'smoke-runtime';
 
+// Local smoke runs against self-signed lab certificates. The product path stays
+// HTTPS/WSS-only; only this diagnostic client skips certificate verification.
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 async function main(): Promise<void> {
 	const config = readConfig();
 
-	await setActiveExperience(config);
-	const launchUrl = await readLaunchRedirect(config);
-	const control = await verifyRuntimeControl(config);
+	const result = await verifyRuntimeClientLaunchAndControl(config);
 
+	console.log(`activeClientId=${SMOKE_CLIENT_ID}`);
 	console.log(`activeExperienceId=${config.experienceId}`);
-	console.log(`launchRedirect=${launchUrl}`);
+	console.log(`registeredClientUrl=${config.clientUrl}`);
+	console.log(`launchRedirect=${result.launchUrl}`);
 	console.log(
-		`control.orientation pitch=${control.pitch} roll=${control.roll} source=${control.source}`
+		`control.orientation pitch=${result.control.pitch} roll=${result.control.roll} source=${result.control.source}`
 	);
 }
 
 function readConfig(): SmokeConfig {
-	const hostOrigin = new URL(process.env.ICAROS_SMOKE_HOST_ORIGIN ?? DEFAULT_HOST_ORIGIN);
+	const hostOrigin = readHttpsOrigin(
+		process.env.ICAROS_SMOKE_HOST_ORIGIN ?? DEFAULT_HOST_ORIGIN,
+		'ICAROS_SMOKE_HOST_ORIGIN'
+	);
+	const clientUrl = readHttpsUrl(
+		process.env.ICAROS_SMOKE_CLIENT_URL ?? new URL('/smoke-runtime', hostOrigin).toString(),
+		'ICAROS_SMOKE_CLIENT_URL'
+	);
 
 	return {
 		hostOrigin,
@@ -67,26 +92,9 @@ function readConfig(): SmokeConfig {
 		timeoutMs: readNumber(process.env.ICAROS_SMOKE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS),
 		pitch: readNumber(process.env.ICAROS_SMOKE_PITCH, DEFAULT_PITCH),
 		roll: readNumber(process.env.ICAROS_SMOKE_ROLL, DEFAULT_ROLL),
-		expectedExperienceUrl: process.env.ICAROS_EXPECTED_EXPERIENCE_URL ?? null,
-		clientUrl:
-			process.env.ICAROS_SMOKE_CLIENT_URL ?? new URL('/smoke-runtime', hostOrigin).toString(),
-		devicePairingToken: process.env.ICAROS_DEVICE_PAIRING_TOKEN ?? null
+		clientUrl,
+		devicePairingToken: readOptionalEnv('ICAROS_DEVICE_PAIRING_TOKEN') ?? readDevicePairingToken()
 	};
-}
-
-async function setActiveExperience(config: SmokeConfig): Promise<void> {
-	const response = await fetch(new URL('/?/setActive', config.hostOrigin), {
-		method: 'POST',
-		headers: {
-			'Content-Type': 'application/x-www-form-urlencoded',
-			Origin: config.hostOrigin.origin
-		},
-		body: new URLSearchParams({ experienceId: config.experienceId })
-	});
-
-	if (!response.ok) {
-		throw new Error(`setActive failed with ${response.status}: ${await response.text()}`);
-	}
 }
 
 async function readLaunchRedirect(config: SmokeConfig): Promise<string> {
@@ -99,18 +107,21 @@ async function readLaunchRedirect(config: SmokeConfig): Promise<string> {
 		throw new Error(`launch expected 307 redirect, got ${response.status}`);
 	}
 
-	if (config.expectedExperienceUrl !== null && location !== config.expectedExperienceUrl) {
-		throw new Error(`launch redirected to ${location}, expected ${config.expectedExperienceUrl}`);
+	if (location !== config.clientUrl) {
+		throw new Error(
+			`launch redirected to ${location}, expected registered client URL ${config.clientUrl}`
+		);
 	}
 
 	return location;
 }
 
-function verifyRuntimeControl(config: SmokeConfig): Promise<ControlOrientation> {
+function verifyRuntimeClientLaunchAndControl(config: SmokeConfig): Promise<SmokeRuntimeResult> {
 	return new Promise((resolve, reject) => {
 		let settled = false;
 		const runtime = new WebSocket(toWebSocketUrl(config.hostOrigin, '/ws/runtime'));
 		let device: WebSocket | null = null;
+		let launchUrl: string | null = null;
 		const timeout = setTimeout(() => {
 			fail(new Error(`timed out waiting for control.orientation after ${config.timeoutMs}ms`));
 		}, config.timeoutMs);
@@ -118,11 +129,17 @@ function verifyRuntimeControl(config: SmokeConfig): Promise<ControlOrientation> 
 		const finish = (control: ControlOrientation): void => {
 			if (settled) return;
 
+			const verifiedLaunchUrl = launchUrl;
+			if (verifiedLaunchUrl === null) {
+				fail(new Error('launch redirect was not verified before control delivery'));
+				return;
+			}
+
 			settled = true;
 			clearTimeout(timeout);
 			runtime.close();
 			device?.close();
-			resolve(control);
+			resolve({ launchUrl: verifiedLaunchUrl, control });
 		};
 
 		const fail = (error: Error): void => {
@@ -137,26 +154,40 @@ function verifyRuntimeControl(config: SmokeConfig): Promise<ControlOrientation> 
 
 		runtime.on('open', () => {
 			runtime.send(
-				JSON.stringify({
-					type: 'client.hello',
-					payload: {
-						role: 'experience',
-						clientId: SMOKE_CLIENT_ID,
-						experienceId: config.experienceId,
-						title: 'Smoke Runtime',
-						url: config.clientUrl,
-						userAgent: 'icaros-smoke-runtime'
-					}
-				})
+				JSON.stringify(
+					createMessage(
+						'client.hello',
+						{
+							role: 'experience',
+							clientId: SMOKE_CLIENT_ID,
+							experienceId: config.experienceId,
+							title: 'Smoke Runtime',
+							url: config.clientUrl,
+							userAgent: 'icaros-smoke-runtime'
+						},
+						{ role: 'experience', id: SMOKE_CLIENT_ID }
+					)
+				)
 			);
 		});
 
 		runtime.on('message', async (data) => {
 			const message = parseRuntimeMessage(data.toString());
 
+			if (message?.type === 'client.rejected') {
+				fail(new Error(`client.hello rejected: ${message.payload.reason}`));
+				return;
+			}
+
 			if (message?.type === 'client.registered') {
+				if (message.payload.clientId !== SMOKE_CLIENT_ID) {
+					fail(new Error(`registered unexpected client ${message.payload.clientId}`));
+					return;
+				}
+
 				try {
 					await setActiveClient(config);
+					launchUrl = await readLaunchRedirect(config);
 					device = openDeviceSocket(config, fail);
 				} catch (error) {
 					fail(error instanceof Error ? error : new Error(String(error)));
@@ -175,8 +206,12 @@ function verifyRuntimeControl(config: SmokeConfig): Promise<ControlOrientation> 
 			finish(message.payload);
 		});
 
+		runtime.on('close', () => {
+			fail(new Error('runtime socket closed before smoke completed'));
+		});
+
 		runtime.on('error', (error) => {
-			fail(error);
+			fail(toError(error));
 		});
 	});
 }
@@ -185,7 +220,9 @@ async function setActiveClient(config: SmokeConfig): Promise<void> {
 	const response = await fetch(new URL('/?/setActiveClient', config.hostOrigin), {
 		method: 'POST',
 		headers: {
+			Accept: 'application/json',
 			'Content-Type': 'application/x-www-form-urlencoded',
+			'x-sveltekit-action': 'true',
 			Origin: config.hostOrigin.origin
 		},
 		body: new URLSearchParams({ clientId: SMOKE_CLIENT_ID })
@@ -216,7 +253,7 @@ function openDeviceSocket(config: SmokeConfig, fail: (error: Error) => void): We
 	});
 
 	device.on('error', (error) => {
-		fail(error);
+		fail(toError(error));
 	});
 
 	return device;
@@ -227,9 +264,7 @@ function toDeviceWebSocketUrl(config: SmokeConfig): string {
 		'/ws/device',
 		resolveDeviceWebSocketOrigin(toWebSocketUrl(config.hostOrigin, ''))
 	);
-	if (config.devicePairingToken !== null) {
-		url.searchParams.set('pairing', config.devicePairingToken);
-	}
+	url.searchParams.set('pairing', config.devicePairingToken);
 	return url.toString();
 }
 
@@ -237,7 +272,7 @@ function parseRuntimeMessage(data: string): RuntimeMessage | null {
 	try {
 		const parsed: unknown = JSON.parse(data);
 
-		if (!isRecord(parsed) || typeof parsed.type !== 'string') {
+		if (!isRuntimeEnvelope(parsed)) {
 			return null;
 		}
 
@@ -250,6 +285,11 @@ function parseRuntimeMessage(data: string): RuntimeMessage | null {
 			const validation = validateClientRegisteredPayload(parsed.payload);
 			return validation.ok ? { type: 'client.registered', payload: validation.value } : null;
 		}
+
+		if (parsed.type === 'client.rejected') {
+			const validation = validateClientRejectedPayload(parsed.payload);
+			return validation.ok ? { type: 'client.rejected', payload: validation.value } : null;
+		}
 	} catch {
 		return null;
 	}
@@ -261,6 +301,29 @@ function toWebSocketUrl(origin: URL, path: string): string {
 	return `wss://${origin.host}${path}`;
 }
 
+function readHttpsOrigin(value: string, label: string): URL {
+	const url = new URL(value);
+	if (url.protocol !== 'https:') {
+		throw new Error(`${label} must use https:// for runtime smoke checks.`);
+	}
+
+	return new URL(url.origin);
+}
+
+function readHttpsUrl(value: string, label: string): string {
+	const url = new URL(value);
+	if (url.protocol !== 'https:') {
+		throw new Error(`${label} must use https:// for Quest-safe launch routing.`);
+	}
+
+	return url.toString();
+}
+
+function readOptionalEnv(name: string): string | null {
+	const value = process.env[name]?.trim();
+	return value === undefined || value === '' ? null : value;
+}
+
 function readNumber(value: string | undefined, fallback: number): number {
 	if (value === undefined) {
 		return fallback;
@@ -268,6 +331,26 @@ function readNumber(value: string | undefined, fallback: number): number {
 
 	const parsed = Number(value);
 	return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function toError(value: unknown): Error {
+	if (value instanceof Error) {
+		return value;
+	}
+
+	if (isRecord(value) && typeof value.message === 'string') {
+		return new Error(value.message);
+	}
+
+	if (isRecord(value) && value.error instanceof Error) {
+		return value.error;
+	}
+
+	return new Error(String(value));
+}
+
+function isRuntimeEnvelope(value: unknown): value is Readonly<{ type: string; payload: unknown }> {
+	return isRecord(value) && typeof value.type === 'string' && 'payload' in value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

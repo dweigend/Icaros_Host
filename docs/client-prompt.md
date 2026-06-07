@@ -1,96 +1,56 @@
-Bitte baue eine Three.js/WebXR VR-Experience.
+# Experience Client Prompt
 
-Setze kein bestehendes Projektwissen voraus. Die Anwendung ist ein externer Client für einen bereits vorhandenen Host-Server. Der Host-Server läuft getrennt von dieser Experience und sendet Steuerdaten über WebSocket.
+Purpose: this prompt helps generate an external Three.js/WebXR experience for
+Icaros Host without duplicating the canonical runtime contract. Use it together
+with [Experience Client API](client-api.md). If this prompt and the API document
+disagree, the API document wins.
 
-Ziel:
-- Baue eine browserbasierte VR-Experience mit Three.js.
+Bitte baue eine Three.js/WebXR VR-Experience als externen Client fuer Icaros
+Host.
+
+## Kontext
+
+- Setze kein bestehendes Projektwissen voraus.
+- Der Host-Server laeuft getrennt von dieser Experience.
 - Die Experience rendert die Szene selbst.
-- Die Experience verbindet sich beim Start mit dem Host-Server.
-- Die Experience registriert sich dort mit einer festen experienceId.
-- Die Experience nutzt nur die vom Server gesendeten normalisierten Steuerdaten.
-- Keine eigene Hardware- oder Gerätelogik einbauen.
+- Die Experience verbindet sich mit dem Host ueber `/ws/runtime`.
+- Die Experience nutzt exakt den Envelope, die Registrierung, den Heartbeat und
+  das `control.orientation`-Payload aus `docs/client-api.md`.
+- Keine eigene Hardware-, M5-, Pairing- oder Geraetelogik einbauen.
 
-Experience-ID:
-- Verwende diese ID: "mountain-flight"
-- Diese ID muss beim Server registriert werden.
+## Experience
 
-Server-Verbindung:
-- WebSocket-Pfad: "/ws/runtime"
-- Verwende fuer Quest/WebXR HTTPS und WSS.
-- Die Experience-URL muss fuer den Host-Handshake mit https:// beginnen.
-- Baue die URL aus window.location:
-  - wss://<aktueller-host>/ws/runtime
+- Experience-ID: `mountain-flight`
+- Titel: `Mountain Flight`
+- Ziel: browserbasierte VR-Experience mit Three.js und WebXR
+- Laufzeit: HTTPS fuer Quest/WebXR, WSS fuer den Host-Runtime-Socket
 
-Registrierung:
-Erzeuge eine stabile clientId pro Browser-Instanz:
+## Architektur
 
-```ts
-localStorage.getItem("icaros.clientId") ?? crypto.randomUUID()
-```
+- Trenne Rendering, Runtime-WebSocket-Client und Steuerungszustand in kleine
+  Module.
+- Der WebSocket-Client hat klare Lifecycle-Funktionen wie `start()` und
+  `dispose()`.
+- Externe WebSocket-Nachrichten werden vor Nutzung validiert.
+- Der aktuelle Steuerungszustand ist typisiert.
+- Keine grossen Frameworks zusaetzlich einbauen, wenn Three.js reicht.
 
-Nach dem Öffnen des WebSockets sende diese JSON-Nachricht:
+## Steuerungslogik
 
-{
-  "type": "client.hello",
-  "payload": {
-    "role": "experience",
-    "clientId": "<STABILE-CLIENT-ID>",
-    "experienceId": "mountain-flight",
-    "title": "Mountain Flight",
-    "url": "https://<aktueller-host>/"
-  }
-}
+- Verwende nur normalisierte `pitch`- und `roll`-Werte aus
+  `control.orientation`.
+- Wenn `safeMode` `true` ist, Bewegung stoppen oder neutral halten.
+- Wenn `safeMode` `false` ist, kann `pitch` Vorwaerts/Rueckwaerts-Bewegung oder
+  Neigung steuern und `roll` Links/Rechts-Bewegung oder Rotation.
+- Werte ausserhalb der dokumentierten Bereiche ignorieren oder defensiv
+  clampen.
+- Keine Rohdaten erwarten und keine Verbindung zum M5 oeffnen.
 
-Setze die Runtime erst nach `client.registered` auf registriert. Sende danach
-alle 3-5 Sekunden:
+## Ergebnis
 
-{
-  "type": "client.heartbeat",
-  "payload": {
-    "clientId": "<STABILE-CLIENT-ID>"
-  }
-}
-
-Steuerdaten:
-Der Server sendet Nachrichten vom Typ "control.orientation".
-
-Payload:
-
-{
-  "pitch": number,
-  "roll": number,
-  "quality": number,
-  "source": "m5",
-  "safeMode": boolean,
-  "timestamp": number
-}
-
-Bedeutung:
-- pitch: normalisierte Vor-/Zurück-Neigung im Bereich -1 bis 1
-- roll: normalisierte Links-/Rechts-Neigung im Bereich -1 bis 1
-- quality: Signalqualität im Bereich 0 bis 1
-- source: normalisierte Host-Quelle, aktuell "m5"
-- safeMode: wenn true, keine Bewegung anwenden
-- timestamp: Zeitstempel vom Server
-
-Steuerungslogik:
-- Wenn safeMode true ist: Bewegung stoppen oder neutral halten.
-- Wenn safeMode false ist:
-  - pitch steuert Vorwärts/Rückwärts-Bewegung oder Kamera-/Avatar-Neigung.
-  - roll steuert Links/Rechts-Bewegung oder Rotation.
-- Werte außerhalb von -1 bis 1 ignorieren oder clampen.
-- Keine Rohdaten erwarten, nur diese normalisierte API verwenden.
-
-Architektur:
-- Trenne Rendering, WebSocket-Client und Steuerungszustand in kleine Module.
-- Der WebSocket-Client soll start() und dispose() haben.
-- Der aktuelle Steuerungszustand soll typisiert sein.
-- Externe WebSocket-Nachrichten vor Nutzung validieren.
-- Keine großen Frameworks zusätzlich einbauen, wenn Three.js reicht.
-
-Ergebnis:
-- Eine lauffähige Three.js/WebXR Experience.
-- Klare Stelle, an der experienceId gesetzt wird.
-- WebSocket-Handshake per `client.hello`, `client.registered` und Heartbeat beim Host.
-- Anwendung der empfangenen pitch/roll-Steuerdaten auf die VR-Szene.
+- Eine lauffaehige Three.js/WebXR Experience.
+- Eine klare Stelle, an der `experienceId` gesetzt wird.
+- Runtime-Handshake mit enveloped `client.hello`, `client.registered` und
+  `client.heartbeat` gemaess `docs/client-api.md`.
+- Anwendung der empfangenen `pitch`/`roll`-Steuerdaten auf die VR-Szene.
 - Sauberes Cleanup beim Verlassen der Seite.

@@ -16,6 +16,22 @@ import {
 
 export type OrientationListener = (control: ControlOrientation) => void;
 
+type RuntimeOriginOptions =
+	| Readonly<{
+			/** HTTPS Host origin for standalone clients, converted to WSS at start(). */
+			hostOrigin?: string | URL;
+			runtimeOrigin?: never;
+	  }>
+	| Readonly<{
+			hostOrigin?: never;
+			/** HTTPS or WSS Host runtime origin, converted to WSS at start(). */
+			runtimeOrigin?: string | URL;
+	  }>
+	| Readonly<{
+			hostOrigin?: undefined;
+			runtimeOrigin?: undefined;
+	  }>;
+
 type RuntimeMessage =
 	| Readonly<{ type: 'control.orientation'; payload: ControlOrientation }>
 	| Readonly<{ type: 'station.state'; payload: StationState }>
@@ -23,14 +39,28 @@ type RuntimeMessage =
 	| Readonly<{ type: 'client.rejected'; payload: ClientRejectedPayload }>;
 
 export type ExperienceClientOptions = Readonly<{
+	/** Stable experience id sent in the runtime handshake. */
 	experienceId: string;
+	/** Concrete browser or Quest instance id. Defaults to a stable local id. */
 	clientId?: string;
+	/** Human-readable title shown in the Host console. */
 	title?: string;
+	/** Runtime WebSocket path on the Host. Defaults to `/ws/runtime`. */
 	runtimePath?: string;
+}> &
+	RuntimeOriginOptions;
+
+type ResolvedExperienceClientOptions = Readonly<{
+	experienceId: string;
+	clientId: string;
+	title: string;
+	runtimePath: string;
+	hostOrigin?: string | URL;
+	runtimeOrigin?: string | URL;
 }>;
 
 export class IcarosExperienceClient {
-	#options: Required<ExperienceClientOptions>;
+	#options: ResolvedExperienceClientOptions;
 	#socket: WebSocket | null = null;
 	#heartbeat: ReturnType<typeof setInterval> | null = null;
 	#registered = false;
@@ -50,7 +80,7 @@ export class IcarosExperienceClient {
 			return;
 		}
 
-		const socket = new WebSocket(resolveRuntimeUrl(this.#options.runtimePath));
+		const socket = new WebSocket(resolveRuntimeUrl(this.#options));
 		this.#socket = socket;
 
 		socket.addEventListener('open', () => {
@@ -121,7 +151,7 @@ export class IcarosExperienceClient {
 			message?.type === 'station.state' &&
 			message.payload.activeExperienceId !== this.#options.experienceId
 		) {
-			navigateToHostConsole();
+			navigateToHostConsole(this.#options);
 		}
 	}
 
@@ -167,14 +197,78 @@ export class IcarosExperienceClient {
 	}
 }
 
+/**
+ * Creates the public browser client. Standalone clients may pass `hostOrigin`
+ * or `runtimeOrigin`; both are resolved to a WSS Host runtime socket.
+ */
 export function createIcarosExperienceClient(
 	options: ExperienceClientOptions
 ): IcarosExperienceClient {
 	return new IcarosExperienceClient(options);
 }
 
-function resolveRuntimeUrl(runtimePath: string): string {
-	return `wss://${window.location.host}${runtimePath}`;
+function resolveRuntimeUrl(options: ResolvedExperienceClientOptions): string {
+	const path = normalizeRuntimePath(options.runtimePath);
+
+	if (options.hostOrigin !== undefined && options.runtimeOrigin !== undefined) {
+		throw new Error('Configure either hostOrigin or runtimeOrigin, not both.');
+	}
+
+	if (options.hostOrigin !== undefined) {
+		const origin = readOrigin('hostOrigin', options.hostOrigin);
+
+		if (origin.protocol !== 'https:') {
+			throw new Error('hostOrigin must use https for browser runtime sockets.');
+		}
+
+		origin.protocol = 'wss:';
+		return new URL(path, origin).toString();
+	}
+
+	if (options.runtimeOrigin !== undefined) {
+		const origin = readOrigin('runtimeOrigin', options.runtimeOrigin);
+
+		if (origin.protocol === 'http:' || origin.protocol === 'ws:') {
+			throw new Error('runtimeOrigin must not use http or ws for browser runtime sockets.');
+		}
+
+		if (origin.protocol !== 'https:' && origin.protocol !== 'wss:') {
+			throw new Error('runtimeOrigin must use https or wss for browser runtime sockets.');
+		}
+
+		origin.protocol = 'wss:';
+		return new URL(path, origin).toString();
+	}
+
+	return `wss://${window.location.host}${path}`;
+}
+
+function normalizeRuntimePath(runtimePath: string): string {
+	const path = runtimePath.trim();
+
+	if (path === '' || !path.startsWith('/') || path.startsWith('//')) {
+		throw new Error('runtimePath must be an absolute Host path.');
+	}
+
+	return path;
+}
+
+function readOrigin(label: 'hostOrigin' | 'runtimeOrigin', value: string | URL): URL {
+	try {
+		const origin = new URL(value.toString());
+
+		if (origin.pathname !== '/' || origin.search !== '' || origin.hash !== '') {
+			throw new Error(`${label} must be an origin without path, search, or hash.`);
+		}
+
+		return origin;
+	} catch (error) {
+		if (error instanceof Error && error.message.startsWith(label)) {
+			throw error;
+		}
+
+		throw new Error(`${label} must be a valid URL origin.`);
+	}
 }
 
 function readStableClientId(): string {
@@ -208,14 +302,27 @@ function formatByte(byte: number): string {
 	return byte.toString(16).padStart(2, '0');
 }
 
-function navigateToHostConsole(): void {
-	const consoleUrl = new URL('/', window.location.href);
+function navigateToHostConsole(options: ResolvedExperienceClientOptions): void {
+	const consoleUrl = resolveHostConsoleUrl(options);
 
 	if (consoleUrl.href === window.location.href) {
 		return;
 	}
 
 	window.location.assign(consoleUrl.href);
+}
+
+function resolveHostConsoleUrl(options: ResolvedExperienceClientOptions): URL {
+	const origin = options.hostOrigin ?? options.runtimeOrigin;
+	if (origin === undefined) {
+		return new URL('/', window.location.href);
+	}
+
+	const label = options.hostOrigin === undefined ? 'runtimeOrigin' : 'hostOrigin';
+	const url = readOrigin(label, origin);
+	url.protocol = 'https:';
+	url.pathname = '/';
+	return url;
 }
 
 function readDocumentTitle(experienceId: string): string {

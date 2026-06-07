@@ -1,80 +1,48 @@
 <!--
-	Purpose: route-local active experience status and operator form controls.
+	Purpose: route-local selected runtime client status and launch controls.
 -->
 <script lang="ts">
-    import { CircleStop, ExternalLink, Play } from "@lucide/svelte";
+    import { ExternalLink } from "@lucide/svelte";
     import { Button, Kbd, StatusDot } from "$lib/components";
     import type { ConsolePageState } from "./console-state.svelte";
 
     type Props = Readonly<{
         state: ConsolePageState;
-        mode?: "summary" | "controls";
     }>;
 
-    let { state, mode = "controls" }: Props = $props();
+    let { state }: Props = $props();
 </script>
 
-<h2 id="experience-title">Aktive Experience</h2>
-{#if mode === "summary"}
-    <article class="card primary">
-        <div class="row">
-            <h2>active experience</h2>
-            <StatusDot
-                tone={state.activeExperienceId === null ? "default" : "success"}
-                label={state.activeExperienceId === null
-                    ? "No active experience"
-                    : "Experience active"}
-            />
+<h2 id="runtime-routing-title">Aktiver Runtime Client</h2>
+<section class="card" aria-labelledby="runtime-routing-title">
+    <div class="row">
+        <div class="stack">
+            <strong>selected client</strong>
+            <Kbd>{state.activeClientId ?? "none"}</Kbd>
         </div>
-        <strong>{state.activeExperienceId ?? "none"}</strong>
-        <p>active client: {state.activeClientId ?? "none"}</p>
-        <p>
-            Nur diese Experience erhält normalisierte M5-Steuerdaten über den
-            Runtime-Socket.
-        </p>
-    </article>
-{:else}
-    <section class="card" aria-labelledby="experience-title">
-        <p>Active client: <Kbd>{state.activeClientId ?? "none"}</Kbd></p>
-        <div class="row">
-            <form class="actions" method="POST" action="?/setActive">
-                <input
-                    name="experienceId"
-                    bind:value={state.selectedExperienceId}
-                    autocomplete="off"
-                    inputmode="text"
-                    pattern="[a-z0-9][-a-z0-9]*"
-                    placeholder="echo-flight"
-                    aria-label="Active experience id"
-                />
-                <Button
-                    type="submit"
-                    variant="primary"
-                    disabled={state.selectedExperienceId === ""}
-                >
-                    <Play size={16} aria-hidden="true" />
-                    Aktiv setzen
-                </Button>
-            </form>
+        <StatusDot
+            tone={state.connectionUrls.experienceTargetUrl === null ? "default" : "success"}
+            label={state.connectionUrls.experienceTargetUrl === null
+                ? "No launch target"
+                : "Launch target ready"}
+        />
+    </div>
 
-            {#if state.activeExperienceId !== null}
-                <form method="POST" action="?/setActive">
-                    <input type="hidden" name="experienceId" value="" />
-                    <Button type="submit" variant="ghost">
-                        <CircleStop size={16} aria-hidden="true" />
-                        Clear
-                    </Button>
-                </form>
-                <Button
-                    href={state.connectionUrls.questLaunchUrl}
-                    variant="secondary"
-                    target="_blank"
-                    rel="noreferrer"
-                >
-                    <ExternalLink size={16} aria-hidden="true" />
-                    Host Launch
-                </Button>
-            {/if}
-        </div>
-    </section>
-{/if}
+    <p>Derived experience id: <Kbd>{state.activeExperienceId ?? "none"}</Kbd></p>
+    <p>
+        Launch target:
+        <Kbd>{state.connectionUrls.experienceTargetUrl ?? "pending selected runtime client"}</Kbd>
+    </p>
+
+    {#if state.connectionUrls.experienceTargetUrl !== null}
+        <Button
+            href={state.connectionUrls.questLaunchUrl}
+            variant="secondary"
+            target="_blank"
+            rel="noreferrer"
+        >
+            <ExternalLink size={16} aria-hidden="true" />
+            Open Launch
+        </Button>
+    {/if}
+</section>

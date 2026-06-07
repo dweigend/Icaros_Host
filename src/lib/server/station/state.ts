@@ -1,11 +1,11 @@
 /**
- * Purpose: single-station state container for M1. It owns active experience
- * selection and notifies subscribers; persistence and multi-session behavior are
- * intentionally out of scope.
+ * Purpose: single-station state container for M1. It owns active runtime client
+ * selection plus derived experience state; persistence and multi-session
+ * behavior are intentionally out of scope.
  */
 import { STATION_ID, type StationState } from '$lib/protocol';
 
-export type StationStateListener = (state: StationState) => void;
+type StationStateListener = (state: StationState) => void;
 
 const STATION_STATE_STORE_KEY = '__icarosStationStateStore';
 
@@ -22,19 +22,6 @@ class StationStateStore {
 	}
 
 	getState(): StationState {
-		return this.#state;
-	}
-
-	setActiveExperience(activeExperienceId: string | null): StationState {
-		if (
-			this.#state.activeExperienceId === activeExperienceId &&
-			this.#state.activeClientId === null
-		) {
-			return this.#state;
-		}
-
-		this.#state = { activeExperienceId, activeClientId: null };
-		this.#emit();
 		return this.#state;
 	}
 

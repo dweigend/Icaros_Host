@@ -2,10 +2,12 @@
  * Purpose: focused tests for runtime WebSocket routing so normalized controls
  * reach diagnostic operator clients without loosening active experience routing.
  */
+import { createServer, type Server } from 'node:http';
 import { describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 
 import { createControlOrientationMessage } from '$lib/protocol';
+import { createIcarosWebSocketGateway } from './gateway';
 import { RuntimeClientRegistry } from './runtime-clients';
 
 describe('RuntimeClientRegistry', () => {
@@ -18,6 +20,16 @@ describe('RuntimeClientRegistry', () => {
 		registry.sendControlToActiveClientAndOperators(createControlMessage(), null);
 
 		expect(readSentTypes(operatorSocket)).toEqual(['control.orientation']);
+	});
+
+	it('keeps diagnostic operators out of selectable runtime clients', () => {
+		const registry = new RuntimeClientRegistry();
+		const operatorSocket = createOpenSocket();
+		const operator = registry.add(operatorSocket.socket);
+		registry.replaceRegistration(operator, { role: 'operator', id: 'host-console-debug' });
+
+		expect(registry.listRuntimeClients()).toEqual([]);
+		expect(registry.findSelectableClient('host-console-debug')).toBeNull();
 	});
 
 	it('keeps experience controls limited to the active experience', () => {
@@ -117,6 +129,21 @@ describe('RuntimeClientRegistry', () => {
 			connectedAt: 2_000
 		});
 	});
+
+	it('accepts clearly named operator diagnostic runtime registrations', async () => {
+		const gateway = await createTestGateway();
+
+		try {
+			const messageType = await sendRuntimeMessageAndReadType(gateway.runtimeUrl, {
+				type: 'operator.diagnostic.register',
+				payload: { id: 'host-console-debug' }
+			});
+
+			expect(messageType).toBe('control.orientation');
+		} finally {
+			await gateway.dispose();
+		}
+	});
 });
 
 function createControlMessage(): ReturnType<typeof createControlOrientationMessage> {
@@ -166,5 +193,106 @@ function readSentTypes(socket: TestSocket): string[] {
 		}
 
 		return String(parsed.type);
+	});
+}
+
+type TestGateway = Readonly<{
+	runtimeUrl: string;
+	dispose: () => Promise<void>;
+}>;
+
+type RuntimeSocketMessage = Readonly<{
+	type: string;
+	payload: unknown;
+}>;
+
+async function createTestGateway(): Promise<TestGateway> {
+	const server = createServer();
+	const gateway = createIcarosWebSocketGateway();
+	gateway.attach(server);
+
+	await new Promise<void>((resolve) => {
+		server.listen(0, '127.0.0.1', resolve);
+	});
+
+	return {
+		runtimeUrl: readRuntimeUrl(server),
+		dispose: async () => {
+			gateway.dispose();
+			await closeServer(server);
+		}
+	};
+}
+
+function readRuntimeUrl(server: Server): string {
+	const address = server.address();
+	if (typeof address !== 'object' || address === null) {
+		throw new Error('expected test server to listen on a TCP port');
+	}
+
+	return `ws://127.0.0.1:${address.port}/ws/runtime`;
+}
+
+function sendRuntimeMessageAndReadType(
+	runtimeUrl: string,
+	message: RuntimeSocketMessage
+): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const socket = new WebSocket(runtimeUrl);
+		const timeout = setTimeout(() => {
+			socket.close();
+			reject(new Error(`timed out waiting for ${message.type} response`));
+		}, 1_000);
+
+		socket.on('open', () => {
+			socket.send(JSON.stringify(message));
+		});
+
+		socket.on('message', (data) => {
+			const parsedType = readRuntimeMessageType(data.toString());
+			if (
+				parsedType === null ||
+				parsedType === 'station.state' ||
+				parsedType === 'runtime.clients'
+			) {
+				return;
+			}
+
+			clearTimeout(timeout);
+			socket.close();
+			resolve(parsedType);
+		});
+
+		socket.on('error', (error) => {
+			clearTimeout(timeout);
+			socket.close();
+			reject(error);
+		});
+	});
+}
+
+function readRuntimeMessageType(input: string): string | null {
+	try {
+		const parsed: unknown = JSON.parse(input);
+		if (typeof parsed !== 'object' || parsed === null || !('type' in parsed)) {
+			return null;
+		}
+
+		return typeof parsed.type === 'string' ? parsed.type : null;
+	} catch {
+		return null;
+	}
+}
+
+function closeServer(server: Server): Promise<void> {
+	return new Promise((resolve, reject) => {
+		server.close((error) => {
+			if (error === undefined) {
+				resolve();
+				return;
+			}
+
+			reject(error);
+		});
 	});
 }

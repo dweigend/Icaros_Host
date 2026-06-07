@@ -1,69 +1,68 @@
 # Quest HTTPS Launch Routing
 
-Purpose: this document explains how the Meta Quest reaches an externally hosted
-WebXR experience through Icaros Host. It covers LAN addressing, HTTPS
-certificates, `/launch` redirect behavior, environment overrides, and the most
-common failure modes. It does not describe M5 firmware details or static
-experience hosting because those are outside the current MVP.
+Purpose: this document is the canonical operational guide for reaching an
+external WebXR experience from a Meta Quest through Icaros Host. It covers LAN
+addresses, HTTPS certificates, WSS runtime sockets, `/launch` behavior, and
+common failure modes. It does not describe M5 firmware details or experience
+asset hosting.
 
 ## Mental Model
 
-Icaros Host and the WebXR experience are two different web servers. They may run
-on the same development machine, but the supported model is that they can run on
-different machines with different HTTPS certificates.
+Icaros Host and the WebXR experience are separate web servers:
 
-| Responsibility | Current default |
-| --- | --- |
-| Host console, station state, M5 socket, runtime socket, `/launch` | `https://<host-lan-ip-or-name>:5183` |
-| Standalone WebXR experience client, no `/launch` endpoint | `https://<client-lan-ip-or-name>:5174` |
+| Surface | Responsibility | Example |
+| --- | --- | --- |
+| Host | Operator console, station state, M5 socket, runtime socket, `/launch` | `https://<host-lan-ip-or-name>:5183` |
+| Experience client | Renders the WebXR scene and registers with the Host | `https://<client-lan-ip-or-name>:5174` |
+| M5 device socket | Firmware-compatible raw input boundary | `ws://<host-lan-ip-or-name>:5184/ws/device` |
 
-Hard rule: Quest/WebXR launch routing has no HTTP default and no HTTP fallback.
-`/launch` must either redirect to an explicit HTTPS experience target or fail
-with a clear configuration error.
+Hard rules:
 
-The Quest must open LAN-reachable URLs, not `localhost`. On the headset,
-`localhost` means the headset itself.
-
-The host does not start the experience client and does not serve the
-experience's built files. It only stores `activeExperienceId`, owns the sockets,
-and redirects `/launch` to the externally running active experience URL.
-Never append `/launch` to the experience client port `5174`; `/launch` belongs
-only to the Host origin on port `5183`.
+- The Quest opens LAN-reachable URLs, not `localhost`.
+- Browser/WebXR surfaces use HTTPS.
+- Runtime sockets from browser/WebXR pages use WSS.
+- Plain `ws://` is reserved for the M5 device boundary.
+- The Host does not serve or start experience builds.
+- `/launch` redirects only to the selected online runtime client's registered
+  HTTPS URL.
+- `/launch` never redirects to HTTP.
 
 ## Runtime Flow
 
-1. Start the host on a LAN-facing HTTPS address.
-2. Start the experience client separately on its own machine and HTTPS origin,
-   usually port `5174`.
-3. Open the host console at `https://<host-lan-ip-or-name>:5183/`.
-4. Select the concrete runtime client in the console.
-5. Open `https://<host-lan-ip-or-name>:5183/launch` on the Quest.
-6. The host responds with `307 Temporary Redirect`.
-7. The Quest browser loads the experience at
-   `https://<client-lan-ip-or-name>:5174/`.
-8. The experience opens `/ws/runtime`, registers its concrete `clientId`, and
-   receives controls only when that client is selected.
+1. Start the Host on a LAN-facing HTTPS address.
+2. Start the standalone experience client on its own HTTPS origin.
+3. The experience opens `wss://<host-lan-ip-or-name>:5183/ws/runtime`.
+4. The experience sends enveloped `client.hello` with its stable `clientId`,
+   `experienceId`, title, and HTTPS `url`.
+5. The Host accepts the client with `client.registered`.
+6. The operator opens `https://<host-lan-ip-or-name>:5183/` and selects the
+   concrete runtime client.
+7. The Quest opens `https://<host-lan-ip-or-name>:5183/launch`.
+8. The Host responds with `307 Temporary Redirect` to the selected client's
+   registered HTTPS URL.
+9. The selected client receives `control.orientation` while the M5 is live.
+
+Never append `/launch` to the experience client port. `/launch` belongs only to
+the Host origin.
 
 ## Start Commands
 
-Build once, then run the host with the WebSocket gateway:
+Run the Host from this repository:
 
 ```sh
 bun start
 ```
 
-`bun start` defaults the same-machine experience target to HTTPS on port `5174`.
-For a separate Quest/LAN client machine, pass the explicit client origin:
+Expected Host surfaces:
 
-```sh
-ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174 bun start
+```txt
+https://localhost:5183/
+https://<host-lan-ip-or-name>:5183/
+ws://<host-lan-ip-or-name>:5184/ws/device
 ```
 
-Use this built server path for end-to-end runtime checks. The normal SvelteKit
-Vite dev server can render the console, but it does not attach the Bun
-`/ws/runtime` and `/ws/device` gateway.
-
-Run the standalone VR client from `/Users/weigend/Documents/GitHub/Icaros_VR_Client`:
+Run the standalone VR client from
+`/Users/weigend/Documents/GitHub/Icaros_VR_Client`:
 
 ```sh
 cd /Users/weigend/Documents/GitHub/Icaros_VR_Client
@@ -71,24 +70,19 @@ bun run setup:https -- --host <client-lan-ip-or-name>
 ICAROS_HOST_ORIGIN=https://<host-lan-ip-or-name>:5183 bun run dev
 ```
 
-For the Quest, use HTTPS and the host LAN address:
+For the Quest, open the Host launch URL:
 
-```text
+```txt
 https://<host-lan-ip-or-name>:5183/launch
 ```
 
-The recent connection-refused case happened when the host or client was bound to
-`localhost` only. Use LAN-facing hosts so another device can reach both
-processes.
-
 ## HTTPS Setup
 
-WebXR on the Quest must be loaded from secure origins. The host and the
-standalone VR client own separate TLS files. Do not share, symlink, or point the
-client at the host certificate files; future deployments place them on different
-machines.
+WebXR on Quest must run from trusted secure origins. The Host and standalone
+client own separate TLS files. Do not share, symlink, or point the client at the
+Host certificate files.
 
-Create the host certificate in the Host repository:
+Create the Host certificate in this repository:
 
 ```sh
 brew install mkcert
@@ -100,91 +94,44 @@ mkcert \
   localhost 127.0.0.1 ::1 <host-lan-ip-or-name>
 ```
 
-Create the client certificate in the VR Client repository:
+Create the standalone client certificate in the client repository:
 
 ```sh
 cd /Users/weigend/Documents/GitHub/Icaros_VR_Client
 bun run setup:https -- --host <client-lan-ip-or-name>
 ```
 
-Then restart both servers. Host machine:
-
-```sh
-bun run build
-ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174 \
-PORT=5183 \
-bun start
-```
-
-Client machine:
-
-```sh
-cd /Users/weigend/Documents/GitHub/Icaros_VR_Client
-ICAROS_HOST_ORIGIN=https://<host-lan-ip-or-name>:5183 bun run dev
-```
-
-The Quest launch URL becomes:
-
-```text
-https://<host-lan-ip-or-name>:5183/launch
-```
-
-It only redirects when the standalone VR client is also running with TLS and the
-host has an explicit HTTPS experience target. Without that configuration,
-`/launch` returns `500` with a clear message instead of falling back to HTTP.
-
-Without an HTTPS experience target, the Host refuses `/launch` with a
-configuration error. `bun start` supplies the same-host HTTPS target
-automatically; direct server entrypoints still require explicit HTTPS
-configuration. This keeps Quest sessions from silently opening a non-HTTPS
-client target.
-
-The Quest must trust the mkcert root certificate. Find it with:
+Install the mkcert root CA on the Quest so the headset trusts both HTTPS
+origins. Find the root CA path with:
 
 ```sh
 mkcert -CAROOT
 ```
 
-Install that root CA on the headset before testing HTTPS. Otherwise the browser
-will show a certificate warning or WebXR may refuse to run as a trusted secure
-context.
+Restart both servers after certificate changes.
 
 ## `/launch` Behavior
 
-`/launch` resolves the active experience at request time:
+`/launch` resolves the selected runtime client at request time:
 
-- No active experience: `409 No active experience is selected.`
-- Invalid active id: `400 Active experience id is invalid.`
-- Invalid routing environment: `500` with a specific configuration message.
-- Valid active id: `307 Temporary Redirect` to the experience URL.
+| State | Result |
+| --- | --- |
+| No selected runtime client | Clear `409` response. |
+| Selected client is no longer online | Clear stale-client response. |
+| Selected client registered a non-HTTPS URL | Clear configuration response. |
+| Selected online client has an HTTPS URL | `307 Temporary Redirect` to that URL. |
 
-Launch URL construction with `ICAROS_EXPERIENCE_PROTOCOL=https`:
+The Host console should show only Quest-safe launch URLs:
 
-```text
-https://<same LAN hostname>:5174/
+```txt
+https://<host-lan-ip-or-name>:5183/launch
 ```
 
-This is only a same-machine convenience because it derives the client host from
-the incoming host URL. For two-machine setups, prefer
-`ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174`.
+The redirect target is the client's registered HTTPS URL, for example:
 
-The Quest launch URL shown in the console is always an HTTPS Host URL:
-
-```text
-https://<host LAN hostname>:5183/launch
+```txt
+https://<client-lan-ip-or-name>:5174/
 ```
-
-Examples:
-
-| Configuration | Incoming launch URL | Result |
-| --- | --- | --- |
-| none | `https://192.168.50.194:5183/launch` | `500 Quest launch requires an HTTPS experience target...` |
-| `ICAROS_EXPERIENCE_PROTOCOL=https` | `https://192.168.50.194:5183/launch` | `https://192.168.50.194:5174/` for same-machine client checks |
-| `ICAROS_EXPERIENCE_ORIGIN=https://client.local:9443` | `https://host.local:5183/launch` | `https://client.local:9443/` |
-| non-HTTPS `ICAROS_EXPERIENCE_ORIGIN` | `https://host.local:5183/launch` | `500 ICAROS_EXPERIENCE_ORIGIN must use https for Quest launch.` |
-
-Loopback hostnames are rewritten to the first non-internal IPv4 address so the
-console can show Quest-safe URLs even when the operator opens the host locally.
 
 ## Environment Variables
 
@@ -192,115 +139,54 @@ Host process:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `PORT` | `3000` for `server/index.ts`; use `5183` for this MVP | Host HTTP/HTTPS port. |
-| `HOST` | `0.0.0.0` | Network bind address for `bun start`. |
-| `ICAROS_TLS_KEY_FILE` | `.certs/icaros-host-key.pem` | TLS key used by the Host process. Do not reuse this for the VR client. |
-| `ICAROS_TLS_CERT_FILE` | `.certs/icaros-host.pem` | TLS certificate used by the Host process. Do not reuse this for the VR client. |
-| `ICAROS_EXPERIENCE_ORIGIN` | none | Full HTTPS client origin override, for example `https://client.local:5174`. Required for two-machine setups. HTTP origins are rejected. |
-| `ICAROS_EXPERIENCE_PROTOCOL` | `https` through `bun start`; none for direct server entrypoints | Same-machine convenience when no full origin override is set. Must be `https`; HTTP is rejected. |
-| `ICAROS_EXPERIENCE_PORT` | `5174` | Experience client port when no full origin override is set. |
-| `ICAROS_EXPERIENCE_PATH` | `/` | Experience path; may contain `{experienceId}`. |
-
-Host Vite dev server:
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `ICAROS_DEV_HOST` | `0.0.0.0` | LAN-facing Vite dev bind address. |
+| `PORT` | `5183` through `bun start` | Host HTTPS port. |
+| `HOST` | `0.0.0.0` through `bun start` | Network bind address. |
+| `ICAROS_TLS_KEY_FILE` | `.certs/icaros-host-key.pem` | TLS key used by the Host process. |
+| `ICAROS_TLS_CERT_FILE` | `.certs/icaros-host.pem` | TLS certificate used by the Host process. |
+| `ICAROS_DEVICE_WS_PORT` | `5184` | Plain M5 device WebSocket port. |
+| `ICAROS_DEVICE_WS_ORIGIN` | derived from Host LAN address and device port | Optional explicit M5 device WebSocket origin. |
 
 Standalone VR client:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `ICAROS_DEMO_PORT` | `5174` | Demo client port. |
-| `ICAROS_HOST_PORT` | `5183` | Host port used when `ICAROS_HOST_ORIGIN` is unset. |
-| `ICAROS_HOST_ORIGIN` | `https://localhost:5183` for same-machine checks | Proxy target for `/ws/runtime`; set `https://<host-lan-ip-or-name>:5183` for Quest or two-machine sessions. |
+| `ICAROS_DEMO_PORT` | `5174` | Demo client HTTPS port. |
+| `ICAROS_HOST_ORIGIN` | `https://localhost:5183` for same-machine checks | Host origin used to build `wss://.../ws/runtime`; set this to the Host LAN HTTPS origin for Quest sessions. |
 
-## WebSocket Rules
-
-The experience client resolves the runtime socket from the current page:
-
-- Runtime pages resolve to `wss://.../ws/runtime`.
-- Plain `ws://` is reserved for the M5 device boundary only.
-
-The standalone VR client proxies `/ws/runtime` back to the host during local
-development. That lets the browser experience use the same-origin socket path
-while the host still owns the real runtime gateway.
-
-The M5 must connect to `/ws/device`. Experiences must not connect to the M5
-directly or parse raw M5 frames.
+Do not use environment variables to create a second public launch target. The
+selected runtime client's registered HTTPS `url` is the launch target.
 
 ## Troubleshooting
 
-`ERR_CONNECTION_REFUSED` for `https://<host-lan-ip-or-name>:5183` usually means the host
-process is not running, is on another port, or is bound to loopback only. Start
-with `ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174 bun start`
-and confirm the process logs the bind address plus at least one openable URL,
-for example:
+`ERR_CONNECTION_REFUSED` for `https://<host-lan-ip-or-name>:5183` usually means
+the Host is not running, is on another port, or is bound to loopback only. Start
+with `bun start` and confirm the process logs a LAN URL.
 
-```text
-Icaros Host listening on https://0.0.0.0:5183
-Open locally: https://localhost:5183/
-Open on LAN: https://192.168.50.194:5183/
-M5 plain device WebSocket listening on ws://0.0.0.0:5184
+`/launch` does not redirect. Open the Host console and confirm one online
+runtime client is selected.
+
+`/launch` reports a stale selected client. Reload the experience client, wait
+for it to send `client.hello`, then select the fresh online client in the Host
+console.
+
+`/launch` rejects the target URL. The experience registered a URL that does not
+start with `https://`. Serve the client over HTTPS and make sure its
+`client.hello` payload advertises the HTTPS page URL.
+
+The Quest opens the experience but WebXR or WSS fails. Install the mkcert root
+CA on the headset and use certificates that include the exact LAN IP or
+hostname for both the Host and Client origins.
+
+The experience page opens but receives no controls. Check that the selected
+runtime client is online, the M5 or simulator is sending fresh frames, and the
+experience waits for `client.registered` before applying controls.
+
+The M5 pairing URL should stay plain `ws://`, but it must point at the device
+port, not the HTTPS UI/runtime port. With the default Host, the M5 endpoint is:
+
+```txt
+ws://<host-lan-ip-or-name>:5184/ws/device?pairing=...
 ```
 
-On Quest, open the HTTPS launch URL
-`https://<host-lan-ip-or-name>:5183/launch` and make sure the host has an
-explicit HTTPS experience target for the client machine.
-
-`/launch` returns `409` when no active experience id is set. Open the console
-and set the id first, for example `mountain-flight`.
-
-The page loads over HTTPS but the socket fails when the experience tries to use
-plain `ws://`. Use the public client API or a same-origin `/ws/runtime` URL so
-HTTPS pages resolve to WSS.
-
-`/launch` returns `500 Quest launch requires an HTTPS experience target...`.
-Start the VR client with its own `bun run setup:https` certificates and set
-`ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174` before starting
-the host.
-
-The Quest launch opens `https://<client-lan-ip-or-name>:5174/` and Chrome
-reports `ERR_SSL_PROTOCOL_ERROR`. The VR client on `5174` is not serving HTTPS
-for that address. Run `bun run setup:https -- --host <client-lan-ip-or-name>`
-on the client machine, then restart the client before configuring the Host to
-redirect to that HTTPS origin.
-
-## Regression History
-
-The HTTPS client-target regression was introduced in commit
-`fce6fe7 feat: add Quest launch routing`. That commit created
-`src/lib/server/experiences/launch-routing.ts` and defaulted the experience
-target protocol to `readHttpProtocol(requestUrl.protocol)`. As a result,
-opening `https://<host>:5183/launch` also generated
-`https://<host>:5174/`, even when the client server on `5174` was non-HTTPS or
-running on a different machine.
-
-The current rule is stricter: `/launch` is always on the Host origin and never
-falls back to an HTTP experience target. Missing or HTTP experience
-configuration returns `500` with a specific message.
-
-The M5 pairing URL should stay plain `ws://`, but it must not point at the
-HTTPS UI/runtime port. With the default HTTPS host, the generated M5 URL is
-`ws://<host-lan-ip-or-name>:5184/ws/device?pairing=...`, and the host logs a
-matching plain device WebSocket listener. If a different port is required, set
-`ICAROS_DEVICE_WS_PORT` before starting the host.
-
-After a successful USB `configureResult`, the Host sends a serial `reboot`
-command by default so the controller starts cleanly with the saved WLAN and
-WebSocket configuration. Set `ICAROS_M5_REBOOT_AFTER_CONFIGURE=false` only when
-you explicitly want to keep the controller running after USB setup.
-
-If pairing still times out and the debug snapshot contains no `websocket`
-lines, the controller did not reach the Host's device WebSocket at all. Check
-WLAN credentials, 2.4 GHz support, client isolation or guest-network VLANs,
-firewall rules for the plain device port, and whether the Host LAN IP in the
-M5 URL is reachable from another device on the same network.
-
-The Quest shows a certificate warning or WebXR does not start. Install the
-mkcert root CA on the headset and use a certificate that includes the exact LAN
-IP or hostname in both the Host launch URL and the Client experience URL.
-
-The experience page opens but receives no controls. Check that the experience
-registered the same `experienceId` that the operator marked active and that the
-M5 or simulator is sending fresh frames.
+For M5 diagnostics, use [Debugging](debugging.md) and
+[M5 Pairing Solution](m5-pairing-solution.md).

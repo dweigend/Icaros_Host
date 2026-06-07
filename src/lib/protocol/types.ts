@@ -30,18 +30,6 @@ export type StationState = Readonly<{
 	activeClientId: string | null;
 }>;
 
-export type ExperienceMode = 'prototype' | 'production';
-export type RequiredDevice = 'quest' | 'm5';
-
-export type ExperienceManifest = Readonly<{
-	id: string;
-	title: string;
-	entry: string;
-	requiredDevices: readonly RequiredDevice[];
-	protocol: ProtocolVersion;
-	mode: ExperienceMode;
-}>;
-
 export type ControlOrientation = Readonly<{
 	pitch: number;
 	roll: number;
@@ -51,10 +39,8 @@ export type ControlOrientation = Readonly<{
 	timestamp: number;
 }>;
 
-export type ClientRegisterPayload = Readonly<{
-	role: 'operator' | 'quest' | 'experience';
+export type OperatorDiagnosticRegistrationPayload = Readonly<{
 	id: string;
-	experienceId?: string;
 }>;
 
 export type RuntimeClientStatus = 'online' | 'stale';
@@ -98,24 +84,8 @@ export type RuntimeClientsPayload = Readonly<{
 	clients: readonly RuntimeClientSummary[];
 }>;
 
-export type OperatorSetActiveExperiencePayload = Readonly<{
-	activeExperienceId: string | null;
-}>;
-
-export type ExperienceReadyPayload = Readonly<{
-	experienceId: string;
-}>;
-
 export type StationStateMessage = Message<'station.state', StationState>;
 export type ControlOrientationMessage = Message<'control.orientation', ControlOrientation>;
-export type ClientRegisterMessage = Message<'client.register', ClientRegisterPayload>;
-export type ClientHelloMessage = Message<'client.hello', ClientHelloPayload>;
-export type ClientHeartbeatMessage = Message<'client.heartbeat', ClientHeartbeatPayload>;
 export type ClientRegisteredMessage = Message<'client.registered', ClientRegisteredPayload>;
 export type ClientRejectedMessage = Message<'client.rejected', ClientRejectedPayload>;
 export type RuntimeClientsMessage = Message<'runtime.clients', RuntimeClientsPayload>;
-export type OperatorSetActiveExperienceMessage = Message<
-	'operator.setActiveExperience',
-	OperatorSetActiveExperiencePayload
->;
-export type ExperienceReadyMessage = Message<'experience.ready', ExperienceReadyPayload>;

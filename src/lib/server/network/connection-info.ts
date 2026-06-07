@@ -59,7 +59,7 @@ export function resolveServerOpenUrls(
 	return [{ label, url: createHttpUrl(protocol, hostname, portValue) }];
 }
 
-export function resolveLanHostname(hostname: string): string {
+function resolveLanHostname(hostname: string): string {
 	const normalizedHostname = normalizeHostname(hostname);
 
 	if (!isLocalHostname(normalizedHostname)) {
@@ -75,16 +75,12 @@ export function resolveLanHostname(hostname: string): string {
 	return 'localhost';
 }
 
-export function formatHost(hostname: string, port: string): string {
+function formatHost(hostname: string, port: string): string {
 	const normalizedHostname = normalizeHostname(hostname);
 	const formattedHostname = normalizedHostname.includes(':')
 		? `[${normalizedHostname}]`
 		: normalizedHostname;
 	return port === '' ? formattedHostname : `${formattedHostname}:${port}`;
-}
-
-export function readHttpProtocol(_protocol: string): HttpProtocol {
-	return 'https';
 }
 
 function isLocalHostname(hostname: string): boolean {

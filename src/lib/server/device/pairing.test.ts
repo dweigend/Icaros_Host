@@ -48,6 +48,14 @@ describe('resolveDeviceWebSocketOrigin', () => {
 		);
 	});
 
+	it('does not invent a device URL when the plain listener is disabled', () => {
+		stubEnv('ICAROS_DEVICE_WS_PORT', 'none');
+
+		expect(() => resolveDeviceWebSocketOrigin('wss://192.168.50.194:5183')).toThrow(
+			'ICAROS_DEVICE_WS_PORT=none requires ICAROS_DEVICE_WS_ORIGIN for M5 pairing URLs.'
+		);
+	});
+
 	it('does not leak the Vite dev port into hardware pairing URLs', () => {
 		expect(resolveDeviceWebSocketOrigin('ws://192.168.50.194:5173')).toBe(
 			'ws://192.168.50.194:5184'

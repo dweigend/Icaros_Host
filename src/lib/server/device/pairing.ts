@@ -52,6 +52,12 @@ export function resolveDeviceWebSocketOrigin(wsOrigin: string): string {
 	url.protocol = 'ws:';
 	const configuredPort = process.env.ICAROS_DEVICE_WS_PORT?.trim();
 	if (configuredPort !== undefined && configuredPort !== '') {
+		if (configuredPort === 'none') {
+			throw new Error(
+				'ICAROS_DEVICE_WS_PORT=none requires ICAROS_DEVICE_WS_ORIGIN for M5 pairing URLs.'
+			);
+		}
+
 		url.port = configuredPort;
 		return url.origin;
 	}

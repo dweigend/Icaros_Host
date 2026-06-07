@@ -18,7 +18,7 @@ import {
 } from './runtime-debug';
 
 const DEBUG_FRAME_LIMIT = 12;
-const DEBUG_CLIENT_ID = 'host-console-debug';
+const DIAGNOSTIC_CLIENT_ID = 'host-console-debug';
 const DEFAULT_USB_DEVICE_ID = 'icaros-station-a-m5';
 const USB_SETUP_REFRESH_MS = 1_000;
 const CONSOLE_CLOCK_MS = 250;
@@ -32,7 +32,7 @@ export type ConsoleConnectionUrls = Readonly<{
 	runtimeSocketUrl: string;
 }>;
 
-export type ConsoleUsbPairingForm = {
+type ConsoleUsbPairingForm = {
 	ssid: string;
 	password: string;
 	deviceId: string;
@@ -43,7 +43,7 @@ export type ConsoleUsbPairingForm = {
 };
 
 export type ConsolePageState = ReturnType<typeof createConsolePageState>;
-export type ControllerStatusIndicator = Readonly<{
+type ControllerStatusIndicator = Readonly<{
 	label: string;
 	value: string;
 	tone: StatusDotTone;
@@ -135,7 +135,7 @@ export function createConsolePageState(readData: () => PageData) {
 
 	$effect(() => {
 		if (debugSocketOpen && debugSocket !== null) {
-			registerDebugTap(debugSocket);
+			registerDiagnosticTap(debugSocket);
 		}
 	});
 
@@ -182,7 +182,7 @@ export function createConsolePageState(readData: () => PageData) {
 			debugStatus = 'connected';
 			debugSocketOpen = true;
 			if (debugSocket !== null) {
-				registerDebugTap(debugSocket);
+				registerDiagnosticTap(debugSocket);
 			}
 		};
 
@@ -282,15 +282,15 @@ export function createConsolePageState(readData: () => PageData) {
 	};
 }
 
-function registerDebugTap(socket: WebSocket): void {
+function registerDiagnosticTap(socket: WebSocket): void {
 	if (socket.readyState !== WebSocket.OPEN) {
 		return;
 	}
 
 	socket.send(
 		JSON.stringify({
-			type: 'client.register',
-			payload: { role: 'operator', id: DEBUG_CLIENT_ID }
+			type: 'operator.diagnostic.register',
+			payload: { id: DIAGNOSTIC_CLIENT_ID }
 		})
 	);
 }

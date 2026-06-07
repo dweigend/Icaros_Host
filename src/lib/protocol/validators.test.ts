@@ -8,6 +8,7 @@ import {
 	validateClientHeartbeatPayload,
 	validateClientHelloPayload,
 	validateClientRegisteredPayload,
+	validateOperatorDiagnosticRegistrationPayload,
 	validateRuntimeClientsPayload
 } from './validators';
 
@@ -54,6 +55,26 @@ describe('runtime client validators', () => {
 		expect(validateClientHeartbeatPayload({ clientId: 'quest-client' })).toEqual({
 			ok: true,
 			value: { clientId: 'quest-client' }
+		});
+	});
+
+	it('accepts operator diagnostic registrations', () => {
+		expect(validateOperatorDiagnosticRegistrationPayload({ id: 'host-console-debug' })).toEqual({
+			ok: true,
+			value: { id: 'host-console-debug' }
+		});
+	});
+
+	it('rejects diagnostic registrations with runtime client identity fields', () => {
+		expect(
+			validateOperatorDiagnosticRegistrationPayload({
+				role: 'experience',
+				id: 'host-console-debug',
+				experienceId: 'mountain-flight'
+			})
+		).toEqual({
+			ok: false,
+			error: 'operator.diagnostic.register payload must not include client identity fields'
 		});
 	});
 

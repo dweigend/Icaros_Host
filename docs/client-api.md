@@ -1,30 +1,73 @@
 # Icaros Experience Client API
 
-Purpose: this document is a how-to for experience developers who connect a
-browser experience to Icaros Host. It describes only the client-facing API and
-intentionally leaves out device and hardware internals.
+Purpose: this document is the canonical interface for browser/WebXR experiences
+that connect to Icaros Host. It describes only the public experience-client
+contract: registration, runtime messages, normalized controls, and the checklist
+student projects should follow. Device pairing, Quest certificate setup, and
+`/launch` operations live in [Quest HTTPS Launch Routing](quest-https-launch-routing.md).
 
-For headset URLs, HTTPS certificate setup, and `/launch` redirect behavior, see
-[Quest HTTPS Launch Routing](quest-https-launch-routing.md).
+If another prompt or document disagrees with this page, use this page.
 
-## What The Client Does
+## Boundary
 
-An experience connects to Icaros Host and receives normalized control data. The
-experience does not know raw hardware messages, hardware sockets, or device
-protocol details.
+An experience is an external browser/WebXR client. It renders its own scene and
+connects to the Host runtime socket. The Host owns the M5, station state,
+normalization, safe-mode behavior, active client selection, and launch routing.
 
-The experience should treat Icaros Host as the runtime boundary:
+Experience code must not:
 
-- Connect to the host.
-- Register with the experience id.
-- Subscribe to normalized orientation controls.
-- Ignore controls while `safeMode` is active.
-- Clean up the client when the experience unloads.
+- open `/ws/device`
+- parse raw M5 frames
+- call `/api/m5-pairing`
+- decide which runtime client is active
+- assume that HTTP is acceptable for Quest/WebXR
 
-## Minimal Start
+Experience code should:
 
-In the Icaros SvelteKit template, import the client factory from the public
-library entrypoint. Create and start the client in browser lifecycle code.
+- open the Host runtime socket at `/ws/runtime`
+- send `client.hello`
+- wait for `client.registered`
+- send `client.heartbeat`
+- validate incoming messages before using them
+- apply only normalized `control.orientation` payloads
+- stop movement when `safeMode` is `true`
+- close sockets, timers, and listeners during cleanup
+
+## Message Envelope
+
+All public runtime messages use the same envelope:
+
+```ts
+type IcarosMessage<TType extends string, TPayload> = Readonly<{
+	protocol: 'neural-flight.v1';
+	type: TType;
+	stationId: 'station-a';
+	source: Readonly<{
+		role: 'host' | 'operator' | 'quest' | 'experience' | 'm5';
+		id: string;
+	}>;
+	timestamp: number;
+	payload: TPayload;
+}>;
+```
+
+For experience-originated messages, use:
+
+```ts
+const source = {
+	role: 'experience',
+	id: clientId
+} as const;
+```
+
+`timestamp` is a millisecond Unix timestamp from `Date.now()`. Student clients
+should ignore messages with unknown `protocol`, `stationId`, `type`, or payload
+shape.
+
+## Client Library
+
+When an experience can import this repository's public library entrypoint, use
+the small browser helper:
 
 ```ts
 import { onMount } from 'svelte';
@@ -32,18 +75,17 @@ import { createIcarosExperienceClient } from '$lib';
 
 onMount(() => {
 	const client = createIcarosExperienceClient({
-		experienceId: 'echo-flight'
+		experienceId: 'mountain-flight',
+		title: 'Mountain Flight'
 	});
 
 	const unsubscribe = client.onOrientation((control) => {
 		if (control.safeMode) {
+			stopMovement();
 			return;
 		}
 
-		updateExperience({
-			pitch: control.pitch,
-			roll: control.roll
-		});
+		applyOrientation(control.pitch, control.roll);
 	});
 
 	client.start();
@@ -55,80 +97,125 @@ onMount(() => {
 });
 ```
 
-The client uses `window.location` to resolve the runtime socket, so `start()`
-must run in the browser. In SvelteKit, `onMount` is the usual place.
-
-## Factory
-
-### `createIcarosExperienceClient(options)`
-
-Creates a browser-side client for one experience.
-
-```ts
-const client = createIcarosExperienceClient({
-	experienceId: 'echo-flight'
-});
-```
-
 Options:
 
 | Option | Type | Required | Default | Purpose |
 | --- | --- | --- | --- | --- |
-| `experienceId` | `string` | yes | none | Unique id of the experience. It must match the id the operator marks active in the host console, for example `"echo-flight"`. |
-| `clientId` | `string` | no | stable `localStorage["icaros.clientId"]` id | Concrete browser/Quest instance id sent to the host during registration. Most experiences should leave this unset. |
-| `title` | `string` | no | `document.title` or `experienceId` | Human-readable title shown in the Host console's runtime client list. |
-| `runtimePath` | `string` | no | `"/ws/runtime"` | Runtime WebSocket path on the current host. Most experiences should leave this unset. |
+| `experienceId` | `string` | yes | none | Stable slug for the experience, for example `mountain-flight`. |
+| `clientId` | `string` | no | stable `localStorage["icaros.clientId"]` id | Concrete browser or headset instance id. Most experiences should leave this unset. |
+| `title` | `string` | no | `document.title` or `experienceId` | Human-readable title shown in the Host console. |
+| `runtimePath` | `string` | no | `/ws/runtime` | Host runtime WebSocket path. Most experiences should leave this unset. |
 
-## Client Methods
+The helper starts in browser lifecycle code, sends `client.hello`, waits for
+`client.registered`, sends heartbeats, exposes `onOrientation(...)`, and closes
+its socket in `dispose()`. It does not expose raw device data.
 
-### `client.start()`
+Standalone clients that cannot import this helper should implement the same
+contract below. Use [Icaros VR Client](https://github.com/dweigend/Icaros_VR_Client)
+as the related standalone client repository.
 
-Starts the WebSocket connection to Icaros Host.
+## Runtime Socket
 
-Call this normally once when the experience loads. Calling `start()` again while
-the client already has a socket is a no-op.
+The runtime socket is:
 
-When the socket opens, the client sends `client.hello` with the configured
-`experienceId`, a stable concrete `clientId`, the page title, and the current
-HTTPS URL. The client treats the runtime as registered only after the host sends
-`client.registered`. If the host sends `client.rejected`, the socket closes and
-the experience remains neutral.
-
-After registration, the client sends `client.heartbeat` every few seconds so the
-Host can keep its available-client list fresh.
-
-The client does not reconnect automatically after a socket close. If the
-connection is lost, the experience must call `start()` again or reload.
-
-### `client.onOrientation(callback)`
-
-Registers a callback for normalized orientation controls.
-
-```ts
-const unsubscribe = client.onOrientation((control) => {
-	// Use control.pitch and control.roll here.
-});
+```txt
+wss://<host-lan-ip-or-name>:5183/ws/runtime
 ```
 
-The callback is called when the host sends a valid `control.orientation`
-message for the active registered client instance.
+Quest/WebXR setup details are intentionally not repeated here. For certificates,
+LAN hostnames, `/launch`, and troubleshooting, use
+[Quest HTTPS Launch Routing](quest-https-launch-routing.md).
 
-The method returns an unsubscribe function. Call it when this specific listener
-is no longer needed.
+Plain `ws://` is reserved for the M5 device boundary. Experience clients use
+WSS.
 
-There is currently no `client.onControl(...)` method. Use
-`client.onOrientation(...)` for the normalized control payload.
+## Registration
 
-### `client.dispose()`
+Create one stable `clientId` per browser or headset instance:
 
-Closes the runtime socket and clears all orientation listeners.
+```ts
+const storageKey = 'icaros.clientId';
+const storedClientId = localStorage.getItem(storageKey);
+const clientId = storedClientId ?? crypto.randomUUID();
 
-Use `dispose()` during page, component, or experience cleanup. Runtime objects
-with sockets must always have explicit cleanup.
+if (storedClientId === null) {
+	localStorage.setItem(storageKey, clientId);
+}
+```
 
-## Control Payload
+After the socket opens, send `client.hello`:
 
-The callback receives a `ControlOrientation` object:
+```json
+{
+  "protocol": "neural-flight.v1",
+  "type": "client.hello",
+  "stationId": "station-a",
+  "source": {
+    "role": "experience",
+    "id": "<clientId>"
+  },
+  "timestamp": 1760000000000,
+  "payload": {
+    "role": "experience",
+    "clientId": "<clientId>",
+    "experienceId": "mountain-flight",
+    "title": "Mountain Flight",
+    "url": "https://<client-lan-ip-or-name>:5174/",
+    "userAgent": "<navigator.userAgent>"
+  }
+}
+```
+
+Rules:
+
+- `experienceId` is the stable experience slug.
+- `clientId` identifies this concrete browser or headset instance.
+- `url` must be the HTTPS page URL that `/launch` may redirect to.
+
+The Host responds with `client.registered` or `client.rejected`.
+
+```ts
+type ClientRegisteredPayload = Readonly<{
+	clientId: string;
+	active: boolean;
+	activeClientId: string | null;
+}>;
+
+type ClientRejectedPayload = Readonly<{
+	reason: string;
+}>;
+```
+
+Treat the client as registered only after `client.registered` with the matching
+`clientId`. If the Host sends `client.rejected`, close the socket and keep the
+experience neutral.
+
+## Heartbeat
+
+After registration, send `client.heartbeat` every 3 to 5 seconds:
+
+```json
+{
+  "protocol": "neural-flight.v1",
+  "type": "client.heartbeat",
+  "stationId": "station-a",
+  "source": {
+    "role": "experience",
+    "id": "<clientId>"
+  },
+  "timestamp": 1760000004000,
+  "payload": {
+    "clientId": "<clientId>"
+  }
+}
+```
+
+The Host marks clients stale when heartbeats stop. A stale client is not
+selectable and must not receive control frames.
+
+## Controls
+
+The Host sends normalized controls only to the selected active runtime client:
 
 ```ts
 type ControlOrientation = Readonly<{
@@ -145,91 +232,71 @@ Fields:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `pitch` | `number` | Normalized pitch value in the range `-1..1`. |
-| `roll` | `number` | Normalized roll value in the range `-1..1`. |
-| `quality` | `number` | Host-provided signal quality in the range `0..1`. |
-| `source` | `"m5"` | Current protocol source label. Treat this as opaque metadata; experience code should not branch on hardware source labels. |
-| `safeMode` | `boolean` | `true` means the host is providing a safe neutral control state. The experience should avoid gameplay or movement updates based on this value. |
-| `timestamp` | `number` | Host timestamp for the control update. |
+| `pitch` | `number` | Normalized forward/backward value in `-1..1`. |
+| `roll` | `number` | Normalized left/right value in `-1..1`. |
+| `quality` | `number` | Host-provided signal quality in `0..1`. |
+| `source` | `'m5'` | Host source label. Treat it as metadata, not a reason to parse raw M5 data. |
+| `safeMode` | `boolean` | `true` means neutral safe controls. Stop movement or hold neutral state. |
+| `timestamp` | `number` | Host timestamp for the normalized control update. |
 
-## Recommended Handling
-
-Always check `safeMode` before applying movement.
+Use only valid control payloads:
 
 ```ts
-client.onOrientation((control) => {
+function applyControl(control: ControlOrientation): void {
 	if (control.safeMode) {
-		pauseMovement();
+		stopMovement();
 		return;
 	}
 
 	applyOrientation(control.pitch, control.roll);
-});
+}
 ```
 
-Use only the normalized values the client exposes. Experience code should not
-open hardware sockets, parse device frames, or depend on raw device message
-formats.
+If a manual client receives values outside the documented ranges, ignore the
+message or clamp defensively before applying movement.
 
-## Runtime Behavior
+## Station State
 
-The host console exposes a Quest launch URL at `/launch`. That endpoint
-redirects to the currently active experience client URL; it does not serve the
-experience assets itself.
+The Host may send `station.state` to announce the current active IDs:
 
-The client resolves the runtime socket from the current page:
-
-- Runtime pages use `wss://.../ws/runtime`.
-- Plain `ws://` is reserved for the M5 device boundary only.
-
-If the host sends a station state where the active experience id no longer
-matches this client, the client navigates to `/`. This keeps inactive
-experiences from continuing to run after the operator changes the active
-experience.
-
-## Standalone Client Runtime Socket
-
-The browser client builds its WebSocket URL from `window.location.host` plus
-`runtimePath`. This means an experience running on port `5174` tries to open:
-
-```text
-/ws/runtime
+```ts
+type StationState = Readonly<{
+	activeExperienceId: string | null;
+	activeClientId: string | null;
+}>;
 ```
 
-on the experience origin first. During local development, the standalone client
-proxies that path back to the host. This repository's companion client does
-that in
-`/Users/weigend/Documents/GitHub/Icaros_VR_Client/vite.config.ts`.
+Experience clients can use this for neutral UI state, but they must not decide
+active routing locally. The Host console owns active client selection.
 
-The plain host Vite dev server is not enough for end-to-end runtime checks
-because it does not attach the Bun WebSocket gateway. Use the built server entry
-point for socket testing:
+## Runtime Client List
 
-```sh
-bun run build
-ICAROS_EXPERIENCE_ORIGIN=https://<client-lan-ip-or-name>:5174 bun start
+The Host may broadcast `runtime.clients` so operator surfaces can show connected
+clients:
+
+```ts
+type RuntimeClientsPayload = Readonly<{
+	activeClientId: string | null;
+	clients: readonly RuntimeClientSummary[];
+}>;
 ```
 
-## Local Demo Client
+Normal student experiences may ignore this message. It is included here so
+manual clients can validate and safely ignore it instead of treating it as an
+error.
 
-The standalone VR client normally runs HTTPS-only with its own local
-certificates:
+## Student Checklist
 
-```text
-https://<client-lan-ip-or-name>:5174/
-```
-
-When opened through the Quest launch route, the headset must use the host HTTPS
-LAN origin first. The host owns `/launch`:
-
-```text
-https://<host-lan-ip-or-name>:5183/launch
-```
-
-The experience URL is separate and must match the standalone client server.
-`/launch` requires an explicit HTTPS experience target and returns a
-configuration error instead of redirecting to non-HTTPS targets.
-
-```text
-https://<client-lan-ip-or-name>:5174/    Quest/WebXR experience target
-```
+- Use a fixed `experienceId` slug and a human-readable title.
+- Use a stable per-browser `clientId` from `localStorage`.
+- Load the page from HTTPS for headset/WebXR use.
+- Open the Host runtime socket with WSS at `/ws/runtime`.
+- Send enveloped `client.hello` after socket open.
+- Wait for matching `client.registered` before applying controls.
+- Send enveloped `client.heartbeat` every 3 to 5 seconds.
+- Validate every incoming message before using `payload`.
+- Apply only `control.orientation`.
+- Stop or neutralize movement when `safeMode` is `true`.
+- Dispose WebSockets, intervals, animation loops, and listeners.
+- Never connect directly to the M5.
+- Never call `/api/m5-pairing` from an experience.

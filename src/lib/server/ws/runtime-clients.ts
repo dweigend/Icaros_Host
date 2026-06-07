@@ -6,7 +6,6 @@
 import { WebSocket } from 'ws';
 import type {
 	ClientHelloPayload,
-	ClientRegisterPayload,
 	ControlOrientationMessage,
 	RuntimeClientSummary,
 	RuntimeClientsMessage,
@@ -21,9 +20,20 @@ type IcarosGlobalRuntime = typeof globalThis & {
 
 export type RuntimeClient = Readonly<{
 	socket: WebSocket;
-	registration: ClientRegisterPayload | null;
+	registration: RuntimeClientRegistration | null;
 	presence: RuntimeClientSummary | null;
 }>;
+
+type RuntimeClientRegistration =
+	| Readonly<{
+			role: 'operator';
+			id: string;
+	  }>
+	| Readonly<{
+			role: 'experience';
+			id: string;
+			experienceId: string;
+	  }>;
 
 export class RuntimeClientRegistry {
 	#clients = new Set<RuntimeClient>();
@@ -34,7 +44,10 @@ export class RuntimeClientRegistry {
 		return client;
 	}
 
-	replaceRegistration(client: RuntimeClient, registration: ClientRegisterPayload): RuntimeClient {
+	replaceRegistration(
+		client: RuntimeClient,
+		registration: RuntimeClientRegistration
+	): RuntimeClient {
 		return this.#replace(client, { registration, presence: null });
 	}
 

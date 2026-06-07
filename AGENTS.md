@@ -31,10 +31,9 @@ before designing components.
 - The UI is a single technical console page at `/`.
 - Do not add UI subpages unless the user explicitly reopens that scope.
 - WebSocket controls runtime clients.
-- The operator decides the active experience id from `/`.
-- The host stores `activeExperienceId`; `/launch` may redirect to the externally
-  running active experience, but the host does not statically serve experience
-  builds.
+- The operator selects the active registered runtime client from `/`.
+- The host stores `activeClientId` and derives `activeExperienceId` from that
+  runtime client; `/launch` redirects only to the selected client's HTTPS URL.
 - The M5 sends raw data only to the host.
 - Experiences receive only normalized control data.
 - No experience may connect directly to the M5.
@@ -98,10 +97,9 @@ Prepare but do not fully implement:
 - Internal services may remain plain HTTP/WS behind the gateway.
 - Quest-facing browser surfaces must be HTTPS. `/launch` must never default,
   fall back, or redirect to `http://` experience URLs.
-- The host must require an explicit HTTPS experience target through
-  `ICAROS_EXPERIENCE_ORIGIN=https://...` or
-  `ICAROS_EXPERIENCE_PROTOCOL=https`; missing or HTTP configuration must fail
-  with a clear error instead of silently routing to HTTP.
+- `/launch` must use the selected registered runtime client as the single source
+  of truth. Missing, inactive, invalid, or non-HTTPS client URLs must fail with
+  a clear error instead of falling back to environment defaults.
 - The standalone VR client must not silently start a Quest/WebXR dev server over
   HTTP. Missing TLS files must produce a clear startup error.
 - Keep the M5 device boundary separate: firmware-compatible plain `ws://` may

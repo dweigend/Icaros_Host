@@ -5,6 +5,8 @@ build
 output
 .playwright-cli
 .DS_Store
+__pycache__/
+*.pyc
 test-clients/*/dist
 .env
 .env.*

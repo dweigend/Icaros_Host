@@ -18,9 +18,6 @@ ICAROS_DEVICE_WS_PORT="${ICAROS_DEVICE_WS_PORT:-5184}"
 ICAROS_DEVICE_WS_ORIGIN="${ICAROS_DEVICE_WS_ORIGIN:-}"
 ICAROS_TLS_KEY_FILE="${ICAROS_TLS_KEY_FILE:-.certs/icaros-host-key.pem}"
 ICAROS_TLS_CERT_FILE="${ICAROS_TLS_CERT_FILE:-.certs/icaros-host.pem}"
-ICAROS_EXPERIENCE_ORIGIN="${ICAROS_EXPERIENCE_ORIGIN:-}"
-ICAROS_EXPERIENCE_PROTOCOL="${ICAROS_EXPERIENCE_PROTOCOL:-}"
-ICAROS_EXPERIENCE_PORT="${ICAROS_EXPERIENCE_PORT:-5174}"
 PORTS_TO_FREE=("$PORT")
 
 is_tcp_port() {
@@ -55,27 +52,6 @@ if [[ -z "$ICAROS_DEVICE_WS_ORIGIN" && "$ICAROS_DEVICE_WS_PORT" != "none" ]]; th
 	PORTS_TO_FREE+=("$ICAROS_DEVICE_WS_PORT")
 fi
 
-if [[ -n "$ICAROS_EXPERIENCE_ORIGIN" && "$ICAROS_EXPERIENCE_ORIGIN" != https://* ]]; then
-	echo "ICAROS_EXPERIENCE_ORIGIN must use https:// for Quest launch." >&2
-	exit 1
-fi
-
-if [[ -z "$ICAROS_EXPERIENCE_ORIGIN" ]]; then
-	if [[ -z "$ICAROS_EXPERIENCE_PROTOCOL" ]]; then
-		ICAROS_EXPERIENCE_PROTOCOL="https"
-	fi
-
-	if [[ "$ICAROS_EXPERIENCE_PROTOCOL" != "https" ]]; then
-		echo "ICAROS_EXPERIENCE_PROTOCOL must be https for Quest launch." >&2
-		exit 1
-	fi
-
-	if ! is_tcp_port "$ICAROS_EXPERIENCE_PORT"; then
-		echo "ICAROS_EXPERIENCE_PORT must be a TCP port number." >&2
-		exit 1
-	fi
-fi
-
 echo "Icaros Host clean start"
 echo "Repo: $REPO_ROOT"
 echo "Host: $HOST"
@@ -87,11 +63,7 @@ else
 fi
 echo "TLS key: $ICAROS_TLS_KEY_FILE"
 echo "TLS cert: $ICAROS_TLS_CERT_FILE"
-if [[ -n "$ICAROS_EXPERIENCE_ORIGIN" ]]; then
-	echo "Experience target: $ICAROS_EXPERIENCE_ORIGIN"
-else
-	echo "Experience target: https://<host>:$ICAROS_EXPERIENCE_PORT/"
-fi
+echo "Launch target: selected registered runtime client's HTTPS URL"
 
 kill_port_listeners() {
 	local port="$1"
@@ -151,14 +123,5 @@ START_ENV=(
 	ICAROS_TLS_KEY_FILE="$ICAROS_TLS_KEY_FILE"
 	ICAROS_TLS_CERT_FILE="$ICAROS_TLS_CERT_FILE"
 )
-
-if [[ -n "$ICAROS_EXPERIENCE_ORIGIN" ]]; then
-	START_ENV+=(ICAROS_EXPERIENCE_ORIGIN="$ICAROS_EXPERIENCE_ORIGIN")
-else
-	START_ENV+=(
-		ICAROS_EXPERIENCE_PROTOCOL="$ICAROS_EXPERIENCE_PROTOCOL"
-		ICAROS_EXPERIENCE_PORT="$ICAROS_EXPERIENCE_PORT"
-	)
-fi
 
 exec env "${START_ENV[@]}" bun server/index.ts

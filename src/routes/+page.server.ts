@@ -5,7 +5,6 @@
  */
 import { fail } from '@sveltejs/kit';
 
-import { isNonEmptySlug } from '$lib/protocol';
 import {
 	abortM5UsbWorkflow,
 	flashM5Firmware,
@@ -17,7 +16,7 @@ import {
 import type { UsbPairingInput } from '$lib/server/device/usb-setup';
 import { resolveExperienceLaunchUrl } from '$lib/server/experiences';
 import { createQuestLaunchUrl, resolveConnectionInfo } from '$lib/server/network';
-import { setActiveClient, setActiveExperience } from '$lib/server/station/active-experience';
+import { setActiveClient } from '$lib/server/station/active-experience';
 import { stationStateStore } from '$lib/server/station/state';
 import { runtimeClientRegistry } from '$lib/server/ws/runtime-clients';
 import type { Actions, PageServerLoad } from './$types';
@@ -25,7 +24,11 @@ import type { Actions, PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ url }) => {
 	const station = stationStateStore.getState();
 	const connection = resolveConnectionInfo(url);
-	const launchTarget = resolveExperienceLaunchUrl(station.activeExperienceId, url);
+	const activeClient =
+		station.activeClientId === null
+			? null
+			: runtimeClientRegistry.findSelectableClient(station.activeClientId);
+	const launchTarget = resolveExperienceLaunchUrl(station.activeClientId, activeClient);
 	const pairingStatus = getM5PairingStatus(url);
 
 	return {
@@ -41,23 +44,6 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-	setActive: async ({ request }) => {
-		const formData = await request.formData();
-		const rawExperienceId = formData.get('experienceId');
-		const activeExperienceId = rawExperienceId === '' ? null : rawExperienceId;
-
-		if (activeExperienceId !== null && !isNonEmptySlug(activeExperienceId)) {
-			return fail(400, { message: 'Invalid experience id.' });
-		}
-
-		const result = setActiveExperience(activeExperienceId);
-
-		if (!result.ok) {
-			return fail(400, { message: result.error });
-		}
-
-		return { ok: true };
-	},
 	setActiveClient: async ({ request }) => {
 		const formData = await request.formData();
 		const clientId = readOptionalFormValue(formData, 'clientId');
