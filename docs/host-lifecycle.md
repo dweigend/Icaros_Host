@@ -1,63 +1,61 @@
 # Eine Reise durch den Icaros Host
 
-Die wichtigste Idee des Icaros Host ist eine Trennung: Der Host kümmert sich um
-die Installation, die Experiences kümmern sich um ihre eigene VR-Welt. Diese
+Die wichtigste Idee des Icaros Host ist eine klare Aufgabenteilung: Der Host
+kümmert sich um die Installation, die Experiences um ihre eigene VR-Welt. Diese
 Trennung nennt man Separation of Concerns. Ein Teil des Systems übernimmt also
 die Verbindung zu Icaros, Controller und VR-Brille. Ein anderer Teil rendert die
 eigentliche Experience.
 
 Der Host sitzt direkt an der Station. Er kennt den M5-Controller, die
-Operator-Konsole, das Headset und die Frage, welcher Client gerade aktiv sein
-soll. Er nimmt rohe Controller-Daten entgegen, prüft sie, glättet sie und
-wandelt sie in eine kleine, stabile Steuerinformation um. Eine Experience muss
-dadurch nicht wissen, wie der M5 eingerichtet ist, welche Firmware läuft, wie
-die Brille gestartet wurde oder was passiert, wenn eine Verbindung kurz
-abbricht.
+Operator-Konsole, das Headset und den Client, der gerade aktiv sein soll. Er
+nimmt rohe Controller-Daten entgegen, prüft sie, glättet sie und wandelt sie in
+eine kleine, stabile Steuerinformation um. Eine Experience muss dadurch nicht
+wissen, wie der M5 eingerichtet ist, welche Firmware läuft, wie die Brille
+gestartet wurde oder was passiert, wenn eine Verbindung kurz abbricht.
 
-Die VR Experiences laufen als eigene Clients. Jeder Client hostet seine
-eigene 3D-Welt und meldet sich beim Host an. Der Host kann mehrere solcher
+Die VR Experiences laufen als eigene Clients. Jeder Client hostet seine eigene
+3D-Welt und meldet sich beim Host an. Der Host kann mehrere solcher
 Clients kennen, aber nur ein Client ist aktiv und bekommt die echten
 Steuerdaten. Dadurch bleibt klar: Die Experience baut die Welt. Der Host
 übernimmt Routing, Controller-Daten, Handshake, Launch und sichere
 Verbindungen.
 
-Deshalb gibt es auch zwei Wege, mit dem Host zu arbeiten. Die Weboberfläche ist
-für Menschen gedacht. Dort kannst du auf einen Blick sehen, ob der M5 verbunden
-ist, welche Clients online sind, welcher Client aktiv ist und ob die Station
-bereit ist. Eine grafische Oberfläche ist dafür sinnvoll, weil sie Zustand,
-Warnungen und Aktionen gemeinsam sichtbar macht.
+Deshalb gibt es zwei Wege, mit dem Host zu arbeiten. Die Weboberfläche ist für
+Menschen gedacht. Dort siehst du auf einen Blick, ob der M5 verbunden ist,
+welche Clients online sind, welcher Client aktiv ist und ob die Station bereit
+ist. Eine grafische Oberfläche ist dafür sinnvoll, weil sie Zustand, Warnungen
+und Aktionen gemeinsam sichtbar macht.
 
-Die CLI ist dagegen vor allem für Coding-Agenten und Automation wichtig.
-Coding-Agenten können sehr gut Werkzeuge aufrufen, Kommandos ausführen und
-strukturierte Antworten auswerten. Wenn du den Server mit Hilfe eines
-Coding-LLM einrichten, prüfen oder konfigurieren möchtest, kann der Agent über
-die CLI gezielt mit dem Host sprechen, ohne eine Oberfläche bedienen zu müssen.
-Weboberfläche und CLI haben also unterschiedliche Zielgruppen, nutzen aber
-dieselbe Host-Logik.
+Die CLI ist dagegen vor allem für Coding-Agenten und Automation gedacht. Ein
+Coding-Agent kann Werkzeuge aufrufen, Kommandos ausführen und strukturierte
+Antworten auswerten. Wenn du den Server mithilfe eines Coding-LLM einrichten,
+prüfen oder konfigurieren möchtest, spricht der Agent über die CLI gezielt mit
+dem Host, ohne eine Oberfläche bedienen zu müssen. Weboberfläche und CLI passen
+also zu unterschiedlichen Arbeitsweisen, nutzen aber dieselbe Host-Logik.
 
 Das ist der rote Faden für dieses Dokument. Wir gehen gemeinsam durch den Host
 und schauen Schritt für Schritt, was passiert, wenn du den Server startest,
 einen Controller einrichtest, einen Client verbindest und eine Experience
-startest. Dabei geht es nicht darum, sofort jede einzelne Codezeile zu
+öffnest. Dabei geht es nicht darum, sofort jede einzelne Codezeile zu
 verstehen. Wichtiger ist, dass du die Konzepte erkennst: Was macht der Host? Wo
-lebt welche Verantwortung? Welche Datei ist der richtige Einstieg, wenn du eine
-Funktion ändern oder einem Coding-Agenten klar beschreiben willst?
+liegt welche Verantwortung? Welche Datei ist der richtige Einstieg, wenn du
+eine Funktion ändern oder einem Coding-Agenten klar beschreiben willst?
 
 Am Ende sollst du das System als Ablauf lesen können: Der M5 sendet rohe
 Bewegungsdaten. Die Konsole entscheidet, welcher konkrete Runtime Client aktiv
-ist. Der Host prüft, normalisiert, glättet und verteilt nur das, was die aktive
-Experience wirklich braucht.
+ist. Der Host prüft, normalisiert, glättet und verteilt genau die Daten, die die
+aktive Experience wirklich braucht.
 
 ## 1. Der Server startet
 
-Du beginnst beim Start des Servers. In diesem Moment baut der Host seine
-technische Basis auf: Er prüft HTTPS, lädt die gebaute SvelteKit-App und hängt
-das WebSocket-Gateway an. Erst wenn diese Grundlage steht, kann er Browser,
+Du beginnst beim Serverstart. In diesem Moment baut der Host seine technische
+Basis auf: Er prüft HTTPS, lädt die gebaute SvelteKit-App und hängt das
+WebSocket-Gateway an. Erst wenn diese Grundlage steht, kann er Browser,
 Headsets, Runtime Clients und den M5 sauber voneinander trennen.
 
 Der zentrale Einstieg ist [server/index.ts](../server/index.ts). Diese Datei ist
 bewusst kein Ort für Fachlogik. Sie startet den Prozess und verbindet die
-großen Bausteine miteinander.
+großen Bausteine.
 
 Im Code findest du hier vor allem:
 
@@ -81,15 +79,16 @@ https://<host-lan-ip-or-name>:5183/
 ws://<host-lan-ip-or-name>:5184/ws/device
 ```
 
-Damit ist der Host erreichbar. Aber noch ist nichts ausgewählt, kein Client ist
-aktiv und der Controller muss entweder wiedergefunden oder eingerichtet werden.
+Damit ist der Host erreichbar. Ausgewählt ist zu diesem Zeitpunkt aber noch
+nichts: Kein Client ist aktiv, und der Controller muss entweder wiedergefunden
+oder eingerichtet werden.
 
 ## 2. Du öffnest die Operator-Konsole
 
 Als Nächstes schaust du auf die sichtbare Oberfläche des Hosts: die
 Operator-Konsole auf `/`. Hier siehst du, welche Verbindungen bekannt sind, ob
-der M5 bereit ist, welche Runtime Clients online sind und welcher Client aktiv
-ist.
+der M5 bereit ist, welche Runtime Clients online sind und welcher Client gerade
+aktiv ist.
 
 Die Seite wird aus zwei Teilen aufgebaut:
 
@@ -98,7 +97,7 @@ Die Seite wird aus zwei Teilen aufgebaut:
 - [src/routes/+page.svelte](../src/routes/+page.svelte) setzt die sichtbaren
   Konsolenbereiche zusammen.
 
-In `load()` wird der aktuelle Blick auf die Station vorbereitet: Verbindung-URLs,
+In `load()` entsteht der aktuelle Blick auf die Station: Verbindung-URLs,
 Station-Zustand, aktives Launch-Ziel und M5-Pairing-Status. Die `actions` in
 derselben Datei sind die Bedienhandlungen: aktiven Client setzen, USB-Pairing
 starten, Controller prüfen, Firmware flashen, Workflow abbrechen und Debug
@@ -118,16 +117,16 @@ Die sichtbaren Teile sind bewusst in kleine route-lokale Dateien zerlegt:
 - [src/routes/console-state.svelte.ts](../src/routes/console-state.svelte.ts)
   hält Browser-State, Timer und Diagnose-WebSocket zusammen.
 
-Die Konsole bleibt absichtlich eine einzige Seite. Dadurch musst du nicht erst
-zwischen mehreren UI-Routen unterscheiden. Es gibt eine Station, einen sichtbaren
-Zustand und eine klare Stelle, an der entschieden wird, welcher Runtime Client
-aktiv ist.
+Die Konsole bleibt absichtlich eine einzige Seite. So musst du nicht zwischen
+mehreren UI-Routen unterscheiden. Es gibt eine Station, einen
+sichtbaren Zustand und eine klare Stelle, an der entschieden wird, welcher
+Runtime Client aktiv ist.
 
 ## 3. Der Host sucht nach einem bekannten Controller
 
-Direkt nach dem Start fragt sich der Host: Kenne ich schon einen M5-Controller?
-Wenn ein Controller bereits erfolgreich eingerichtet wurde, soll er nicht bei
-jedem Start neu über USB konfiguriert werden. Der Host lädt deshalb eine lokale
+Direkt nach dem Start fragt der Host: Kenne ich schon einen M5-Controller? Wenn
+ein Controller bereits erfolgreich eingerichtet wurde, soll er nicht bei jedem
+Start neu über USB konfiguriert werden. Der Host lädt deshalb die lokale
 Einrichtung und wartet darauf, dass der Controller über WLAN/WebSocket wieder
 auftaucht.
 
@@ -162,21 +161,21 @@ wenn seine gespeicherte URL noch zum aktuellen Host-Token passt. Wenn ein alter
 Controller eine alte URL gespeichert hat, erkennt der Host das über den
 Token-Fingerprint und fordert ein neues Setup.
 
-So entsteht ein angenehmer Normalfall: Du startest den Host, der bekannte M5 ist
+So entsteht ein einfacher Normalfall: Du startest den Host, der bekannte M5 ist
 im selben Netzwerk, der M5 verbindet sich wieder, und die Konsole wird nach dem
 ersten gültigen Frame grün.
 
 ## 4. Wenn der M5 neu oder veraltet ist, gehst du über USB
 
-Wenn der Controller neu ist, nicht wiedergefunden wird oder eine alte Firmware
-hat, führt dich der Host über den USB-Weg. USB ist hier nicht der normale
-Betrieb, sondern der Einrichtungs- und Prüfkanal. Der spätere Betrieb läuft über
-WLAN und den Geräte-WebSocket.
+Wenn der Controller neu ist, nicht wiedergefunden wird oder noch eine alte
+Firmware hat, führt dich der Host über USB. USB ist hier nicht der normale
+Betrieb, sondern der Einrichtungs- und Prüfkanal. Der spätere Betrieb läuft
+über WLAN und den Geräte-WebSocket.
 
 Die Konsole und die CLI verwenden dafür denselben Host-Core:
 [src/lib/server/device/pairing-service.ts](../src/lib/server/device/pairing-service.ts).
 Diese Datei ist eine dünne Orchestrierungsschicht. Sie sorgt dafür, dass Web-UI
-und CLI nicht zwei verschiedene Pairing-Logiken entwickeln.
+und CLI keine zwei verschiedenen Pairing-Logiken entwickeln.
 
 Du findest dort diese zentralen Funktionen:
 
@@ -201,8 +200,8 @@ Die erwartete Firmware-Version steht zentral in
 ```
 
 Der Host prüft diese Version, weil alte Firmware zwar noch USB-Daten liefern
-kann, sich aber bei WLAN, Diagnose oder Reconnect anders verhalten kann. Erst
-wenn die Firmware passt, ist der Controller für das aktuelle Host-Verhalten
+kann, sich bei WLAN, Diagnose oder Reconnect aber anders verhalten kann. Erst
+mit passender Firmware ist der Controller für das aktuelle Host-Verhalten
 wirklich verlässlich.
 
 Ein Firmware-Update passiert nicht aus Versehen. Flashen ist nur möglich, wenn
@@ -212,15 +211,14 @@ du es ausdrücklich erlaubst:
 ICAROS_ALLOW_M5_FIRMWARE_UPDATE=true
 ```
 
-Das hält den alltäglichen Prüf- und Pairing-Workflow leicht zugänglich, macht
-Firmware-Schreiben aber zu einer bewussten Aktion.
+So bleibt der alltägliche Prüf- und Pairing-Workflow leicht zugänglich.
+Firmware schreiben bleibt dagegen eine bewusste Aktion.
 
 ## 5. Der M5 kommt in den laufenden Betrieb
 
 Nach dem Pairing kennt der M5 die Geräte-URL des Hosts. Er verbindet sich über
 den plain WebSocket `/ws/device` und sendet rohe Controller-Frames. Der Host
-nimmt diese Verbindung aber nicht einfach blind an: Zuerst prüft er den
-Pairing-Token.
+nimmt diese Verbindung aber nicht blind an: Zuerst prüft er den Pairing-Token.
 
 Die Token- und URL-Logik liegt in
 [src/lib/server/device/pairing.ts](../src/lib/server/device/pairing.ts).
@@ -247,13 +245,13 @@ Dort sind besonders wichtig:
   schickt neutrale Safe-Mode-Werte.
 
 Die Idee dahinter ist einfach: Der M5 darf Rohdaten senden, aber nur an den
-Host. Kein VR Client soll direkt vom M5 lesen. So bleibt die Experience frei von
-Firmwaredetails und bekommt später nur stabile Steuerdaten.
+Host. Kein VR Client soll direkt vom M5 lesen. So bleibt die Experience frei
+von Firmwaredetails und bekommt später nur stabile Steuerdaten.
 
 ## 6. Aus Rohdaten werden Steuerdaten
 
 Jetzt passiert die eigentliche Übersetzung. Ein Controller sendet Sensordaten,
-aber eine Experience braucht keine Sensor-Rohformate. Sie braucht eine einfache,
+aber eine Experience braucht keine Rohformate. Sie braucht eine einfache,
 stabile Steuerinformation: Pitch, Roll, Qualität, Safe-Mode und Zeitstempel.
 
 Diese Umwandlung lebt in
@@ -268,11 +266,11 @@ Die wichtigsten Funktionen sind:
 - `createNeutralControl()` erzeugt neutrale Safe-Mode-Werte.
 
 Das Ergebnis heißt `control.orientation`. Diese Nachricht ist klein genug, damit
-Experience-Code einfach bleibt, aber vollständig genug, um eine Flug- oder
+Experience-Code übersichtlich bleibt, aber vollständig genug, um eine Flug- oder
 Bewegungssteuerung zu bauen.
 
 Der wichtigste Designgedanke: Die Experience soll nicht wissen müssen, welcher
-Controller, welche Firmware oder welches Rohformat gerade verwendet wird. Sie
+Controller, welche Firmware oder welches Rohformat gerade im Spiel ist. Sie
 sieht nur normalisierte Steuerung.
 
 ## 7. Runtime Clients melden sich an
@@ -280,8 +278,8 @@ sieht nur normalisierte Steuerung.
 Eine VR Experience läuft separat, zum Beispiel als eigener SvelteKit/Three.js
 Client. Beim Start öffnet sie einen sicheren WebSocket zum Host und stellt sich
 mit `client.hello` vor. Damit sagt sie: Ich bin ein konkreter Runtime Client,
-ich gehöre zu dieser Experience, und unter dieser HTTPS-URL kann ich gestartet
-werden.
+ich gehöre zu dieser Experience, und unter dieser HTTPS-URL kannst du mich
+starten.
 
 Der öffentliche Client-Helfer liegt in
 [src/lib/client/experience-client.ts](../src/lib/client/experience-client.ts).
@@ -316,15 +314,16 @@ muss wissen, welcher konkrete Client gerade die Steuerung bekommen soll.
 
 ## 8. Du wählst einen aktiven Client
 
-Registrierung allein bedeutet noch nicht, dass ein Client gesteuert wird. Die
-Konsole zeigt alle registrierten Runtime Clients und du wählst genau einen als
-aktiv aus.
+Registrierung allein bedeutet noch nicht, dass ein Client Steuerdaten bekommt.
+Die Konsole zeigt alle registrierten Runtime Clients, und du wählst genau einen
+als aktiv aus.
 
 Die Auswahl läuft über `setActiveClient` in
 [src/routes/+page.server.ts](../src/routes/+page.server.ts). Der kleine
 Server-Core dazu liegt in
 [src/lib/server/station/active-experience.ts](../src/lib/server/station/active-experience.ts),
-der Zustand in [src/lib/server/station/state.ts](../src/lib/server/station/state.ts).
+der Zustand in
+[src/lib/server/station/state.ts](../src/lib/server/station/state.ts).
 
 Der Host speichert:
 
@@ -339,15 +338,15 @@ Der Host speichert:
 bleibt als abgeleitete Information erhalten, weil sie für Anzeige und
 Kompatibilität hilfreich ist.
 
-Sobald sich der aktive Client ändert, sendet der Host neue `station.state`- und
-`runtime.clients`-Nachrichten an die Runtime-Verbindungen. So wissen Clients,
-ob sie aktiv sind oder nur registriert mitlaufen.
+Sobald sich der aktive Client ändert, sendet der Host neue Nachrichten vom Typ
+`station.state` und `runtime.clients` an die Runtime-Verbindungen. So wissen
+Clients, ob sie aktiv sind oder nur registriert mitlaufen.
 
 ## 9. `/launch` bringt das Headset zum richtigen Client
 
-Wenn du ein Headset verwendest, soll es nicht irgendeine alte oder hart
+Wenn du ein Headset verwendest, soll es nicht irgendeine alte oder fest
 konfigurierte Experience-URL öffnen. Es öffnet den Host. Der Host schaut nach,
-welcher Runtime Client gerade aktiv ist, und leitet dann auf genau diesen Client
+welcher Runtime Client gerade aktiv ist, und leitet dann genau zu diesem Client
 weiter.
 
 Die Route ist [src/routes/launch/+server.ts](../src/routes/launch/+server.ts).
@@ -363,7 +362,7 @@ die Route mit einer klaren Fehlermeldung fehl.
 
 Das ist absichtlich streng. `/launch` soll nicht raten, keine HTTP-Fallbacks
 nutzen und keine Experience-Builds ausliefern. Es ist ein sicherer Einstieg zum
-bereits laufenden aktiven Client.
+bereits laufenden, aktiven Client.
 
 ## 10. Nur der aktive Client bekommt Steuerung
 
@@ -383,12 +382,12 @@ Wichtige Funktionen:
   passende `activeClientId`, Operator-Diagnosen dürfen spiegeln.
 
 Die Experience bekommt dadurch nur das, was sie wirklich verarbeiten soll:
-normalisierte, sichere Steuerdaten. Alle anderen Clients sehen weiterhin
+normalisierte, sichere Steuerdaten. Alle anderen Clients sehen weiter
 Station-State und Client-Listen, aber keine aktive Steuerung.
 
 ## 11. Diagnose und Automation verwenden denselben Host-Core
 
-Diagnose ist wichtig, aber sie soll keine zweite Wahrheit erzeugen. Deshalb
+Diagnose ist wichtig, soll aber keine zweite Wahrheit erzeugen. Deshalb
 sprechen Web-Konsole und CLI dieselben Host-Funktionen an.
 
 Die JSON-Diagnose-Route ist
@@ -399,8 +398,8 @@ Beide Wege landen im gemeinsamen Service:
 [src/lib/server/device/pairing-service.ts](../src/lib/server/device/pairing-service.ts).
 
 Das bedeutet: Wenn die Konsole einen M5-Status zeigt und die CLI einen Snapshot
-liest, kommen beide aus demselben Statusmodell. Die CLI erfindet keinen eigenen
-Token, keine eigene Geräte-URL und keine eigene Pairing-Logik.
+liest, stammen beide aus demselben Statusmodell. Die CLI erfindet keinen
+eigenen Token, keine eigene Geräte-URL und keine eigene Pairing-Logik.
 
 Für schnelle Erreichbarkeit gibt es außerdem
 [src/routes/health/+server.ts](../src/routes/health/+server.ts). Dieser Endpoint
@@ -408,7 +407,7 @@ sagt nur: Der Host ist erreichbar und antwortet.
 
 ## 12. Safe-Mode ist die ruhige Fehlerstrategie
 
-Wenn Daten fehlen, alt sind oder eine Verbindung verloren geht, soll die
+Wenn Daten fehlen, veraltet sind oder eine Verbindung verloren geht, soll die
 Experience nicht mit alten Bewegungen weiterfliegen. Der Host schickt dann
 neutrale Safe-Mode-Werte.
 
@@ -421,14 +420,14 @@ Das passiert an mehreren Stellen gemeinsam:
 - [src/lib/client/experience-client.ts](../src/lib/client/experience-client.ts)
   liefert diese Controls an die Experience weiter.
 
-Eine Experience sollte bei `safeMode: true` Bewegung stoppen oder neutralisieren.
-Das ist kein Sonderfall, sondern Teil des normalen Betriebsmodells. Geräte und
-Netzwerke können ausfallen; der Host macht diesen Zustand sichtbar und
-vorhersagbar.
+Eine Experience sollte bei `safeMode: true` Bewegung stoppen oder
+neutralisieren. Das ist kein Sonderfall, sondern Teil des normalen
+Betriebsmodells. Geräte und Netzwerke können ausfallen; der Host macht diesen
+Zustand sichtbar und vorhersagbar.
 
 ## 13. Was der Host bewusst nicht macht
 
-Ein gutes System ist nicht nur durch seine Funktionen klar, sondern auch durch
+Ein gutes System wird nicht nur durch seine Funktionen klar, sondern auch durch
 seine Grenzen. Der Host macht einiges absichtlich nicht.
 
 Der Host:
@@ -442,8 +441,8 @@ Der Host:
 
 Diese Grenzen sind in [AGENTS.md](../AGENTS.md) und
 [docs/architecture.md](architecture.md) festgehalten. Sie machen das System
-leichter erweiterbar: Neue Experiences können entstehen, ohne dass der Host ihre
-3D-Welt kennen muss.
+leichter erweiterbar: Neue Experiences können entstehen, ohne dass der Host
+ihre 3D-Welt kennen muss.
 
 ## 14. Die kurze Gesamtreise
 
