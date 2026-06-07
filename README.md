@@ -1,89 +1,171 @@
 # Icaros Host
 
-Purpose: this README introduces Icaros Host as a teachable HTW student project
-and points to the canonical architecture and setup documents.
+Dies ist ein Host-Server für VR Experiences.
 
-Icaros Host is the station router, gateway, and translator for one local
-ICAROS-style station. It owns device input, station state, normalized controls,
-runtime sockets, and active experience routing. It does not render the WebXR
-experience itself.
+Der Server wurde insbesondere für die Icaros Flight Installation entwickelt. Er
+verbindet den M5-Controller, die Operator-Konsole und externe WebXR/VR-Clients.
+Die wichtigsten Aufgaben sind:
 
-This repository is part of an Icaros project series and continues the direction
-started by the [NeuralFlight template](https://github.com/dweigend/neural-flight-template):
-keep the host as the stable technical boundary and let student experiences stay
-small, readable, and replaceable. Example code should favor explicit types,
-file headers, architecture comments at important boundaries, and clear control
-flow that students can follow.
+- Experiences registrieren und routen
+- den aktiven VR-Client auswählen
+- Controller-Daten vom M5 empfangen
+- Rohdaten bereinigen, normalisieren und glätten
+- sichere Controller-Daten an die aktive Experience weitergeben
+- HTTPS/WSS für Quest- und Browser-Clients erzwingen
 
-## Current MVP Shape
+Der Host rendert keine VR Experience. Die Experiences laufen als eigene Clients
+und verbinden sich über die dokumentierte Runtime-Schnittstelle mit dem Host.
 
-The current MVP has one architecture:
+## Architektur
 
-- `/` is the single dense operator console.
-- The M5 controller sends raw frames only to the Host.
-- The Host validates, normalizes, smooths, and safe-modes controller data.
-- Browser/WebXR clients register with `client.hello` on `/ws/runtime`.
-- The operator selects one concrete online runtime client.
-- `/launch` redirects the headset to that selected client's registered HTTPS
-  URL.
-- Experiences receive only normalized controls and never talk to the M5.
+```mermaid
+flowchart LR
+    M5["M5StickC Plus Controller<br/>raw orientation frames"] -->|"ws:// /ws/device"| Host
+    Operator["Operator Console<br/>GET /"] -->|"select active client"| Host
+    Quest["Quest / PICO Headset<br/>GET /launch"] -->|"launch request"| Host
 
-There are no UI subpages in the MVP. Extra routes that were previously planned
-for `/operator`, `/vr`, and `/experiences/*` are intentionally out of scope.
+    Host["Icaros Host Server<br/>routing<br/>handshake<br/>validation<br/>normalization<br/>smoothing<br/>safe mode"]
+
+    Host -->|"307 redirect to selected HTTPS client URL"| ActiveClient
+    Host -->|"wss:// /ws/runtime<br/>control.orientation"| ActiveClient["Active VR Experience Client<br/>Icaros Flight / WebXR"]
+    Host -->|"wss:// /ws/runtime<br/>station.state, runtime.clients"| OtherClients["Other registered clients<br/>online or stale"]
+    Diagnostics["CLI / automation diagnostics"] -->|"GET/POST /api/m5-pairing"| Host
+```
+
+Der M5 sendet nur Rohdaten an den Host. Der Host wandelt diese Daten in eine
+kleine, stabile Steuerinformation für Experiences:
+
+```ts
+{
+	pitch: number;
+	roll: number;
+	quality: number;
+	source: 'm5';
+	safeMode: boolean;
+	timestamp: number;
+}
+```
+
+`pitch` und `roll` liegen im Bereich `-1..1`. Wenn der Controller fehlt oder die
+Daten veraltet sind, sendet der Host neutrale Safe-Mode-Werte.
+
+## Client-Endpunkte
+
+| Endpunkt | Protokoll | Client | Zweck |
+| --- | --- | --- | --- |
+| `/` | HTTPS | Operator Browser | Technische Konsole, Auswahl des aktiven Runtime-Clients, M5-Setup |
+| `/launch` | HTTPS | Quest/PICO Browser | Leitet per `307` auf die registrierte HTTPS-URL des aktiven Clients weiter |
+| `/ws/runtime` | WSS | VR Experience Clients | Runtime-Handshake, Client-Status und normalisierte Controller-Daten |
+| `/ws/device` | WS | M5 Controller | Firmware-kompatibler Gerätesocket für rohe Controller-Frames |
+| `/health` | HTTPS | CLI, Monitoring | Einfache Erreichbarkeitsprüfung |
+| `/api/m5-pairing` | HTTPS JSON | CLI, Automation | Diagnose- und Pairing-Adapter für M5-Setup |
+
+Experience Clients verwenden nur `/ws/runtime`. Sie verbinden sich nicht direkt
+mit dem M5 und lesen keine Rohdaten.
+
+### Runtime-Nachrichten für Experience Clients
+
+Experience Clients senden:
+
+- `client.hello`
+- `client.heartbeat`
+
+Experience Clients empfangen:
+
+- `client.registered`
+- `client.rejected`
+- `station.state`
+- `runtime.clients`
+- `control.orientation`
+
+Der vollständige Wire Contract steht in
+[docs/client-api.md](docs/client-api.md).
 
 ## Installation
 
-Install the project dependencies with Bun:
+Voraussetzung: Bun ist installiert.
 
 ```sh
 bun install
 ```
 
-The hardware Host requires local TLS files before it can start:
+Der Host braucht lokale TLS-Dateien:
 
 ```txt
 .certs/icaros-host.pem
 .certs/icaros-host-key.pem
 ```
 
-Create them with the canonical HTTPS setup in
-[Quest HTTPS Launch Routing](docs/quest-https-launch-routing.md). The Host and
-the standalone VR client each need their own certificate files.
+Die Einrichtung ist in
+[docs/quest-https-launch-routing.md](docs/quest-https-launch-routing.md)
+beschrieben. Host und VR Client besitzen jeweils eigene Zertifikate.
 
-## Start
+## Server Starten
 
-Use one command for the real Host, M5 pairing, and operator console:
+Für die echte Installation:
 
 ```sh
 bun start
 ```
 
-This cleans ports `5183` and `5184`, builds the app, verifies TLS files, and
-starts:
+Der Startbefehl baut die App, prüft TLS, räumt die Standardports auf und startet:
 
 ```txt
-https://localhost:5183/              operator console
-https://<host-lan-ip-or-name>:5183/  LAN operator console
+https://localhost:5183/
+https://<host-lan-ip-or-name>:5183/
 ws://<host-lan-ip-or-name>:5184/ws/device
 ```
 
-The process stays attached to the terminal while the Host is running. Stop it
-with `Ctrl-C`.
+Der Prozess bleibt im Terminal aktiv. Stoppen mit `Ctrl-C`.
 
-Use `bun start` for hardware. `bun run dev` and `bun run dev:lan` are disabled
-as Host start commands so they cannot accidentally start a plain HTTP workflow.
-For isolated Svelte UI work only, use:
+Für reine UI-Arbeit ohne Hardware:
 
 ```sh
 bun run dev:ui-only
 ```
 
-## Diagnostics
+## Nutzung
 
-The controller CLI uses the same Host core as the web console and calls the
-diagnostic JSON endpoint at `/api/m5-pairing`. That endpoint is for CLI and
-automation diagnostics only; it is not a public UI helper API and it is not part
-of the experience-client contract.
+1. Host starten.
+2. Operator-Konsole im Browser öffnen:
+
+   ```txt
+   https://localhost:5183/
+   ```
+
+3. M5-Controller über die Konsole oder CLI einrichten.
+4. Einen VR Experience Client separat über HTTPS starten.
+5. Der Client sendet `client.hello` an `/ws/runtime`.
+6. In der Operator-Konsole den konkreten Runtime-Client auswählen.
+7. Quest/PICO öffnet:
+
+   ```txt
+   https://<host-lan-ip-or-name>:5183/launch
+   ```
+
+8. Der Host leitet auf die HTTPS-URL des ausgewählten Clients weiter.
+
+## Neue Clients Einrichten
+
+Ein neuer VR Client ist ein eigenständiges WebXR-Projekt. Er muss:
+
+- über HTTPS laufen
+- den Host über `wss://<host-origin>/ws/runtime` erreichen
+- beim Start `client.hello` senden
+- danach regelmäßig `client.heartbeat` senden
+- nur `control.orientation` für die Steuerung verwenden
+- bei `safeMode: true` Bewegung stoppen oder neutralisieren
+- eigene TLS-Zertifikate verwenden
+
+Als Referenz für Client-Projekte dienen:
+
+- [Icaros VR Client](https://github.com/dweigend/Icaros_VR_Client)
+- [Neural Flight Template](https://github.com/dweigend/neural-flight-template)
+- [Neural Flight](https://github.com/dweigend/neural-flight)
+
+## Diagnose
+
+M5- und Host-Diagnosen laufen über die CLI:
 
 ```sh
 bun run m5:pairing -- health
@@ -92,7 +174,7 @@ bun run m5:pairing -- snapshot
 bun run m5:pairing -- checklist
 ```
 
-For USB and firmware work:
+USB- und Firmware-Funktionen:
 
 ```sh
 bun run m5:pairing -- probe
@@ -101,124 +183,36 @@ bun run m5:pairing -- pair
 bun run m5:pairing -- abort
 ```
 
-Pairing debug output is written to:
+Runtime-Smoke-Test bei laufendem Host:
 
-```txt
-.icaros/debug/m5-pairing-debug.json
+```sh
+bun run smoke:runtime
 ```
 
-Plain `ws://` is allowed only for the M5 device endpoint. Operator UI,
-runtime clients, Quest launch, and experience clients use HTTPS/WSS.
+## Dokumentation
 
-## Runtime Boundaries
+| Dokument | Inhalt |
+| --- | --- |
+| [docs/architecture.md](docs/architecture.md) | Architektur, Grenzen und Datenfluss |
+| [docs/client-api.md](docs/client-api.md) | Schnittstelle für VR Experience Clients |
+| [docs/client-prompt.md](docs/client-prompt.md) | Checkliste und Prompt für neue Clients |
+| [docs/quest-https-launch-routing.md](docs/quest-https-launch-routing.md) | HTTPS, Quest/PICO Launch und Zertifikate |
+| [docs/m5-pairing-solution.md](docs/m5-pairing-solution.md) | M5-Setup, Pairing und Firmware |
+| [docs/debugging.md](docs/debugging.md) | Debugging und Diagnose |
+| [docs/PLAN.md](docs/PLAN.md) | Aktueller Implementierungsplan |
+| [AGENTS.md](AGENTS.md) | Arbeitsregeln für Coding Agents |
 
-- The M5 sends raw frames only to the host over `/ws/device`.
-- The host normalizes raw M5 data into `control.orientation`.
-- Runtime clients connect over `/ws/runtime`.
-- Experiences receive normalized controls only.
-- Experiences do not connect directly to the M5.
-- Raw M5 data does not enter Three.js or student experience code.
+## Checks
 
-## Station Model
-
-M1 still targets one physical station:
-
-- station id: `station-a`
-- one Meta Quest headset as HTTPS/WebXR runtime device
-- one M5 controller
-- one active browser/Quest client instance
-- browser-based experience clients that register over WebSocket with `client.hello`
-- one operator-facing host console
-
-The host stores:
-
-```ts
-{
-  activeExperienceId: string | null;
-  activeClientId: string | null;
-}
+```sh
+bun run check
+bun run lint
+bun run test
+bun run build
 ```
 
-`activeClientId` is the routing source of truth. `activeExperienceId` remains
-compatibility state derived from the selected client. The single console page
-reads that state and updates it through SvelteKit form actions. No separate
-operator route or UI helper JSON API is needed for the MVP UI.
+## Hardware
 
-## Experience Routing
-
-The host does not statically serve experience builds in this MVP. An experience
-is a browser/WebXR client that opens its own page, connects to the host over
-`/ws/runtime`, and registers with `client.hello`.
-
-The operator console shows concrete runtime clients and selects one
-`activeClientId`. Only that online client receives `control.orientation` frames.
-`activeExperienceId` is still stored for launch compatibility and is derived
-from the selected client when the operator chooses a concrete instance.
-
-The `/launch` endpoint is a thin Quest launcher for the active runtime client.
-It redirects the headset only to the selected online client's registered HTTPS
-URL. There is no HTTP default or fallback.
-
-## Quest And HTTPS
-
-The Meta Quest is still a first-class runtime device in this MVP. It does not
-require a dedicated `/vr` route, but it must open the Host and active WebXR
-experience from secure LAN origins. Operational certificate setup, launch
-behavior, environment variables, and troubleshooting live in
-[Quest HTTPS Launch Routing](docs/quest-https-launch-routing.md).
-
-Minimum shape:
-
-```txt
-https://<host-lan-name-or-ip>:<port>/
-https://<experience-origin>/
-wss://<host-lan-name-or-ip>:<port>/ws/runtime
-```
-
-The headset must use LAN HTTPS addresses because `localhost` on the Quest
-points to the headset itself. The M5 device boundary remains separate and may
-use its firmware-compatible plain WebSocket input path.
-
-## Control API
-
-Experiences receive normalized control payloads:
-
-```ts
-{
-  pitch: number;
-  roll: number;
-  quality: number;
-  source: "m5";
-  safeMode: boolean;
-  timestamp: number;
-}
-```
-
-`pitch` and `roll` are normalized to `-1..1`. Stale or disconnected M5 state
-produces neutral safe-mode controls.
-
-For the complete experience-client contract and student checklist, use
-[Experience Client API](docs/client-api.md).
-
-## Related Repositories And Hardware
-
-- [NeuralFlight Template](https://github.com/dweigend/neural-flight-template):
-  predecessor template for WebXR flight experiments.
-- [Icaros VR Client](https://github.com/dweigend/Icaros_VR_Client): standalone
-  WebXR client repository that connects to this Host.
-- [M5Stack StickC-Plus](https://docs.m5stack.com/en/core/m5stickc_plus):
-  compact ESP32 controller hardware used for M5 input experiments.
-- [Meta Quest 3](https://www.meta.com/quest/quest-3/): primary WebXR headset
-  target for the MVP.
-- [PICO 4 Ultra Enterprise](https://www.picoxr.com/global/products/pico4-ultra-enterprise/specs):
-  related enterprise headset reference for future lab deployments.
-
-## Related Docs
-
-- [Architecture](docs/architecture.md)
-- [Experience Client API](docs/client-api.md)
-- [Implementation Plan](docs/PLAN.md)
-- [Quest HTTPS Launch Routing](docs/quest-https-launch-routing.md)
-- [M5 Pairing Solution](docs/m5-pairing-solution.md)
-- [Coding Standards](CODINGSTANDARDS.md)
-- [Agent Rules](AGENTS.md)
+- [M5Stack StickC Plus](https://shop.m5stack.com/products/m5stickc-plus-esp32-pico-mini-iot-development-kit)
+- [Meta Quest 3](https://www.meta.com/de/quest/quest-3/)
+- [PICO 4 Ultra Enterprise](https://www.picoxr.com/de/products/pico4-ultra-enterprise)
