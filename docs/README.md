@@ -8,6 +8,8 @@ close to the code while the top-level README stays short.
 
 - [Architecture](architecture.md): station boundaries, runtime ownership, and
   system data flow.
+- [Host Lifecycle](host-lifecycle.md): a guided journey through startup,
+  controller setup, runtime clients, launch routing, and safe-mode behavior.
 - [Implementation Plan](PLAN.md): current MVP decisions, runtime flow, and
   acceptance criteria.
 - [Quest HTTPS Launch Routing](quest-https-launch-routing.md): LAN URLs, HTTPS
@@ -42,7 +44,7 @@ close to the code while the top-level README stays short.
 
 - Quest, HTTPS, WSS, certificate, and `/launch` details:
   [Quest HTTPS Launch Routing](quest-https-launch-routing.md)
-- Runtime handshake, envelope, and student client checklist:
+- Runtime handshake, envelope, and client checklist:
   [Experience Client API](client-api.md)
 - M5 diagnosis and bounded debug snapshots:
   [Debugging](debugging.md)

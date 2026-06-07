@@ -193,6 +193,7 @@ bun run smoke:runtime
 
 | Dokument | Inhalt |
 | --- | --- |
+| [docs/host-lifecycle.md](docs/host-lifecycle.md) | Geführte Reise durch Start, Controller, Clients und Datenfluss |
 | [docs/architecture.md](docs/architecture.md) | Architektur, Grenzen und Datenfluss |
 | [docs/client-api.md](docs/client-api.md) | Schnittstelle für VR Experience Clients |
 | [docs/client-prompt.md](docs/client-prompt.md) | Checkliste und Prompt für neue Clients |
