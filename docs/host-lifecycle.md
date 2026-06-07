@@ -1,27 +1,52 @@
 # Eine Reise durch den Icaros Host
 
-Dieses Dokument führt dich einmal durch den laufenden Icaros Host: vom Start
-des Servers über den M5-Controller und die Operator-Konsole bis zu den Runtime
-Clients, die am Ende normalisierte Steuerdaten bekommen.
+Die wichtigste Idee des Icaros Host ist eine Trennung: Der Host kümmert sich um
+die Installation, die Experiences kümmern sich um ihre eigene VR-Welt. Diese
+Trennung nennt man Separation of Concerns. Ein Teil des Systems übernimmt also
+die Verbindung zu Icaros, Controller und VR-Brille. Ein anderer Teil rendert die
+eigentliche Experience.
 
-Der Host ist dabei nicht die VR Experience. Er ist die technische Station
-dazwischen. Hier laufen Controller-Daten, registrierte Experience Clients,
-aktive Auswahl, Launch-Routing, Diagnose und sichere Verbindungen zusammen.
-Wenn du verstehen willst, warum eine Experience nur `control.orientation` sieht
-und nie direkt mit dem M5 spricht, ist dieser Ablauf der rote Faden.
+Der Host sitzt direkt an der Station. Er kennt den M5-Controller, die
+Operator-Konsole, das Headset und die Frage, welcher Client gerade aktiv sein
+soll. Er nimmt rohe Controller-Daten entgegen, prüft sie, glättet sie und
+wandelt sie in eine kleine, stabile Steuerinformation um. Eine Experience muss
+dadurch nicht wissen, wie der M5 eingerichtet ist, welche Firmware läuft, wie
+die Brille gestartet wurde oder was passiert, wenn eine Verbindung kurz
+abbricht.
 
-Das ist auch hilfreich, wenn du mit Coding-Agenten arbeitest. Du musst nicht
-jede einzelne Zeile Code auswendig kennen und auch nicht jede Library-Funktion
-im Detail verstehen. Aber du solltest die Konzepte kennen: Was macht der Host?
-Wo lebt welche Verantwortung? Welche Datei ist der richtige Einstieg, wenn du
-eine Funktion ändern oder erklären lassen willst? Genau dabei soll dir dieses
-Dokument helfen.
+Die VR Experiences laufen als eigene Clients. Jeder Client hostet seine
+eigene 3D-Welt und meldet sich beim Host an. Der Host kann mehrere solcher
+Clients kennen, aber nur ein Client ist aktiv und bekommt die echten
+Steuerdaten. Dadurch bleibt klar: Die Experience baut die Welt. Der Host
+übernimmt Routing, Controller-Daten, Handshake, Launch und sichere
+Verbindungen.
 
-Die zentrale Idee ist einfach: Der Host nimmt lokale, wechselhafte Teile und
-macht daraus ein geordnetes System. Der M5 sendet rohe Bewegungsdaten. Eine
-Experience rendert WebXR. Die Konsole entscheidet, welcher konkrete Runtime
-Client aktiv ist. Der Host prüft, normalisiert, glättet und verteilt nur das,
-was die aktive Experience wirklich braucht.
+Deshalb gibt es auch zwei Wege, mit dem Host zu arbeiten. Die Weboberfläche ist
+für Menschen gedacht. Dort kannst du auf einen Blick sehen, ob der M5 verbunden
+ist, welche Clients online sind, welcher Client aktiv ist und ob die Station
+bereit ist. Eine grafische Oberfläche ist dafür sinnvoll, weil sie Zustand,
+Warnungen und Aktionen gemeinsam sichtbar macht.
+
+Die CLI ist dagegen vor allem für Coding-Agenten und Automation wichtig.
+Coding-Agenten können sehr gut Werkzeuge aufrufen, Kommandos ausführen und
+strukturierte Antworten auswerten. Wenn du den Server mit Hilfe eines
+Coding-LLM einrichten, prüfen oder konfigurieren möchtest, kann der Agent über
+die CLI gezielt mit dem Host sprechen, ohne eine Oberfläche bedienen zu müssen.
+Weboberfläche und CLI haben also unterschiedliche Zielgruppen, nutzen aber
+dieselbe Host-Logik.
+
+Das ist der rote Faden für dieses Dokument. Wir gehen gemeinsam durch den Host
+und schauen Schritt für Schritt, was passiert, wenn du den Server startest,
+einen Controller einrichtest, einen Client verbindest und eine Experience
+startest. Dabei geht es nicht darum, sofort jede einzelne Codezeile zu
+verstehen. Wichtiger ist, dass du die Konzepte erkennst: Was macht der Host? Wo
+lebt welche Verantwortung? Welche Datei ist der richtige Einstieg, wenn du eine
+Funktion ändern oder einem Coding-Agenten klar beschreiben willst?
+
+Am Ende sollst du das System als Ablauf lesen können: Der M5 sendet rohe
+Bewegungsdaten. Die Konsole entscheidet, welcher konkrete Runtime Client aktiv
+ist. Der Host prüft, normalisiert, glättet und verteilt nur das, was die aktive
+Experience wirklich braucht.
 
 ## 1. Der Server startet
 
