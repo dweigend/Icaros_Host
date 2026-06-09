@@ -1,7 +1,6 @@
 /**
- * Purpose: parse and format normalized runtime messages for the host console
- * debug panel. This route-local module is transport-free and never exposes raw
- * M5 frames to the UI.
+ * Purpose: parse and format normalized live messages for the host console. This
+ * route-local module is transport-free and never exposes raw M5 frames to the UI.
  */
 import {
 	type ControlOrientation,
@@ -14,8 +13,7 @@ import {
 
 export type RuntimeDebugStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
-export type RuntimeDebugMessage =
-	| Readonly<{ type: 'control.orientation'; payload: ControlOrientation }>
+export type RuntimeRegistryMessage =
 	| Readonly<{ type: 'station.state'; payload: StationState }>
 	| Readonly<{ type: 'runtime.clients'; payload: RuntimeClientsPayload }>;
 
@@ -28,7 +26,7 @@ export type RuntimeDebugFrame = Readonly<{
 	safeMode: boolean;
 }>;
 
-export function parseRuntimeDebugMessage(input: string): RuntimeDebugMessage | null {
+export function parseControlStreamMessage(input: string): ControlOrientation | null {
 	try {
 		const parsed: unknown = JSON.parse(input);
 
@@ -38,7 +36,21 @@ export function parseRuntimeDebugMessage(input: string): RuntimeDebugMessage | n
 
 		if (parsed.type === 'control.orientation') {
 			const validation = validateControlOrientation(parsed.payload);
-			return validation.ok ? { type: 'control.orientation', payload: validation.value } : null;
+			return validation.ok ? validation.value : null;
+		}
+	} catch {
+		return null;
+	}
+
+	return null;
+}
+
+export function parseRuntimeRegistryMessage(input: string): RuntimeRegistryMessage | null {
+	try {
+		const parsed: unknown = JSON.parse(input);
+
+		if (!isRecord(parsed) || typeof parsed.type !== 'string') {
+			return null;
 		}
 
 		if (parsed.type === 'station.state') {

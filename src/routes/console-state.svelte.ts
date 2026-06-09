@@ -10,7 +10,8 @@ import type { PageData } from './$types';
 import {
 	createRuntimeDebugFrame,
 	formatAge,
-	parseRuntimeDebugMessage,
+	parseControlStreamMessage,
+	parseRuntimeRegistryMessage,
 	type RuntimeDebugFrame,
 	type RuntimeDebugStatus,
 	toQualityPercent,
@@ -18,7 +19,6 @@ import {
 } from './runtime-debug';
 
 const DEBUG_FRAME_LIMIT = 12;
-const DIAGNOSTIC_CLIENT_ID = 'host-console-debug';
 const DEFAULT_USB_DEVICE_ID = 'icaros-station-a-m5';
 const USB_SETUP_REFRESH_MS = 1_000;
 const CONSOLE_CLOCK_MS = 250;
@@ -58,14 +58,14 @@ export function createConsolePageState(readData: () => PageData) {
 	let usbNow = $state(Date.now());
 	let debugNow = $state(Date.now());
 	let debugStatus = $state<RuntimeDebugStatus>('disconnected');
-	let debugSocketOpen = $state(false);
 	let debugLastMessageAt = $state<number | null>(null);
 	let debugFrameCount = $state(0);
-	let debugStationActiveClientId = $state<string | null | undefined>(undefined);
+	let runtimeRegistryActiveClientId = $state<string | null | undefined>(undefined);
 	let runtimeClients = $state<readonly RuntimeClientSummary[]>([]);
 	let debugLastControl = $state<ControlOrientation | null>(null);
 	let debugFrames = $state<RuntimeDebugFrame[]>([]);
-	let debugSocket: WebSocket | null = null;
+	let controlStreamSocket: WebSocket | null = null;
+	let runtimeRegistrySocket: WebSocket | null = null;
 
 	const usbForm: ConsoleUsbPairingForm = $state({
 		ssid: '',
@@ -90,7 +90,7 @@ export function createConsolePageState(readData: () => PageData) {
 		runtimeSocketUrl: createBrowserSocketUrl(connection.wsOrigin, '/ws/runtime')
 	});
 	const runtimeActiveClientId = $derived(
-		debugStationActiveClientId === undefined ? activeClientId : debugStationActiveClientId
+		runtimeRegistryActiveClientId === undefined ? activeClientId : runtimeRegistryActiveClientId
 	);
 	const debugStatusTone = $derived(readDebugStatusTone(debugStatus));
 	const debugLastMessageAge = $derived(
@@ -121,42 +121,41 @@ export function createConsolePageState(readData: () => PageData) {
 		return () => window.clearInterval(refresh);
 	});
 
-	$effect(() => {
-		if (debugSocketOpen && debugSocket !== null) {
-			registerDiagnosticTap(debugSocket);
-		}
-	});
+	function readControlStreamMessage(data: string): void {
+		const control = parseControlStreamMessage(data);
 
-	function readDebugMessage(data: string): void {
-		const message = parseRuntimeDebugMessage(data);
-
-		if (message === null) {
+		if (control === null) {
 			return;
 		}
 
 		const receivedAt = Date.now();
 		debugLastMessageAt = receivedAt;
-
-		if (message.type === 'station.state') {
-			debugStationActiveClientId = message.payload.activeClientId;
-			return;
-		}
-
-		if (message.type === 'runtime.clients') {
-			runtimeClients = message.payload.clients;
-			return;
-		}
-
-		debugLastControl = message.payload;
+		debugLastControl = control;
 		debugFrameCount += 1;
 		debugFrames = [
-			createRuntimeDebugFrame(debugFrameCount, message.payload, receivedAt),
+			createRuntimeDebugFrame(debugFrameCount, control, receivedAt),
 			...debugFrames
 		].slice(0, DEBUG_FRAME_LIMIT);
 	}
 
-	function mountRuntimeDebugSocket(): () => void {
-		debugSocket = new WebSocket(connectionUrls.runtimeSocketUrl);
+	function readRuntimeRegistryMessage(data: string): void {
+		const message = parseRuntimeRegistryMessage(data);
+
+		if (message === null) {
+			return;
+		}
+
+		if (message.type === 'station.state') {
+			runtimeRegistryActiveClientId = message.payload.activeClientId;
+			return;
+		}
+
+		runtimeClients = message.payload.clients;
+	}
+
+	function mountConsoleLiveSockets(): () => void {
+		controlStreamSocket = new WebSocket(connectionUrls.controlSocketUrl);
+		runtimeRegistrySocket = new WebSocket(connectionUrls.runtimeSocketUrl);
 		debugStatus = 'connecting';
 
 		const clock = window.setInterval(() => {
@@ -165,38 +164,43 @@ export function createConsolePageState(readData: () => PageData) {
 			usbNow = now;
 		}, CONSOLE_CLOCK_MS);
 
-		debugSocket.onopen = () => {
+		controlStreamSocket.onopen = () => {
 			debugStatus = 'connected';
-			debugSocketOpen = true;
-			if (debugSocket !== null) {
-				registerDiagnosticTap(debugSocket);
-			}
 		};
 
-		debugSocket.onmessage = (event: MessageEvent) => {
-			readDebugMessage(String(event.data));
+		controlStreamSocket.onmessage = (event: MessageEvent) => {
+			readControlStreamMessage(String(event.data));
 		};
 
-		debugSocket.onerror = () => {
+		controlStreamSocket.onerror = () => {
 			debugStatus = 'error';
 		};
 
-		debugSocket.onclose = () => {
-			debugSocketOpen = false;
+		controlStreamSocket.onclose = () => {
 			debugStatus = 'disconnected';
+			controlStreamSocket = null;
+		};
+
+		runtimeRegistrySocket.onmessage = (event: MessageEvent) => {
+			readRuntimeRegistryMessage(String(event.data));
+		};
+
+		runtimeRegistrySocket.onclose = () => {
+			runtimeRegistrySocket = null;
 		};
 
 		return () => {
 			window.clearInterval(clock);
-			debugSocketOpen = false;
-			debugSocket?.close();
-			debugSocket = null;
+			controlStreamSocket?.close();
+			runtimeRegistrySocket?.close();
+			controlStreamSocket = null;
+			runtimeRegistrySocket = null;
 		};
 	}
 
 	return {
 		usbForm,
-		mountRuntimeDebugSocket,
+		mountConsoleLiveSockets,
 		get activeClientId() {
 			return runtimeActiveClientId;
 		},
@@ -255,19 +259,6 @@ export function createConsolePageState(readData: () => PageData) {
 			return debugQualityPercent;
 		}
 	};
-}
-
-function registerDiagnosticTap(socket: WebSocket): void {
-	if (socket.readyState !== WebSocket.OPEN) {
-		return;
-	}
-
-	socket.send(
-		JSON.stringify({
-			type: 'operator.diagnostic.register',
-			payload: { id: DIAGNOSTIC_CLIENT_ID }
-		})
-	);
 }
 
 function readDebugStatusTone(status: RuntimeDebugStatus): StatusDotTone {

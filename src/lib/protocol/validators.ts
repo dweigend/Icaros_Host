@@ -9,7 +9,6 @@ import type {
 	ClientRegisteredPayload,
 	ClientRejectedPayload,
 	ControlOrientation,
-	OperatorDiagnosticRegistrationPayload,
 	RuntimeClientSummary,
 	RuntimeClientsPayload,
 	StationState
@@ -18,25 +17,6 @@ import type {
 export type ValidationResult<TValue> =
 	| Readonly<{ ok: true; value: TValue }>
 	| Readonly<{ ok: false; error: string }>;
-
-export function validateOperatorDiagnosticRegistrationPayload(
-	input: unknown
-): ValidationResult<OperatorDiagnosticRegistrationPayload> {
-	if (!isRecord(input)) {
-		return fail('operator.diagnostic.register payload must be an object');
-	}
-
-	if ('role' in input || 'clientId' in input || 'experienceId' in input) {
-		return fail('operator.diagnostic.register payload must not include client identity fields');
-	}
-
-	const id = readString(input.id, 'operator.diagnostic.register id must be a non-empty string');
-	if (!id.ok) {
-		return id;
-	}
-
-	return ok({ id: id.value });
-}
 
 export function validateClientHelloPayload(input: unknown): ValidationResult<ClientHelloPayload> {
 	if (!isRecord(input)) {

@@ -8,15 +8,6 @@ import { WebSocket } from 'ws';
 import { RuntimeClientRegistry } from './runtime-clients';
 
 describe('RuntimeClientRegistry', () => {
-	it('keeps diagnostic operators out of selectable runtime clients', () => {
-		const registry = new RuntimeClientRegistry();
-		const operator = registry.add(createOpenSocket());
-		registry.replaceRegistration(operator, { role: 'operator', id: 'host-console-debug' });
-
-		expect(registry.listRuntimeClients()).toEqual([]);
-		expect(registry.findSelectableClient('host-console-debug')).toBeNull();
-	});
-
 	it('lists concrete runtime clients and marks stale heartbeats', () => {
 		const registry = new RuntimeClientRegistry();
 		const client = registry.add(createOpenSocket());

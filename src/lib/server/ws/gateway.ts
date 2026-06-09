@@ -3,8 +3,8 @@
  *
  * `/ws/device` is only for the M5. It receives raw firmware frames and converts
  * them to normalized controls. `/ws/control/:streamId` is the public normalized
- * control stream. `/ws/runtime` is for browser launch candidates and temporary
- * runtime diagnostics until the runtime/control split is complete.
+ * control stream. `/ws/runtime` is for browser launch registration and
+ * launch-selection presence.
  *
  * The gateway owns sockets, timers, and cleanup. It deliberately does not own
  * routing decisions, manifest discovery, or rendering code.
@@ -22,10 +22,8 @@ import {
 	createControlOrientationMessage,
 	createRuntimeClientsMessage,
 	createStationStateMessage,
-	type OperatorDiagnosticRegistrationPayload,
 	validateClientHeartbeatPayload,
-	validateClientHelloPayload,
-	validateOperatorDiagnosticRegistrationPayload
+	validateClientHelloPayload
 } from '$lib/protocol';
 import {
 	createNeutralControl,
@@ -63,10 +61,6 @@ type GatewayUpgradeMode = 'all' | 'device-only';
 type RuntimeClientMessage =
 	| Readonly<{ type: 'client.hello'; payload: ClientHelloPayload }>
 	| Readonly<{ type: 'client.heartbeat'; payload: ClientHeartbeatPayload }>
-	| Readonly<{
-			type: 'operator.diagnostic.register';
-			payload: OperatorDiagnosticRegistrationPayload;
-	  }>
 	| Readonly<{ type: 'client.rejected'; reason: string }>;
 
 class IcarosWebSocketGateway {
@@ -268,11 +262,6 @@ class IcarosWebSocketGateway {
 				this.#recordRuntimeHeartbeat(message.payload);
 				return;
 			}
-
-			client = this.#runtimeClients.replaceRegistration(client, {
-				role: 'operator',
-				id: message.payload.id
-			});
 		});
 
 		socket.on('close', () => {
@@ -391,13 +380,6 @@ function readRuntimeClientMessage(input: string): RuntimeClientMessage | null {
 		if (parsed.type === 'client.heartbeat') {
 			const validation = validateClientHeartbeatPayload(parsed.payload);
 			return validation.ok ? { type: 'client.heartbeat', payload: validation.value } : null;
-		}
-
-		if (parsed.type === 'operator.diagnostic.register') {
-			const validation = validateOperatorDiagnosticRegistrationPayload(parsed.payload);
-			return validation.ok
-				? { type: 'operator.diagnostic.register', payload: validation.value }
-				: { type: 'client.rejected', reason: validation.error };
 		}
 	} catch {
 		return null;

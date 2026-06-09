@@ -17,7 +17,7 @@
 
     const consoleState = createConsolePageState(() => data);
 
-    onMount(() => consoleState.mountRuntimeDebugSocket());
+    onMount(() => consoleState.mountConsoleLiveSockets());
 </script>
 
 <svelte:head>

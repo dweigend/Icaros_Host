@@ -37,10 +37,6 @@ export type ControlOrientation = Readonly<{
 	safeMode: boolean;
 }>;
 
-export type OperatorDiagnosticRegistrationPayload = Readonly<{
-	id: string;
-}>;
-
 export type RuntimeClientStatus = 'online' | 'stale';
 
 export type RuntimeClientSummary = Readonly<{

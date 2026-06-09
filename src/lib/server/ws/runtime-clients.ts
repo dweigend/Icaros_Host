@@ -23,16 +23,11 @@ export type RuntimeClient = Readonly<{
 	presence: RuntimeClientSummary | null;
 }>;
 
-type RuntimeClientRegistration =
-	| Readonly<{
-			role: 'operator';
-			id: string;
-	  }>
-	| Readonly<{
-			role: 'experience';
-			id: string;
-			experienceId: string;
-	  }>;
+type RuntimeClientRegistration = Readonly<{
+	role: 'experience';
+	id: string;
+	experienceId: string;
+}>;
 
 export class RuntimeClientRegistry {
 	#clients = new Set<RuntimeClient>();
@@ -41,13 +36,6 @@ export class RuntimeClientRegistry {
 		const client: RuntimeClient = { socket, registration: null, presence: null };
 		this.#clients.add(client);
 		return client;
-	}
-
-	replaceRegistration(
-		client: RuntimeClient,
-		registration: RuntimeClientRegistration
-	): RuntimeClient {
-		return this.#replace(client, { registration, presence: null });
 	}
 
 	registerHello(client: RuntimeClient, payload: ClientHelloPayload, now: number): RuntimeClient {

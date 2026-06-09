@@ -100,9 +100,8 @@ Public message types:
 
 Experience clients subscribe to public control streams for control data. They
 use `client.hello` plus `client.heartbeat` only when they should appear in the
-Host launch selection. Diagnostic operator taps use
-`operator.diagnostic.register` and are not part of the public experience-client
-contract.
+Host launch selection. The operator console reads public control streams for
+telemetry and treats runtime presence as launch-selection state.
 
 ## Experience Routing
 
