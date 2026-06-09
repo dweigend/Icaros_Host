@@ -1,18 +1,18 @@
 /**
- * Purpose: launch routing for registered experience clients. The host does not
- * serve or start experience assets; it redirects Quest/browser devices to the
- * concrete runtime client that the operator selected in the console.
+ * Purpose: launch routing for selected runtime clients. The host does not serve
+ * or start assets; it redirects Quest/browser devices to the concrete client
+ * that the operator selected in the console.
  */
 import type { RuntimeClientSummary } from '$lib/protocol';
 
-export type ExperienceLaunchResult =
+export type LaunchClientResult =
 	| Readonly<{ ok: true; url: string }>
 	| Readonly<{ ok: false; status: 400 | 409 | 500; message: string }>;
 
-export function resolveExperienceLaunchUrl(
+export function resolveLaunchClientUrl(
 	activeClientId: string | null,
 	activeClient: RuntimeClientSummary | null
-): ExperienceLaunchResult {
+): LaunchClientResult {
 	if (activeClientId === null) {
 		return fail(409, 'No active runtime client is selected.');
 	}

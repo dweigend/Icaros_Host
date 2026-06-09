@@ -5,11 +5,11 @@
 import { describe, expect, it } from 'vitest';
 
 import type { RuntimeClientSummary } from '$lib/protocol';
-import { resolveExperienceLaunchUrl } from './launch-routing';
+import { resolveLaunchClientUrl } from './launch-routing';
 
-describe('resolveExperienceLaunchUrl', () => {
+describe('resolveLaunchClientUrl', () => {
 	it('requires an active runtime client selection', () => {
-		expect(resolveExperienceLaunchUrl(null, null)).toEqual({
+		expect(resolveLaunchClientUrl(null, null)).toEqual({
 			ok: false,
 			status: 409,
 			message: 'No active runtime client is selected.'
@@ -17,13 +17,13 @@ describe('resolveExperienceLaunchUrl', () => {
 	});
 
 	it('requires the selected runtime client to be online', () => {
-		expect(resolveExperienceLaunchUrl('quest-client', null)).toEqual({
+		expect(resolveLaunchClientUrl('quest-client', null)).toEqual({
 			ok: false,
 			status: 409,
 			message: 'The active runtime client is not online.'
 		});
 
-		expect(resolveExperienceLaunchUrl('quest-client', createClient({ status: 'stale' }))).toEqual({
+		expect(resolveLaunchClientUrl('quest-client', createClient({ status: 'stale' }))).toEqual({
 			ok: false,
 			status: 409,
 			message: 'The active runtime client is not online.'
@@ -32,7 +32,7 @@ describe('resolveExperienceLaunchUrl', () => {
 
 	it('redirects to the selected client HTTPS URL', () => {
 		expect(
-			resolveExperienceLaunchUrl(
+			resolveLaunchClientUrl(
 				'quest-client',
 				createClient({ url: 'https://quest.local:5174/experiences/echo-flight/?mode=vr' })
 			)
@@ -44,7 +44,7 @@ describe('resolveExperienceLaunchUrl', () => {
 
 	it('rejects active client URLs that are not HTTPS', () => {
 		expect(
-			resolveExperienceLaunchUrl('quest-client', createClient({ url: 'http://quest.local/' }))
+			resolveLaunchClientUrl('quest-client', createClient({ url: 'http://quest.local/' }))
 		).toEqual({
 			ok: false,
 			status: 500,
@@ -53,7 +53,7 @@ describe('resolveExperienceLaunchUrl', () => {
 	});
 
 	it('rejects invalid active client URLs', () => {
-		expect(resolveExperienceLaunchUrl('quest-client', createClient({ url: 'not a url' }))).toEqual({
+		expect(resolveLaunchClientUrl('quest-client', createClient({ url: 'not a url' }))).toEqual({
 			ok: false,
 			status: 500,
 			message: 'Active runtime client URL must be a valid HTTPS URL.'

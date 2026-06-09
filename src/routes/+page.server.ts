@@ -14,7 +14,7 @@ import {
 	startM5UsbPairing
 } from '$lib/server/device/pairing-service';
 import type { UsbPairingInput } from '$lib/server/device/usb-setup';
-import { resolveExperienceLaunchUrl } from '$lib/server/experiences';
+import { resolveLaunchClientUrl } from '$lib/server/launch';
 import { createQuestLaunchUrl, resolveConnectionInfo } from '$lib/server/network';
 import { setActiveClient } from '$lib/server/station/active-experience';
 import { stationStateStore } from '$lib/server/station/state';
@@ -28,7 +28,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		station.activeClientId === null
 			? null
 			: runtimeClientRegistry.findSelectableClient(station.activeClientId);
-	const launchTarget = resolveExperienceLaunchUrl(station.activeClientId, activeClient);
+	const launchTarget = resolveLaunchClientUrl(station.activeClientId, activeClient);
 	const pairingStatus = getM5PairingStatus(url);
 
 	return {

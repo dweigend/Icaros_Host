@@ -351,9 +351,9 @@ weiter.
 
 Die Route ist [src/routes/launch/+server.ts](../src/routes/launch/+server.ts).
 Die eigentliche Entscheidung liegt in
-[src/lib/server/experiences/launch-routing.ts](../src/lib/server/experiences/launch-routing.ts).
+[src/lib/server/launch/launch-routing.ts](../src/lib/server/launch/launch-routing.ts).
 
-Die zentrale Funktion ist `resolveExperienceLaunchUrl()`. Sie prüft, ob ein
+Die zentrale Funktion ist `resolveLaunchClientUrl()`. Sie prüft, ob ein
 aktiver Client existiert, online ist und eine gültige HTTPS-URL registriert hat.
 
 Wenn alles passt, antwortet `/launch` mit einem `307` Redirect auf die
