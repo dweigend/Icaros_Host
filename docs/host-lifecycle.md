@@ -364,26 +364,20 @@ Das ist absichtlich streng. `/launch` soll nicht raten, keine HTTP-Fallbacks
 nutzen und keine Experience-Builds ausliefern. Es ist ein sicherer Einstieg zum
 bereits laufenden, aktiven Client.
 
-## 10. Nur der aktive Client bekommt Steuerung
+## 10. Steuerung läuft über den öffentlichen Control Stream
 
-Viele Clients können verbunden sein, aber nur einer soll echte Steuerdaten
-bekommen. Das verhindert Verwirrung und macht Tests nachvollziehbar.
+Viele Runtime-Clients können verbunden sein, aber Runtime-Registrierung besitzt
+keine normale Steuerdaten-Auslieferung mehr. Launch-Auswahl und Control-Stream
+bleiben getrennte Host-Verantwortungen.
 
-Die Entscheidung liegt in
-[src/lib/server/ws/runtime-clients.ts](../src/lib/server/ws/runtime-clients.ts).
+Die Steuerdaten-Auslieferung liegt in
+[src/lib/server/ws/control-stream-clients.ts](../src/lib/server/ws/control-stream-clients.ts).
+Das Gateway veröffentlicht normalisierte `control.orientation` Nachrichten auf
+dem konfigurierten öffentlichen Stream, aktuell `/ws/control/main`.
 
-Wichtige Funktionen:
-
-- `sendControlToActiveClientAndOperators()` sendet `control.orientation` nur an
-  den aktiven Client und an Diagnose-Operatoren.
-- `sendControlToClient()` sendet beim Registrieren direkt den letzten bekannten
-  Control-State, aber nur wenn der Client aktiv sein darf.
-- `canReceiveControl()` ist die interne Grenze: Experience Clients brauchen die
-  passende `activeClientId`, Operator-Diagnosen dürfen spiegeln.
-
-Die Experience bekommt dadurch nur das, was sie wirklich verarbeiten soll:
-normalisierte, sichere Steuerdaten. Alle anderen Clients sehen weiter
-Station-State und Client-Listen, aber keine aktive Steuerung.
+Runtime-Clients sehen weiter Station-State und Client-Listen. Experiences, die
+Steuerdaten brauchen, verbinden sich zusätzlich mit dem öffentlichen Control
+Stream.
 
 ## 11. Diagnose und Automation verwenden denselben Host-Core
 

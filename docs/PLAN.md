@@ -149,7 +149,7 @@ troubleshooting live in
 6. M5 connects to `/ws/device`.
 7. Operator selects the active concrete runtime client.
 8. Host forwards `station.state` and `runtime.clients` to runtime clients.
-9. Host forwards `control.orientation` only to the active runtime client.
+9. Host publishes `control.orientation` on `/ws/control/main`.
 10. Stale or disconnected M5 state produces neutral safe-mode controls.
 
 ## Acceptance Criteria
@@ -161,6 +161,6 @@ troubleshooting live in
 - HTTPS runtime clients use WSS for `/ws/runtime`.
 - Operator can set and clear the active concrete runtime client.
 - A simulated M5 can drive normalized control data.
-- Active registered runtime client receives `control.orientation`.
+- `/ws/control/main` subscribers receive `control.orientation`.
 - Stale/disconnected M5 state produces safe neutral controls.
 - `bun run check`, `bun run lint`, `bun run test`, and `bun run build` pass.

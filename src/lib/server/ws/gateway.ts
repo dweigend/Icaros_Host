@@ -272,11 +272,6 @@ class IcarosWebSocketGateway {
 				role: 'operator',
 				id: message.payload.id
 			});
-			this.#runtimeClients.sendControlToClient(
-				client,
-				createControlOrientationMessage(this.#lastControl),
-				stationStateStore.getState().activeClientId
-			);
 		});
 
 		socket.on('close', () => {
@@ -298,11 +293,6 @@ class IcarosWebSocketGateway {
 		});
 
 		registeredClient.socket.send(JSON.stringify(message));
-		this.#runtimeClients.sendControlToClient(
-			registeredClient,
-			createControlOrientationMessage(this.#lastControl),
-			activeClientId
-		);
 		this.#broadcastRuntimeClients();
 		return registeredClient;
 	}
@@ -320,10 +310,6 @@ class IcarosWebSocketGateway {
 		this.#controlStreamClients.broadcast(
 			DEFAULT_CONTROL_STREAM_ID,
 			createControlOrientationMessage(control)
-		);
-		this.#runtimeClients.sendControlToActiveClientAndOperators(
-			createControlOrientationMessage(control),
-			stationStateStore.getState().activeClientId
 		);
 	}
 
