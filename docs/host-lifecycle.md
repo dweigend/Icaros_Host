@@ -321,7 +321,7 @@ als aktiv aus.
 Die Auswahl läuft über `setActiveClient` in
 [src/routes/+page.server.ts](../src/routes/+page.server.ts). Der kleine
 Server-Core dazu liegt in
-[src/lib/server/station/active-experience.ts](../src/lib/server/station/active-experience.ts),
+[src/lib/server/station/launch-selection.ts](../src/lib/server/station/launch-selection.ts),
 der Zustand in
 [src/lib/server/station/state.ts](../src/lib/server/station/state.ts).
 

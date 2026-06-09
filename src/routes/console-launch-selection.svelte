@@ -1,5 +1,5 @@
 <!--
-	Purpose: route-local selected runtime client status and launch controls.
+	Purpose: route-local selected launch client status and launch controls.
 -->
 <script lang="ts">
     import { ExternalLink } from "@lucide/svelte";
@@ -13,11 +13,11 @@
     let { state }: Props = $props();
 </script>
 
-<h2 id="runtime-routing-title">Aktiver Runtime Client</h2>
+<h2 id="runtime-routing-title">Launch Selection</h2>
 <section class="card" aria-labelledby="runtime-routing-title">
     <div class="row">
         <div class="stack">
-            <strong>selected client</strong>
+            <strong>selected launch client</strong>
             <Kbd>{state.activeClientId ?? "none"}</Kbd>
         </div>
         <StatusDot
@@ -31,7 +31,7 @@
     <p>Derived experience id: <Kbd>{state.activeExperienceId ?? "none"}</Kbd></p>
     <p>
         Launch target:
-        <Kbd>{state.connectionUrls.experienceTargetUrl ?? "pending selected runtime client"}</Kbd>
+        <Kbd>{state.connectionUrls.experienceTargetUrl ?? "pending selected launch client"}</Kbd>
     </p>
 
     {#if state.connectionUrls.experienceTargetUrl !== null}

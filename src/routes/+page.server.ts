@@ -16,7 +16,7 @@ import {
 import type { UsbPairingInput } from '$lib/server/device/usb-setup';
 import { resolveLaunchClientUrl } from '$lib/server/launch';
 import { createQuestLaunchUrl, resolveConnectionInfo } from '$lib/server/network';
-import { setActiveClient } from '$lib/server/station/active-experience';
+import { setLaunchClientSelection } from '$lib/server/station/launch-selection';
 import { stationStateStore } from '$lib/server/station/state';
 import { runtimeClientRegistry } from '$lib/server/ws/runtime-clients';
 import type { Actions, PageServerLoad } from './$types';
@@ -49,7 +49,7 @@ export const actions: Actions = {
 		const clientId = readOptionalFormValue(formData, 'clientId');
 
 		if (clientId === null) {
-			setActiveClient(null, null);
+			setLaunchClientSelection(null, null);
 			return { ok: true };
 		}
 
@@ -58,7 +58,7 @@ export const actions: Actions = {
 			return fail(400, { message: 'Runtime client is not online.' });
 		}
 
-		setActiveClient(client.clientId, client.experienceId);
+		setLaunchClientSelection(client.clientId, client.experienceId);
 		return { ok: true };
 	},
 	connectUsb: async ({ request, url }) => {

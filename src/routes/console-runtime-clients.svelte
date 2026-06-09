@@ -1,6 +1,6 @@
 <!--
 	Purpose: route-local runtime client presence panel. It lets the operator pick
-	the concrete HTTPS browser or Quest instance that should receive controls.
+	the concrete HTTPS browser or Quest instance used by `/launch`.
 -->
 <script lang="ts">
     import { Check, CircleStop } from "@lucide/svelte";
@@ -33,7 +33,7 @@
 
 <section class="card" aria-labelledby="runtime-clients-title">
     <div class="row">
-        <h2 id="runtime-clients-title">Runtime Clients</h2>
+        <h2 id="runtime-clients-title">Launch Clients</h2>
         <div class="status">
             <StatusDot
                 tone={state.runtimeClients.length === 0 ? "default" : "success"}
@@ -105,7 +105,7 @@
             </article>
         {:else}
             <p>
-                Noch keine registrierten HTTPS Runtime Clients. Ein Runtime Client
+                Noch keine registrierten HTTPS Launch Clients. Ein Runtime Client
                 muss <code>client.hello</code> über <code>wss://</code> senden.
             </p>
         {/each}
