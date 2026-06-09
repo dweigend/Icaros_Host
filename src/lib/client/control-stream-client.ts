@@ -5,7 +5,7 @@
 import { type ControlOrientation, validateControlOrientation } from '$lib/protocol';
 import { type BrowserSocketOrigin, resolveBrowserSocketUrl } from './browser-socket-url';
 
-export const DEFAULT_CONTROL_STREAM_ID = 'main';
+const DEFAULT_CONTROL_STREAM_ID = 'main';
 
 export type OrientationListener = (control: ControlOrientation) => void;
 
