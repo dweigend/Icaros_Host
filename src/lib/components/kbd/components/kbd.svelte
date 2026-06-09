@@ -19,7 +19,7 @@
 		max-width: 100%;
 		padding: 0 0.35rem;
 		border: 1px solid var(--color-border);
-		border-radius: 0.25rem;
+		border-radius: var(--radius-none);
 		color: var(--color-text-strong);
 		background: color-mix(in srgb, var(--color-surface), transparent 35%);
 		font-size: var(--font-size-sm);

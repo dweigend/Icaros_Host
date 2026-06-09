@@ -28,23 +28,23 @@
 		display: inline-block;
 		width: 0.6rem;
 		height: 0.6rem;
-		border-radius: 999px;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-none);
 		background: var(--color-muted);
-		box-shadow: 0 0 0 1px var(--color-border);
 	}
 
 	.ui-status-dot--success {
+		border-color: var(--color-success);
 		background: var(--color-success);
-		box-shadow: 0 0 0 1px var(--color-success), 0 0 16px color-mix(in srgb, var(--color-success), transparent 45%);
 	}
 
 	.ui-status-dot--warning {
+		border-color: var(--color-warning);
 		background: var(--color-warning);
-		box-shadow: 0 0 0 1px var(--color-warning), 0 0 16px color-mix(in srgb, var(--color-warning), transparent 45%);
 	}
 
 	.ui-status-dot--danger {
+		border-color: var(--color-danger);
 		background: var(--color-danger);
-		box-shadow: 0 0 0 1px var(--color-danger), 0 0 16px color-mix(in srgb, var(--color-danger), transparent 45%);
 	}
 </style>

@@ -34,7 +34,7 @@
 		min-height: 2.25rem;
 		padding: 0 0.85rem;
 		border: 1px solid var(--color-border-strong);
-		border-radius: 0.4rem;
+		border-radius: var(--radius-none);
 		color: var(--color-text);
 		background: var(--color-surface-raised);
 		font-weight: 700;

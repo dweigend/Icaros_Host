@@ -109,6 +109,29 @@ generate its own authoritative token, run an independent pairing state machine,
 parse M5 frames as a parallel source of truth, or depend on modifying the M5
 adapter repository. It may trigger Host actions and read Host-owned artifacts.
 
+## UI Foundation
+
+The Host console follows the shared UI system at
+`/Volumes/SSD_Data/GitBase/ui-system/` while keeping the M1 surface smaller than
+the reusable system itself:
+
+- `src/app.css` owns console tokens, reset styles, layout shells, shared panel
+  classes, field styles, meters, log rows, and common focus behavior.
+- `src/lib/components` contains only primitive families the console actually
+  uses. Current families are `button`, `collapsible`, `kbd`, `scroll-area`,
+  `status-dot`, and `switch`.
+- Bits UI wrappers stay thin and preserve the official compound structure,
+  keyboard behavior, portals, refs, and `data-*` state attributes.
+- New primitive families are demand-driven. `select` belongs with the launch
+  client dropdown, and `tooltip` belongs with icon-only controls or terse
+  technical status values; neither is built before that consumer exists.
+- `src/lib/blocks` is reserved for composed Host console blocks once route-local
+  panels are extracted. Routes stay as page composition and data boundaries.
+
+Visual rules are deliberately strict: terminal-style mono font, square edges,
+no decorative shadows or glows, and no route-level styling that should be shared
+across console panels.
+
 ## Runtime Ownership
 
 | Area | Owner | Boundary |

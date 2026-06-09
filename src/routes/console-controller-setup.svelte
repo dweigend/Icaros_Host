@@ -232,7 +232,7 @@
         min-width: 0;
         padding: 0.85rem 1rem;
         border: 1px solid var(--color-border);
-        border-radius: 0.5rem;
+        border-radius: var(--radius-none);
         background: var(--color-surface-raised);
     }
 

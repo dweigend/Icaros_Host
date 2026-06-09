@@ -14,7 +14,13 @@
 	--color-warning: #f2c96d;
 	--color-danger: #ff8b7d;
 	--color-success: #72e6a4;
-	font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace;
+	--font-console:
+		"JetBrainsMono Nerd Font", "JetBrains Mono", "IBM Plex Mono", "SFMono-Regular", "Cascadia Code",
+		ui-monospace, monospace;
+	--font-size-sm: 0.78rem;
+	--radius-none: 0;
+	--focus-ring: 0 0 0 1px var(--color-accent);
+	font-family: var(--font-console);
 	color: var(--color-text);
 	background: var(--color-background);
 }
@@ -73,7 +79,7 @@ input {
 	min-width: 0;
 	padding: 1rem;
 	border: 1px solid var(--color-border);
-	border-radius: 0.5rem;
+	border-radius: var(--radius-none);
 	background: var(--color-surface);
 }
 
@@ -105,8 +111,14 @@ input {
 	width: 100%;
 	min-height: 2.25rem;
 	border: 1px solid var(--color-border-strong);
+	border-radius: var(--radius-none);
 	color: var(--color-text-strong);
 	background: var(--color-background);
+}
+
+:where(button, input, a):focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
 }
 
 .card > strong,
@@ -119,7 +131,7 @@ input {
 .meter {
 	height: 0.5rem;
 	overflow: hidden;
-	border-radius: 999px;
+	border-radius: var(--radius-none);
 	background: var(--color-background);
 }
 
@@ -165,7 +177,7 @@ input {
 	min-width: 0;
 	padding: 1rem;
 	border: 1px solid var(--color-border);
-	border-radius: 0.5rem;
+	border-radius: var(--radius-none);
 	background: var(--color-surface-raised);
 }
 
