@@ -29,6 +29,7 @@ export type ConsoleConnectionUrls = Readonly<{
 	questLaunchUrl: string;
 	experienceTargetUrl: string | null;
 	m5SocketUrl: string;
+	controlSocketUrl: string;
 	runtimeSocketUrl: string;
 }>;
 
@@ -54,14 +55,12 @@ type UsbSetupState = PageData['usbSetup']['state'];
 type UsbSetup = PageData['usbSetup'];
 
 export function createConsolePageState(readData: () => PageData) {
-	let selectedExperienceId = $state('');
 	let usbNow = $state(Date.now());
 	let debugNow = $state(Date.now());
 	let debugStatus = $state<RuntimeDebugStatus>('disconnected');
 	let debugSocketOpen = $state(false);
 	let debugLastMessageAt = $state<number | null>(null);
 	let debugFrameCount = $state(0);
-	let debugStationActiveExperienceId = $state<string | null | undefined>(undefined);
 	let debugStationActiveClientId = $state<string | null | undefined>(undefined);
 	let runtimeClients = $state<readonly RuntimeClientSummary[]>([]);
 	let debugLastControl = $state<ControlOrientation | null>(null);
@@ -81,20 +80,15 @@ export function createConsolePageState(readData: () => PageData) {
 	const connection = $derived(readData().connection);
 	const station = $derived(readData().station);
 	const usbSetup = $derived(readData().usbSetup);
-	const activeExperienceId = $derived(station.activeExperienceId);
 	const activeClientId = $derived(station.activeClientId);
 	const connectionUrls = $derived<ConsoleConnectionUrls>({
 		consoleUrl: `${connection.httpOrigin}/`,
 		questLaunchUrl: connection.questLaunchUrl,
 		experienceTargetUrl: connection.experienceTargetUrl,
 		m5SocketUrl: connection.pairedDeviceUrl,
-		runtimeSocketUrl: createBrowserRuntimeSocketUrl(connection.wsOrigin)
+		controlSocketUrl: createBrowserSocketUrl(connection.wsOrigin, '/ws/control/main'),
+		runtimeSocketUrl: createBrowserSocketUrl(connection.wsOrigin, '/ws/runtime')
 	});
-	const debugTargetExperienceId = $derived(
-		debugStationActiveExperienceId === undefined
-			? activeExperienceId
-			: debugStationActiveExperienceId
-	);
 	const runtimeActiveClientId = $derived(
 		debugStationActiveClientId === undefined ? activeClientId : debugStationActiveClientId
 	);
@@ -114,12 +108,6 @@ export function createConsolePageState(readData: () => PageData) {
 		usbSetup.lastFrameAt === null ? 'never' : formatAge(usbNow - usbSetup.lastFrameAt)
 	);
 	const controllerIndicators = $derived(readControllerIndicators(usbSetup, usbLastFrameAge));
-
-	$effect(() => {
-		if (selectedExperienceId === '' && activeExperienceId !== null) {
-			selectedExperienceId = activeExperienceId;
-		}
-	});
 
 	$effect(() => {
 		if (!isUsbSetupBusy(usbSetup.state) && usbSetup.state !== 'ready') {
@@ -150,7 +138,6 @@ export function createConsolePageState(readData: () => PageData) {
 		debugLastMessageAt = receivedAt;
 
 		if (message.type === 'station.state') {
-			debugStationActiveExperienceId = message.payload.activeExperienceId;
 			debugStationActiveClientId = message.payload.activeClientId;
 			return;
 		}
@@ -210,20 +197,11 @@ export function createConsolePageState(readData: () => PageData) {
 	return {
 		usbForm,
 		mountRuntimeDebugSocket,
-		get activeExperienceId() {
-			return activeExperienceId;
-		},
 		get activeClientId() {
 			return runtimeActiveClientId;
 		},
 		get runtimeClients() {
 			return runtimeClients;
-		},
-		get selectedExperienceId() {
-			return selectedExperienceId;
-		},
-		set selectedExperienceId(value: string) {
-			selectedExperienceId = value;
 		},
 		get connectionUrls() {
 			return connectionUrls;
@@ -263,9 +241,6 @@ export function createConsolePageState(readData: () => PageData) {
 		},
 		get debugLastMessageAge() {
 			return debugLastMessageAge;
-		},
-		get debugTargetExperienceId() {
-			return debugTargetExperienceId;
 		},
 		get debugNow() {
 			return debugNow;
@@ -488,12 +463,12 @@ function createIndicator(
 	return { label, value, tone, detail };
 }
 
-function createBrowserRuntimeSocketUrl(fallbackWsOrigin: string): string {
+function createBrowserSocketUrl(fallbackWsOrigin: string, path: string): string {
 	if (typeof window === 'undefined') {
-		return `${fallbackWsOrigin}/ws/runtime`;
+		return `${fallbackWsOrigin}${path}`;
 	}
 
-	return `wss://${window.location.host}/ws/runtime`;
+	return `wss://${window.location.host}${path}`;
 }
 
 function isControllerFrameFresh(usbSetup: UsbSetup, now: number): boolean {

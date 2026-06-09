@@ -19,13 +19,13 @@
     let { state }: Props = $props();
 </script>
 
-<section class="card" aria-labelledby="debug-title">
+<section class="card" aria-labelledby="control-stream-title">
     <div class="row">
-        <h2 id="debug-title">Live Controller Daten</h2>
+        <h2 id="control-stream-title">Public Control Stream</h2>
         <div class="status">
             <StatusDot
                 tone={state.debugStatusTone}
-                label={`Runtime debug ${state.debugStatus}`}
+                label={`Control stream monitor ${state.debugStatus}`}
             />
             <span>{state.debugStatus}</span>
         </div>
@@ -85,7 +85,7 @@
             </div>
             <p>
                 <Gauge size={14} aria-hidden="true" />
-                {state.debugTargetExperienceId ?? "no active experience"}
+                {state.connectionUrls.controlSocketUrl}
             </p>
         </article>
     </div>

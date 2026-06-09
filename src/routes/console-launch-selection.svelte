@@ -13,8 +13,8 @@
     let { state }: Props = $props();
 </script>
 
-<h2 id="runtime-routing-title">Launch Selection</h2>
-<section class="card" aria-labelledby="runtime-routing-title">
+<h2 id="launch-selection-title">Launch Selection</h2>
+<section class="card" aria-labelledby="launch-selection-title">
     <div class="row">
         <div class="stack">
             <strong>selected launch client</strong>
@@ -28,7 +28,6 @@
         />
     </div>
 
-    <p>Derived experience id: <Kbd>{state.activeExperienceId ?? "none"}</Kbd></p>
     <p>
         Launch target:
         <Kbd>{state.connectionUrls.experienceTargetUrl ?? "pending selected launch client"}</Kbd>
