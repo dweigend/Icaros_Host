@@ -511,6 +511,8 @@ export function recordPairedDeviceFrame(frame: unknown, receivedAt: number = Dat
 		return;
 	}
 
+	restoreSavedControllerMetadataForReconnect();
+
 	const deviceId = readStringProperty(frame, 'deviceId') ?? status.deviceId;
 	const frameFirmwareVersion = readStringProperty(frame, 'firmwareVersion');
 	appendDebug('websocket', `Paired frame received: ${summarizeFrame(frame)}.`);
@@ -577,7 +579,29 @@ function canAcceptPairedDeviceFrame(): boolean {
 		return status.startedAt !== null;
 	}
 
+	if (status.state === 'idle' || status.state === 'failed' || status.state === 'aborted') {
+		return true;
+	}
+
 	return false;
+}
+
+function restoreSavedControllerMetadataForReconnect(): void {
+	if (status.serverUrl !== null) {
+		return;
+	}
+
+	const savedConfig = readSavedControllerConfig();
+	if (savedConfig === null || savedConfig.tokenSha256 !== hashDevicePairingToken()) {
+		return;
+	}
+
+	status.serverUrl = savedConfig.pairedUrl;
+	status.deviceId = savedConfig.deviceId ?? status.deviceId;
+	status.staticIp = savedConfig.staticIp;
+	status.gateway = savedConfig.gateway;
+	status.subnet = savedConfig.subnet;
+	status.dns = savedConfig.dns;
 }
 
 function resetStatus(serverUrl: string, input: UsbPairingInput): void {

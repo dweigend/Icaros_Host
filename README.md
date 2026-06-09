@@ -102,19 +102,36 @@ beschrieben. Host und VR Client besitzen jeweils eigene Zertifikate.
 
 ## Server Starten
 
-Für die echte Installation:
+Normaler Start für Entwicklung und Betrieb:
 
 ```sh
 bun start
 ```
 
-Der Startbefehl baut die App, prüft TLS, räumt die Standardports auf und startet:
+Der Startbefehl ist ein freundlicher Host-Bootstrap: Er prüft TLS, baut die App,
+startet den Runtime-Server und gibt die erreichbaren URLs aus. Wenn die
+Default-Ports in einem unkonfigurierten Prototyping-Setup belegt sind, wählt er
+freie Ersatzports.
 
 ```txt
 https://localhost:5183/
 https://<host-lan-ip-or-name>:5183/
 ws://<host-lan-ip-or-name>:5184/ws/device
 ```
+
+Für feste Stations-Setups:
+
+```sh
+bun run start:strict
+```
+
+`start:strict` verwendet feste Ports oder schlägt klar fehl. Explizit gesetzte
+Ports wie `PORT` oder `ICAROS_DEVICE_WS_PORT` sind immer ein Vertrag und werden
+nicht still geändert.
+
+Der Host darf ohne konfigurierten Controller starten. M5-Pairing,
+Firmware-Updates, Diagnose und Controller-Setup laufen danach über die Konsole
+oder die CLI, nicht als Teil von `bun start`.
 
 Der Prozess bleibt im Terminal aktiv. Stoppen mit `Ctrl-C`.
 

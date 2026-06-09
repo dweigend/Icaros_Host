@@ -53,18 +53,20 @@ Basis auf: Er prüft HTTPS, lädt die gebaute SvelteKit-App und hängt das
 WebSocket-Gateway an. Erst wenn diese Grundlage steht, kann er Browser,
 Headsets, Runtime Clients und den M5 sauber voneinander trennen.
 
-Der zentrale Einstieg ist [server/index.ts](../server/index.ts). Diese Datei ist
-bewusst kein Ort für Fachlogik. Sie startet den Prozess und verbindet die
-großen Bausteine.
+Der normale Einstieg ist [scripts/start-host.ts](../scripts/start-host.ts). Das
+Skript prüft TLS, baut die App, wählt die Startup-Ports und startet danach den
+Runtime-Server. Der Runtime-Einstieg [server/index.ts](../server/index.ts) bleibt
+bewusst kein Ort für Bootstrap-Fachlogik; er verbindet nur HTTPS, SvelteKit und
+das WebSocket-Gateway.
 
 Im Code findest du hier vor allem:
 
-- `start()` baut den HTTPS-Server, lädt `build/handler.js` und hängt das
+- `readHostBootstrapConfig()` liest die Host-Startkonfiguration.
+- `resolveHostBootstrapPorts()` erlaubt dynamische Default-Ports oder strikte
+  Stationsports.
+- `ensureHostTlsFiles()` prüft die lokalen Host-Zertifikate.
+- `start()` in `server/index.ts` lädt `build/handler.js` und hängt das
   WebSocket-Gateway an.
-- `loadTlsOptions()` prüft, ob die Host-Zertifikate vorhanden sind.
-- `resolvePlainDeviceWsPort()` entscheidet, ob ein separater M5-Port geöffnet
-  wird.
-- `createPlainDeviceServer()` öffnet den reinen Gerätepfad für den Controller.
 
 Warum ist diese Trennung wichtig? Browser- und Headset-Oberflächen brauchen
 HTTPS und WSS. Der M5-Controller spricht dagegen firmware-kompatibel über einen
@@ -80,8 +82,9 @@ ws://<host-lan-ip-or-name>:5184/ws/device
 ```
 
 Damit ist der Host erreichbar. Ausgewählt ist zu diesem Zeitpunkt aber noch
-nichts: Kein Client ist aktiv, und der Controller muss entweder wiedergefunden
-oder eingerichtet werden.
+nichts: Kein Client ist aktiv, und der Controller darf fehlen. M5-Pairing,
+Firmware-Updates, Diagnose und Controller-Setup passieren erst über Konsole oder
+CLI, nicht während `bun start`.
 
 ## 2. Du öffnest die Operator-Konsole
 
@@ -124,11 +127,10 @@ Runtime Client aktiv ist.
 
 ## 3. Der Host sucht nach einem bekannten Controller
 
-Direkt nach dem Start fragt der Host: Kenne ich schon einen M5-Controller? Wenn
-ein Controller bereits erfolgreich eingerichtet wurde, soll er nicht bei jedem
-Start neu über USB konfiguriert werden. Der Host lädt deshalb die lokale
-Einrichtung und wartet darauf, dass der Controller über WLAN/WebSocket wieder
-auftaucht.
+Nach dem Start kann ein bekannter M5 ohne neues USB-Setup wieder auftauchen. Der
+Host darf aber auch ohne Controller laufen: Die Konsole bleibt erreichbar, und
+der M5-Status wird erst durch eingehende Frames oder durch explizite
+Setup-Aktionen aktualisiert.
 
 Die wichtigste Datei dafür ist
 [src/lib/server/device/usb-setup.ts](../src/lib/server/device/usb-setup.ts).
@@ -136,10 +138,9 @@ Dort lebt der Status des M5-Setups als kleine Zustandsmaschine.
 
 Besonders wichtig sind:
 
-- `startSavedControllerDiscovery()` lädt die gespeicherte Einrichtung und startet
-  die Suche nach dem Controller.
-- `recordPairedDeviceFrame()` markiert den Controller als bereit, sobald ein
-  gültiger Frame vom gepaarten Gerät ankommt.
+- `recordPairedDeviceFrame()` lädt bei Bedarf die gespeicherte Einrichtung und
+  markiert den Controller als bereit, sobald ein gültiger Frame vom gepaarten
+  Gerät ankommt.
 - `recordPairedDeviceSocketClose()` setzt den Zustand zurück auf Suche, wenn
   die Verbindung verloren geht.
 - `getUsbSetupSnapshot()` liefert den kompakten Status für Konsole und CLI.
@@ -161,9 +162,9 @@ wenn seine gespeicherte URL noch zum aktuellen Host-Token passt. Wenn ein alter
 Controller eine alte URL gespeichert hat, erkennt der Host das über den
 Token-Fingerprint und fordert ein neues Setup.
 
-So entsteht ein einfacher Normalfall: Du startest den Host, der bekannte M5 ist
-im selben Netzwerk, der M5 verbindet sich wieder, und die Konsole wird nach dem
-ersten gültigen Frame grün.
+So entsteht ein einfacher Normalfall: Du startest den Host, die Konsole ist
+sofort nutzbar, der bekannte M5 verbindet sich wieder, und die Konsole wird nach
+dem ersten gültigen Frame grün.
 
 ## 4. Wenn der M5 neu oder veraltet ist, gehst du über USB
 
@@ -212,7 +213,8 @@ ICAROS_ALLOW_M5_FIRMWARE_UPDATE=true
 ```
 
 So bleibt der alltägliche Prüf- und Pairing-Workflow leicht zugänglich.
-Firmware schreiben bleibt dagegen eine bewusste Aktion.
+Firmware schreiben bleibt dagegen eine bewusste Aktion über Konsole oder CLI;
+`bun start` setzt diese Erlaubnis nicht.
 
 ## 5. Der M5 kommt in den laufenden Betrieb
 

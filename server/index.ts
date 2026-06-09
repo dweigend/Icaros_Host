@@ -15,10 +15,6 @@ import {
 } from 'node:https';
 
 import { DEFAULT_HTTPS_DEVICE_WS_PORT } from '../src/lib/server/device/pairing';
-import {
-	recordPairedDeviceTcpConnection,
-	startSavedControllerDiscovery
-} from '../src/lib/server/device/usb-setup';
 import { resolveServerOpenUrls } from '../src/lib/server/network';
 import { createIcarosWebSocketGateway } from '../src/lib/server/ws';
 
@@ -37,14 +33,6 @@ async function start(): Promise<void> {
 	const server = createHttpsServer(tlsOptions, createProtocolAwareHandler(handler));
 	const gateway = createIcarosWebSocketGateway();
 	const plainDeviceWsPort = resolvePlainDeviceWsPort();
-	let pendingListeners = plainDeviceWsPort === null ? 1 : 2;
-	const markListening = (): void => {
-		pendingListeners -= 1;
-		if (pendingListeners === 0) {
-			const discovery = startSavedControllerDiscovery();
-			console.log(`M5 controller startup discovery: ${discovery.state} (${discovery.step})`);
-		}
-	};
 
 	gateway.attach(server);
 	const plainDeviceServer = plainDeviceWsPort === null ? null : createPlainDeviceServer(gateway);
@@ -55,14 +43,11 @@ async function start(): Promise<void> {
 		for (const openUrl of resolveServerOpenUrls(protocol, host, port)) {
 			console.log(`${openUrl.label}: ${openUrl.url}`);
 		}
-
-		markListening();
 	});
 
 	if (plainDeviceServer !== null && plainDeviceWsPort !== null) {
 		plainDeviceServer.listen(plainDeviceWsPort, host, () => {
 			console.log(`M5 plain device WebSocket listening on ws://${host}:${plainDeviceWsPort}`);
-			markListening();
 		});
 	}
 
@@ -82,9 +67,6 @@ function createPlainDeviceServer(
 	const server = createHttpServer((_request, response) => {
 		response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
 		response.end('M5 device WebSocket endpoint only.\n');
-	});
-	server.on('connection', (socket) => {
-		recordPairedDeviceTcpConnection(formatRemoteAddress(socket.remoteAddress, socket.remotePort));
 	});
 	gateway.attachDeviceServer(server);
 	return server;
@@ -147,12 +129,4 @@ function readPort(value: string, name: string): number {
 	}
 
 	throw new Error(`${name} must be a TCP port number.`);
-}
-
-function formatRemoteAddress(address: string | undefined, port: number | undefined): string | null {
-	if (address === undefined) {
-		return null;
-	}
-
-	return port === undefined ? address : `${address}:${port}`;
 }
