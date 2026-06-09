@@ -4,11 +4,11 @@
  */
 import { createServer } from 'node:net';
 
-export const DEFAULT_HOST = '0.0.0.0';
-export const DEFAULT_HOST_PORT = 5183;
-export const DEFAULT_DEVICE_WS_PORT = '5184';
-export const DEFAULT_TLS_CERT_FILE = '.certs/icaros-host.pem';
-export const DEFAULT_TLS_KEY_FILE = '.certs/icaros-host-key.pem';
+const DEFAULT_HOST = '0.0.0.0';
+const DEFAULT_HOST_PORT = 5183;
+const DEFAULT_DEVICE_WS_PORT = '5184';
+const DEFAULT_TLS_CERT_FILE = '.certs/icaros-host.pem';
+const DEFAULT_TLS_KEY_FILE = '.certs/icaros-host-key.pem';
 
 export type HostBootstrapConfig = Readonly<{
 	host: string;
