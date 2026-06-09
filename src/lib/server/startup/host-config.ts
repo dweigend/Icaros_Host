@@ -2,6 +2,7 @@
  * Purpose: read and validate Host bootstrap configuration without importing
  * runtime pairing, WebSocket, or SvelteKit server modules.
  */
+import { createServer } from 'node:net';
 
 export const DEFAULT_HOST = '0.0.0.0';
 export const DEFAULT_HOST_PORT = 5183;
@@ -27,9 +28,7 @@ export function readHostBootstrapConfig(env: NodeJS.ProcessEnv = process.env): H
 	);
 
 	if (deviceWsOrigin === '' && deviceWsPort !== 'none' && Number(deviceWsPort) === port) {
-		throw new Error(
-			'ICAROS_DEVICE_WS_PORT must differ from PORT, or use ICAROS_DEVICE_WS_PORT=none.'
-		);
+		throw new Error('ICAROS_DEVICE_WS_PORT must differ from PORT.');
 	}
 
 	return {
@@ -40,6 +39,44 @@ export function readHostBootstrapConfig(env: NodeJS.ProcessEnv = process.env): H
 		tlsKeyFile: readOptionalString(env.ICAROS_TLS_KEY_FILE) ?? DEFAULT_TLS_KEY_FILE,
 		tlsCertFile: readOptionalString(env.ICAROS_TLS_CERT_FILE) ?? DEFAULT_TLS_CERT_FILE
 	};
+}
+
+export async function resolveHostBootstrapPorts(
+	env: NodeJS.ProcessEnv = process.env,
+	mode: 'dynamic' | 'strict' = 'dynamic',
+	isPortAvailable: (host: string, port: number) => Promise<boolean> = canBindTcpPort
+): Promise<HostBootstrapConfig> {
+	const config = readHostBootstrapConfig(env);
+	let port = config.port;
+	let deviceWsPort = config.deviceWsPort;
+	const portExplicit = readOptionalString(env.PORT) !== null;
+	const deviceWsPortExplicit = readOptionalString(env.ICAROS_DEVICE_WS_PORT) !== null;
+	const devicePort =
+		config.deviceWsOrigin === '' && deviceWsPort !== 'none' ? Number(deviceWsPort) : null;
+
+	if (!(await isPortAvailable(config.host, port))) {
+		if (mode === 'strict' || portExplicit) {
+			throw new Error(`PORT ${port} is already in use.`);
+		}
+
+		port = await findOpenPort(config.host, DEFAULT_HOST_PORT + 1, isPortAvailable, devicePort);
+	}
+
+	if (devicePort !== null && !(await isPortAvailable(config.host, devicePort))) {
+		if (mode === 'strict' || deviceWsPortExplicit) {
+			throw new Error(`ICAROS_DEVICE_WS_PORT ${devicePort} is already in use.`);
+		}
+
+		const nextDevicePort = await findOpenPort(
+			config.host,
+			Number(DEFAULT_DEVICE_WS_PORT) + 1,
+			isPortAvailable,
+			port
+		);
+		deviceWsPort = String(nextDevicePort);
+	}
+
+	return { ...config, port, deviceWsPort };
 }
 
 export function createRuntimeServerEnv(config: HostBootstrapConfig): Record<string, string> {
@@ -59,6 +96,31 @@ function readDeviceWsPort(value: string): string {
 	}
 
 	return String(readTcpPort(value, 'ICAROS_DEVICE_WS_PORT'));
+}
+
+async function findOpenPort(
+	host: string,
+	startAt: number,
+	isPortAvailable: (host: string, port: number) => Promise<boolean>,
+	excludedPort: number | null
+): Promise<number> {
+	for (let port = startAt; port <= 65_535; port += 1) {
+		if (port !== excludedPort && (await isPortAvailable(host, port))) {
+			return port;
+		}
+	}
+
+	throw new Error('Could not find a free TCP port for Icaros Host startup.');
+}
+
+async function canBindTcpPort(host: string, port: number): Promise<boolean> {
+	return new Promise((resolve) => {
+		const server = createServer();
+		server.once('error', () => resolve(false));
+		server.listen(port, host, () => {
+			server.close(() => resolve(true));
+		});
+	});
 }
 
 function readTcpPort(value: string, name: string): number {

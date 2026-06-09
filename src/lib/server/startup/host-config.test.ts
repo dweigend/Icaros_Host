@@ -4,7 +4,11 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { createRuntimeServerEnv, readHostBootstrapConfig } from './host-config';
+import {
+	createRuntimeServerEnv,
+	readHostBootstrapConfig,
+	resolveHostBootstrapPorts
+} from './host-config';
 
 describe('readHostBootstrapConfig', () => {
 	it('uses stable Host defaults for the friendly bootstrap path', () => {
@@ -37,15 +41,6 @@ describe('readHostBootstrapConfig', () => {
 		});
 	});
 
-	it('rejects overlapping Host and plain device ports', () => {
-		expect(() =>
-			readHostBootstrapConfig({
-				PORT: '5183',
-				ICAROS_DEVICE_WS_PORT: '5183'
-			})
-		).toThrow('ICAROS_DEVICE_WS_PORT must differ from PORT');
-	});
-
 	it('allows disabling the plain device listener', () => {
 		expect(readHostBootstrapConfig({ ICAROS_DEVICE_WS_PORT: 'none' }).deviceWsPort).toBe('none');
 	});
@@ -66,3 +61,38 @@ describe('createRuntimeServerEnv', () => {
 		expect(env).not.toHaveProperty('ICAROS_ALLOW_M5_FIRMWARE_UPDATE');
 	});
 });
+
+describe('resolveHostBootstrapPorts', () => {
+	it('keeps defaults or moves them only in dynamic mode', async () => {
+		await expect(resolveHostBootstrapPorts({}, 'dynamic', freeExcept())).resolves.toMatchObject({
+			port: 5183,
+			deviceWsPort: '5184'
+		});
+		await expect(
+			resolveHostBootstrapPorts({}, 'dynamic', freeExcept(5183, 5184))
+		).resolves.toMatchObject({
+			port: 5185,
+			deviceWsPort: '5186'
+		});
+		await expect(resolveHostBootstrapPorts({}, 'strict', freeExcept(5183))).rejects.toThrow(
+			'PORT 5183 is already in use'
+		);
+	});
+
+	it('never moves explicit ports in dynamic mode', async () => {
+		await Promise.all([
+			expect(
+				resolveHostBootstrapPorts({ PORT: '5300' }, 'dynamic', freeExcept(5300))
+			).rejects.toThrow('PORT 5300 is already in use'),
+			expect(
+				resolveHostBootstrapPorts({ ICAROS_DEVICE_WS_PORT: '5301' }, 'dynamic', freeExcept(5301))
+			).rejects.toThrow('ICAROS_DEVICE_WS_PORT 5301 is already in use')
+		]);
+	});
+});
+
+function freeExcept(...ports: readonly number[]) {
+	const occupiedPorts = new Set(ports);
+
+	return async (_host: string, port: number): Promise<boolean> => !occupiedPorts.has(port);
+}

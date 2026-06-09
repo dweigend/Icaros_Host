@@ -7,25 +7,35 @@ import { spawn } from 'node:child_process';
 
 import {
 	createRuntimeServerEnv,
-	readHostBootstrapConfig
+	type HostBootstrapConfig,
+	resolveHostBootstrapPorts
 } from '../src/lib/server/startup/host-config';
 import { ensureHostTlsFiles } from '../src/lib/server/startup/host-tls';
 
 async function main(): Promise<void> {
-	const config = readHostBootstrapConfig();
+	const startupMode = readStartupMode(process.argv.slice(2));
+	const config = await resolveHostBootstrapPorts(process.env, startupMode);
 
 	ensureHostTlsFiles({
 		keyFile: config.tlsKeyFile,
 		certFile: config.tlsCertFile
 	});
 
-	printBootstrapSummary(config);
+	printBootstrapSummary(config, startupMode);
 	await runCommand('bun', ['run', 'build']);
 	await runCommand('bun', ['server/index.ts'], createRuntimeServerEnv(config));
 }
 
-function printBootstrapSummary(config: ReturnType<typeof readHostBootstrapConfig>): void {
+function readStartupMode(args: readonly string[]): 'dynamic' | 'strict' {
+	return args.includes('--strict') ? 'strict' : 'dynamic';
+}
+
+function printBootstrapSummary(
+	config: HostBootstrapConfig,
+	startupMode: ReturnType<typeof readStartupMode>
+): void {
 	console.log('Icaros Host start');
+	console.log(`Port mode: ${startupMode}`);
 	console.log(`Host: ${config.host}`);
 	console.log(`HTTPS port: ${config.port}`);
 	if (config.deviceWsOrigin !== '') {
