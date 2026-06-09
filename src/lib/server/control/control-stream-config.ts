@@ -6,12 +6,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 export const DEFAULT_CONTROL_STREAM_ID = 'main';
-export const DEFAULT_CONTROL_STREAM_LABEL = 'ICAROS_1_M5';
-export const DEFAULT_CONTROL_INPUT_ID = 'station-a-m5';
-export const DEFAULT_CONTROL_STREAM_CONFIG_FILE = resolve(
-	process.cwd(),
-	'.icaros/control-streams.json'
-);
+const DEFAULT_CONTROL_STREAM_LABEL = 'ICAROS_1_M5';
+const DEFAULT_CONTROL_INPUT_ID = 'station-a-m5';
+const DEFAULT_CONTROL_STREAM_CONFIG_FILE = resolve(process.cwd(), '.icaros/control-streams.json');
 
 export type ControlStreamDefinition = Readonly<{
 	streamId: string;
@@ -29,7 +26,7 @@ const DEFAULT_CONTROL_STREAM: ControlStreamDefinition = {
 	inputId: DEFAULT_CONTROL_INPUT_ID
 };
 
-export function readControlStreamConfig(
+function readControlStreamConfig(
 	filePath: string = DEFAULT_CONTROL_STREAM_CONFIG_FILE
 ): ControlStreamConfig {
 	if (!existsSync(filePath)) {
