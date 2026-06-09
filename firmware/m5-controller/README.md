@@ -1,4 +1,4 @@
-# Minimal M5 Controller Firmware
+# M5 Controller Firmware
 
 Purpose: this folder contains the Host-local M5StickC Plus2 firmware used to
 prove plain WiFi WebSocket connectivity to Icaros Host. It is deliberately small:
