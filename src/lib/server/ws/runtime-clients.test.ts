@@ -151,9 +151,7 @@ function createControlMessage(): ReturnType<typeof createControlOrientationMessa
 		pitch: 0.25,
 		roll: -0.5,
 		quality: 0.8,
-		source: 'm5',
-		safeMode: false,
-		timestamp: 123
+		safeMode: false
 	});
 }
 

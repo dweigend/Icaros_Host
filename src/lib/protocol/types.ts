@@ -34,9 +34,7 @@ export type ControlOrientation = Readonly<{
 	pitch: number;
 	roll: number;
 	quality: number;
-	source: 'm5';
 	safeMode: boolean;
-	timestamp: number;
 }>;
 
 export type OperatorDiagnosticRegistrationPayload = Readonly<{

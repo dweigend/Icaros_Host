@@ -15,9 +15,7 @@ describe('runtime debug helpers', () => {
 					pitch: 0.4,
 					roll: -0.2,
 					quality: 0.8,
-					source: 'm5',
-					safeMode: false,
-					timestamp: 123
+					safeMode: false
 				}
 			})
 		);
@@ -28,9 +26,7 @@ describe('runtime debug helpers', () => {
 				pitch: 0.4,
 				roll: -0.2,
 				quality: 0.8,
-				source: 'm5',
-				safeMode: false,
-				timestamp: 123
+				safeMode: false
 			}
 		});
 	});
@@ -100,9 +96,7 @@ describe('runtime debug helpers', () => {
 						pitch: 0,
 						roll: 0,
 						quality: 1,
-						source: 'raw-m5',
-						safeMode: false,
-						timestamp: 123
+						safeMode: 'nope'
 					}
 				})
 			)

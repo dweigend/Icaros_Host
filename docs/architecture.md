@@ -23,7 +23,8 @@ flowchart TD
     M5 -->|"raw sensor data"| Host
   end
 
-  Host <-->|"normalized controls +<br/>station state"| ExperienceApp
+  Host -->|"public normalized controls<br/>/ws/control/main"| ExperienceApp
+  Host <-->|"launch registration +<br/>station state"| ExperienceApp
 
   subgraph Experience["ICAROS EXPERIENCE"]
     direction TB
@@ -42,17 +43,19 @@ flowchart TD
 ## Data Flow
 
 1. The operator opens the console page `/`.
-2. Runtime clients connect over `/ws/runtime` and register with `client.hello`.
-3. The operator selects one concrete online runtime client.
-4. The Host stores that client's `activeClientId` and derives
+2. Experience clients subscribe to the public `/ws/control/main` stream.
+3. Runtime clients optionally connect over `/ws/runtime` and register with
+   `client.hello` for launch selection.
+4. The operator selects one concrete online launch client.
+5. The Host stores that client's `activeClientId` and derives
    `activeExperienceId` compatibility state from it.
-5. The Meta Quest opens `/launch` and is redirected to the selected client's
+6. The Meta Quest opens `/launch` and is redirected to the selected client's
    registered HTTPS URL.
-6. The paired M5 connects over `/ws/device?pairing=<token>` and sends raw
+7. The paired M5 connects over `/ws/device?pairing=<token>` and sends raw
    frames.
-7. The Host validates, normalizes, and safe-modes raw frames.
-8. Runtime clients receive station state.
-9. Only the selected active runtime client receives normalized controls.
+8. The Host validates, normalizes, and safe-modes raw frames.
+9. Control stream subscribers receive normalized controls.
+10. Runtime clients receive station state and runtime client presence.
 
 ## Boundary Rules
 
@@ -62,7 +65,7 @@ flowchart TD
   `/ws/runtime`.
 - The M5 endpoint owns raw-frame compatibility and rejects unpaired device
   sockets.
-- Experiences receive normalized controls only.
+- Experiences receive normalized controls only through public control streams.
 - Static experience serving is not part of the current one-page UI slice.
 - `/launch` redirects only; it does not serve or start experience assets.
 - `/api/m5-pairing` is diagnostics-only for CLI and automation, not a public UI
@@ -115,7 +118,8 @@ adapter repository. It may trigger Host actions and read Host-owned artifacts.
 | M5 pairing and diagnosis | Host core | Owns USB setup state, pairing tokens, bounded debug snapshots, and device socket observations. |
 | Human operation | Web UI `/` | Starts pairing and shows current state for station operators. |
 | Automation operation | CLI | Calls Host actions and reads Host-owned diagnostics for repeatable checks. |
-| Runtime client API | Host | Accepts browser/WebXR clients on `/ws/runtime` through `client.hello`, heartbeat, and concrete client selection. |
+| Control stream API | Host | Publishes normalized controls on `/ws/control/main` for subscribed experience clients. |
+| Runtime client API | Host | Accepts browser/WebXR launch candidates on `/ws/runtime` through `client.hello`, heartbeat, and concrete launch selection. |
 | Experience rendering | Experience client | Runs on its own origin, commonly port `5174`. |
 | Quest entrypoint | Host `/launch` | Redirects to the selected online runtime client's registered HTTPS URL. |
 

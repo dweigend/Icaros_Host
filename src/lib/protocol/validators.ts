@@ -220,25 +220,15 @@ export function validateControlOrientation(input: unknown): ValidationResult<Con
 		return quality;
 	}
 
-	if (input.source !== 'm5') {
-		return fail('control.orientation source must be m5');
-	}
-
 	if (typeof input.safeMode !== 'boolean') {
 		return fail('control.orientation safeMode must be boolean');
-	}
-
-	if (typeof input.timestamp !== 'number' || !Number.isFinite(input.timestamp)) {
-		return fail('control.orientation timestamp must be a finite number');
 	}
 
 	return ok({
 		pitch: pitch.value,
 		roll: roll.value,
 		quality: quality.value,
-		source: 'm5',
-		safeMode: input.safeMode,
-		timestamp: input.timestamp
+		safeMode: input.safeMode
 	});
 }
 

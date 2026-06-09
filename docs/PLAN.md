@@ -32,8 +32,11 @@ small:
   then register over `/ws/runtime`.
 - Active selection: operator selects a concrete runtime client on `/`.
 - M5 input: raw frames connect to `/ws/device`.
-- Runtime clients: connect to `/ws/runtime`; HTTPS clients use WSS.
-- Experience API: normalized `pitch` and `roll` in `-1..1`.
+- Control clients: subscribe to `/ws/control/main`; HTTPS clients use WSS.
+- Runtime clients: optionally connect to `/ws/runtime` for launch selection;
+  HTTPS clients use WSS.
+- Experience API: normalized `pitch` and `roll` in `-1..1`, `quality` in
+  `0..1`, and required `safeMode`.
 
 ## Setup Constraint: LAN Origin And Form Actions
 
@@ -95,9 +98,11 @@ Public message types:
 - `station.state`
 - `control.orientation`
 
-Experience clients use only `client.hello` plus `client.heartbeat`. Diagnostic
-operator taps use `operator.diagnostic.register` and are not part of the public
-experience-client contract.
+Experience clients subscribe to public control streams for control data. They
+use `client.hello` plus `client.heartbeat` only when they should appear in the
+Host launch selection. Diagnostic operator taps use
+`operator.diagnostic.register` and are not part of the public experience-client
+contract.
 
 ## Experience Routing
 
@@ -105,10 +110,11 @@ The host does not serve experience assets in this slice. Experiences run as
 browser/WebXR clients, connect to `/ws/runtime`, and send `client.hello` with
 their stable `clientId`, `experienceId`, title, and HTTPS URL.
 
-The operator selects one concrete online runtime client in the console. The Host
-sets `activeClientId`, derives `activeExperienceId` from that client for
-compatibility, redirects `/launch` to the selected client's registered HTTPS
-URL, and forwards `control.orientation` only to the selected `activeClientId`.
+The operator selects one concrete online runtime client in the console for
+launch routing. The Host sets `activeClientId`, derives `activeExperienceId`
+from that client for compatibility, and redirects `/launch` to the selected
+client's registered HTTPS URL. Control delivery is a separate public stream
+contract owned by `/ws/control/main`.
 
 Detailed LAN URLs, certificate setup, environment variables, and launch
 troubleshooting live in

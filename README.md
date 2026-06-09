@@ -6,11 +6,11 @@ Der Server wurde insbesondere für die Icaros Flight Installation entwickelt. Er
 verbindet den M5-Controller, die Operator-Konsole und externe WebXR/VR-Clients.
 Die wichtigsten Aufgaben sind:
 
-- Experiences registrieren und routen
-- den aktiven VR-Client auswählen
+- Experiences für Launch-Auswahl registrieren
+- den Launch-Client auswählen
 - Controller-Daten vom M5 empfangen
 - Rohdaten bereinigen, normalisieren und glätten
-- sichere Controller-Daten an die aktive Experience weitergeben
+- sichere Controller-Daten als öffentlichen normierten Stream bereitstellen
 - HTTPS/WSS für Quest- und Browser-Clients erzwingen
 
 Der Host rendert keine VR Experience. Die Experiences laufen als eigene Clients
@@ -27,8 +27,8 @@ flowchart LR
     Host["Icaros Host Server<br/>routing<br/>handshake<br/>validation<br/>normalization<br/>smoothing<br/>safe mode"]
 
     Host -->|"307 redirect to selected HTTPS client URL"| ActiveClient
-    Host -->|"wss:// /ws/runtime<br/>control.orientation"| ActiveClient["Active VR Experience Client<br/>Icaros Flight / WebXR"]
-    Host -->|"wss:// /ws/runtime<br/>station.state, runtime.clients"| OtherClients["Other registered clients<br/>online or stale"]
+    Host -->|"wss:// /ws/control/main<br/>control.orientation"| ActiveClient["Active VR Experience Client<br/>Icaros Flight / WebXR"]
+    Host -->|"wss:// /ws/runtime<br/>station.state, runtime.clients"| OtherClients["Registered launch clients<br/>online or stale"]
     Diagnostics["CLI / automation diagnostics"] -->|"GET/POST /api/m5-pairing"| Host
 ```
 
@@ -40,9 +40,7 @@ kleine, stabile Steuerinformation für Experiences:
 	pitch: number;
 	roll: number;
 	quality: number;
-	source: 'm5';
 	safeMode: boolean;
-	timestamp: number;
 }
 ```
 
@@ -55,13 +53,15 @@ Daten veraltet sind, sendet der Host neutrale Safe-Mode-Werte.
 | --- | --- | --- | --- |
 | `/` | HTTPS | Operator Browser | Technische Konsole, Auswahl des aktiven Runtime-Clients, M5-Setup |
 | `/launch` | HTTPS | Quest/PICO Browser | Leitet per `307` auf die registrierte HTTPS-URL des aktiven Clients weiter |
-| `/ws/runtime` | WSS | VR Experience Clients | Runtime-Handshake, Client-Status und normalisierte Controller-Daten |
+| `/ws/control/main` | WSS | VR Experience Clients | Öffentlicher normierter Control-Stream |
+| `/ws/runtime` | WSS | VR Experience Clients | Launch-Registration, Client-Status und Präsenz |
 | `/ws/device` | WS | M5 Controller | Firmware-kompatibler Gerätesocket für rohe Controller-Frames |
 | `/health` | HTTPS | CLI, Monitoring | Einfache Erreichbarkeitsprüfung |
 | `/api/m5-pairing` | HTTPS JSON | CLI, Automation | Diagnose- und Pairing-Adapter für M5-Setup |
 
-Experience Clients verwenden nur `/ws/runtime`. Sie verbinden sich nicht direkt
-mit dem M5 und lesen keine Rohdaten.
+Experience Clients verwenden `/ws/control/main` für Steuerdaten und optional
+`/ws/runtime`, wenn sie in der Launch-Auswahl erscheinen sollen. Sie verbinden
+sich nicht direkt mit dem M5 und lesen keine Rohdaten.
 
 ### Runtime-Nachrichten für Experience Clients
 
@@ -135,7 +135,8 @@ bun run dev:ui-only
 
 3. M5-Controller über die Konsole oder CLI einrichten.
 4. Einen VR Experience Client separat über HTTPS starten.
-5. Der Client sendet `client.hello` an `/ws/runtime`.
+5. Der Client verbindet sich mit `/ws/control/main` und sendet optional
+   `client.hello` an `/ws/runtime`.
 6. In der Operator-Konsole den konkreten Runtime-Client auswählen.
 7. Quest/PICO öffnet:
 
@@ -150,10 +151,9 @@ bun run dev:ui-only
 Ein neuer VR Client ist ein eigenständiges WebXR-Projekt. Er muss:
 
 - über HTTPS laufen
-- den Host über `wss://<host-origin>/ws/runtime` erreichen
-- beim Start `client.hello` senden
-- danach regelmäßig `client.heartbeat` senden
-- nur `control.orientation` für die Steuerung verwenden
+- den Host über `wss://<host-origin>/ws/control/main` für Steuerdaten erreichen
+- optional `client.hello` und danach `client.heartbeat` an `/ws/runtime` senden
+- nur die öffentlichen `control.orientation`-Werte für die Steuerung verwenden
 - bei `safeMode: true` Bewegung stoppen oder neutralisieren
 - eigene TLS-Zertifikate verwenden
 
