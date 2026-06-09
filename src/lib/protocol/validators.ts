@@ -18,6 +18,36 @@ export type ValidationResult<TValue> =
 	| Readonly<{ ok: true; value: TValue }>
 	| Readonly<{ ok: false; error: string }>;
 
+export type HostRuntimeMessage =
+	| Readonly<{ type: 'client.registered'; payload: ClientRegisteredPayload }>
+	| Readonly<{ type: 'client.rejected'; payload: ClientRejectedPayload }>
+	| Readonly<{ type: 'control.orientation'; payload: ControlOrientation }>
+	| Readonly<{ type: 'station.state'; payload: StationState }>;
+
+export function readHostRuntimeMessage(data: string): HostRuntimeMessage | null {
+	try {
+		const parsed: unknown = JSON.parse(data);
+		if (!isHostRuntimeMessageEnvelope(parsed)) {
+			return null;
+		}
+
+		switch (parsed.type) {
+			case 'client.registered':
+				return readValidatedMessage(parsed.type, parsed.payload, validateClientRegisteredPayload);
+			case 'client.rejected':
+				return readValidatedMessage(parsed.type, parsed.payload, validateClientRejectedPayload);
+			case 'control.orientation':
+				return readValidatedMessage(parsed.type, parsed.payload, validateControlOrientation);
+			case 'station.state':
+				return readValidatedMessage(parsed.type, parsed.payload, validateStationState);
+			default:
+				return null;
+		}
+	} catch {
+		return null;
+	}
+}
+
 export function validateClientHelloPayload(input: unknown): ValidationResult<ClientHelloPayload> {
 	if (!isRecord(input)) {
 		return fail('client.hello payload must be an object');
@@ -114,9 +144,7 @@ export function validateClientRegisteredPayload(
 	});
 }
 
-export function validateClientRejectedPayload(
-	input: unknown
-): ValidationResult<ClientRejectedPayload> {
+function validateClientRejectedPayload(input: unknown): ValidationResult<ClientRejectedPayload> {
 	if (!isRecord(input)) {
 		return fail('client.rejected payload must be an object');
 	}
@@ -218,6 +246,21 @@ function isNonEmptySlug(value: unknown): value is string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isHostRuntimeMessageEnvelope(
+	value: unknown
+): value is Readonly<{ type: string; payload: unknown }> {
+	return isRecord(value) && typeof value.type === 'string' && 'payload' in value;
+}
+
+function readValidatedMessage<TType extends HostRuntimeMessage['type'], TPayload>(
+	type: TType,
+	payload: unknown,
+	validate: (input: unknown) => ValidationResult<TPayload>
+): Readonly<{ type: TType; payload: TPayload }> | null {
+	const validation = validate(payload);
+	return validation.ok ? { type, payload: validation.value } : null;
 }
 
 function fail(error: string): ValidationResult<never> {
