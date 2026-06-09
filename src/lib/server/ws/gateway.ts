@@ -2,10 +2,9 @@
  * Purpose: WebSocket gateway for the two M1 socket paths.
  *
  * `/ws/device` is only for the M5. It receives raw firmware frames and converts
- * them to normalized controls. `/ws/runtime` is for browser clients. It sends
- * station state to all registered runtime clients, sends controls to the
- * currently active experience, and mirrors normalized controls to operator
- * clients for diagnostics.
+ * them to normalized controls. `/ws/control/:streamId` is the public normalized
+ * control stream. `/ws/runtime` is for browser launch candidates and temporary
+ * runtime diagnostics until the runtime/control split is complete.
  *
  * The gateway owns sockets, timers, and cleanup. It deliberately does not own
  * routing decisions, manifest discovery, or rendering code.
@@ -30,6 +29,7 @@ import {
 } from '$lib/protocol';
 import {
 	createNeutralControl,
+	DEFAULT_CONTROL_STREAM_ID,
 	isM5OrientationFrame,
 	normalizeM5Frame,
 	parseM5Frame,
@@ -49,6 +49,7 @@ import {
 	recordRejectedDeviceSocket
 } from '$lib/server/device/usb-setup';
 import { stationStateStore } from '$lib/server/station/state';
+import { ControlStreamClientRegistry, findControlStreamByPath } from './control-stream-clients';
 import { type RuntimeClient, runtimeClientRegistry } from './runtime-clients';
 
 const DEVICE_PATH = '/ws/device';
@@ -69,8 +70,10 @@ type RuntimeClientMessage =
 	| Readonly<{ type: 'client.rejected'; reason: string }>;
 
 class IcarosWebSocketGateway {
+	#controlServer = new WebSocketServer({ noServer: true });
 	#deviceServer = new WebSocketServer({ noServer: true });
 	#runtimeServer = new WebSocketServer({ noServer: true });
+	#controlStreamClients = new ControlStreamClientRegistry();
 	#runtimeClients = runtimeClientRegistry;
 	#lastControl: ControlOrientation = createNeutralControl();
 	#lastDeviceFrameAt: number | null = null;
@@ -106,7 +109,9 @@ class IcarosWebSocketGateway {
 			this.#runtimePresenceTimer = null;
 		}
 		this.#deviceServer.close();
+		this.#controlServer.close();
 		this.#runtimeServer.close();
+		this.#controlStreamClients.closeAll();
 		this.#runtimeClients.closeAll();
 	}
 
@@ -118,6 +123,9 @@ class IcarosWebSocketGateway {
 		this.#handlersRegistered = true;
 		this.#deviceServer.on('connection', (socket, request) =>
 			this.#handleDeviceConnection(socket, request)
+		);
+		this.#controlServer.on('connection', (socket, request) =>
+			this.#handleControlStreamConnection(socket, request)
 		);
 		this.#runtimeServer.on('connection', (socket) => this.#handleRuntimeConnection(socket));
 		this.#unsubscribeStation = stationStateStore.subscribe((state) => {
@@ -172,6 +180,21 @@ class IcarosWebSocketGateway {
 			return;
 		}
 
+		if (mode === 'all' && pathname.startsWith('/ws/control/')) {
+			const streamId = findControlStreamByPath(pathname);
+			if (streamId === null) {
+				socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
+				socket.destroy();
+				return;
+			}
+
+			request.url = createControlStreamRequestUrl(request.url, streamId);
+			this.#controlServer.handleUpgrade(request, socket, head, (websocket) => {
+				this.#controlServer.emit('connection', websocket, request);
+			});
+			return;
+		}
+
 		recordDeviceSocketUpgrade(
 			createDeviceUpgradeDiagnostics(request, url, 'non-device-path', 'unsupported websocket path')
 		);
@@ -203,6 +226,16 @@ class IcarosWebSocketGateway {
 			this.#lastDeviceFrameAt = null;
 			recordPairedDeviceSocketClose(formatRemoteAddress(request));
 			this.#publishControl(createNeutralControl());
+		});
+	}
+
+	#handleControlStreamConnection(socket: WebSocket, request: IncomingMessage): void {
+		const streamId = readControlStreamId(request) ?? DEFAULT_CONTROL_STREAM_ID;
+		const client = this.#controlStreamClients.add(socket, streamId);
+
+		socket.send(JSON.stringify(createControlOrientationMessage(this.#lastControl)));
+		socket.on('close', () => {
+			this.#controlStreamClients.remove(client);
 		});
 	}
 
@@ -284,6 +317,10 @@ class IcarosWebSocketGateway {
 
 	#publishControl(control: ControlOrientation): void {
 		this.#lastControl = control;
+		this.#controlStreamClients.broadcast(
+			DEFAULT_CONTROL_STREAM_ID,
+			createControlOrientationMessage(control)
+		);
 		this.#runtimeClients.sendControlToActiveClientAndOperators(
 			createControlOrientationMessage(control),
 			stationStateStore.getState().activeClientId
@@ -380,6 +417,18 @@ function readRuntimeClientMessage(input: string): RuntimeClientMessage | null {
 	}
 
 	return null;
+}
+
+function createControlStreamRequestUrl(requestUrl: string | undefined, streamId: string): string {
+	const url = new URL(requestUrl ?? '/', 'https://localhost');
+	url.searchParams.set('streamId', streamId);
+	return `${url.pathname}${url.search}`;
+}
+
+function readControlStreamId(request: IncomingMessage): string | null {
+	const url = new URL(request.url ?? '/', 'https://localhost');
+	const streamId = url.searchParams.get('streamId');
+	return streamId === '' ? null : streamId;
 }
 
 function formatRemoteAddress(request: IncomingMessage): string | null {
