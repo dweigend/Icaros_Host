@@ -2,15 +2,7 @@
  * Purpose: browser-side launch-registration client. It registers one concrete
  * browser instance on `/ws/runtime` and ignores control data.
  */
-import {
-	type ClientRegisteredPayload,
-	type ClientRejectedPayload,
-	createMessage,
-	type StationState,
-	validateClientRegisteredPayload,
-	validateClientRejectedPayload,
-	validateStationState
-} from '$lib/protocol';
+import { createMessage, readHostRuntimeMessage, type StationState } from '$lib/protocol';
 import { type BrowserSocketOrigin, resolveBrowserSocketUrl } from './browser-socket-url';
 
 export type StationStateListener = (state: StationState) => void;
@@ -32,11 +24,6 @@ type ResolvedOptions = Readonly<{
 	runtimeOrigin?: BrowserSocketOrigin;
 	runtimePath: string;
 }>;
-
-type LaunchMessage =
-	| Readonly<{ type: 'client.registered'; payload: ClientRegisteredPayload }>
-	| Readonly<{ type: 'client.rejected'; payload: ClientRejectedPayload }>
-	| Readonly<{ type: 'station.state'; payload: StationState }>;
 
 export class IcarosLaunchRegistrationClient {
 	#options: ResolvedOptions;
@@ -81,7 +68,7 @@ export class IcarosLaunchRegistrationClient {
 	}
 
 	#handleMessage(data: unknown): void {
-		const message = typeof data === 'string' ? readLaunchMessage(data) : null;
+		const message = typeof data === 'string' ? readHostRuntimeMessage(data) : null;
 		if (message?.type === 'client.registered') {
 			if (message.payload.clientId === this.#options.clientId) {
 				this.#startHeartbeat();
@@ -172,37 +159,4 @@ function readStableClientId(): string {
 function readDocumentTitle(experienceId: string): string {
 	const title = document.title.trim();
 	return title === '' ? experienceId : title;
-}
-
-function readLaunchMessage(data: string): LaunchMessage | null {
-	try {
-		const parsed: unknown = JSON.parse(data);
-		if (
-			typeof parsed !== 'object' ||
-			parsed === null ||
-			!('type' in parsed) ||
-			!('payload' in parsed)
-		) {
-			return null;
-		}
-
-		if (parsed.type === 'client.registered') {
-			const validation = validateClientRegisteredPayload(parsed.payload);
-			return validation.ok ? { type: 'client.registered', payload: validation.value } : null;
-		}
-
-		if (parsed.type === 'client.rejected') {
-			const validation = validateClientRejectedPayload(parsed.payload);
-			return validation.ok ? { type: 'client.rejected', payload: validation.value } : null;
-		}
-
-		if (parsed.type === 'station.state') {
-			const validation = validateStationState(parsed.payload);
-			return validation.ok ? { type: 'station.state', payload: validation.value } : null;
-		}
-	} catch {
-		return null;
-	}
-
-	return null;
 }
