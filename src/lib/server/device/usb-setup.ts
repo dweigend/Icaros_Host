@@ -20,14 +20,10 @@ const PAIRING_CONFIG_FILE = resolve(process.cwd(), '.icaros/m5-controller.toml')
 const DEBUG_SNAPSHOT_FILE = resolve(process.cwd(), '.icaros/debug/m5-pairing-debug.json');
 const PAIRING_EVENT_PREFIX = 'PAIRING_EVENT ';
 const WLAN_VERIFY_TIMEOUT_MS = 90_000;
-const STARTUP_DISCOVERY_TIMEOUT_MS = readPositiveIntegerEnv(
-	'ICAROS_CONTROLLER_DISCOVERY_TIMEOUT_MS',
-	15_000
-);
 const MAX_DEBUG_LINES = 300;
 const USB_SETUP_RUNTIME_GLOBAL_KEY = Symbol.for('icaros.host.usbSetupRuntime');
 
-export type PairingState =
+type PairingState =
 	| 'idle'
 	| 'usb_connected'
 	| 'usb_probe'
@@ -40,7 +36,7 @@ export type PairingState =
 	| 'failed'
 	| 'aborted';
 
-export type UsbSetupSnapshot = Readonly<{
+type PairingStatusFields<TDebugLines> = {
 	state: PairingState;
 	step: string;
 	progress: number;
@@ -57,16 +53,21 @@ export type UsbSetupSnapshot = Readonly<{
 	error: string | null;
 	exitCode: number | null;
 	debugEnabled: boolean;
-	debugLines: readonly PairingDebugLine[];
-	usbConnected: boolean;
-	usbPort: string | null;
-	firmwareStatus: M5FirmwareStatus;
-	currentFirmwareVersion: string | null;
-	requiredFirmwareVersion: string;
-	flashState: FlashState;
-	canFlashFirmware: boolean;
-	canConfigure: boolean;
-}>;
+	debugLines: TDebugLines;
+};
+
+export type UsbSetupSnapshot = Readonly<
+	PairingStatusFields<readonly PairingDebugLine[]> & {
+		usbConnected: boolean;
+		usbPort: string | null;
+		firmwareStatus: M5FirmwareStatus;
+		currentFirmwareVersion: string | null;
+		requiredFirmwareVersion: string;
+		flashState: FlashState;
+		canFlashFirmware: boolean;
+		canConfigure: boolean;
+	}
+>;
 
 export type PairingDebugLine = Readonly<{
 	id: number;
@@ -85,24 +86,7 @@ export type UsbPairingInput = Readonly<{
 	dns: string | null;
 }>;
 
-type MutablePairingStatus = {
-	state: PairingState;
-	step: string;
-	progress: number;
-	startedAt: number | null;
-	finishedAt: number | null;
-	serverUrl: string | null;
-	deviceId: string | null;
-	firmwareVersion: string | null;
-	usbOk: boolean;
-	wlanOk: boolean;
-	lastFrameAt: number | null;
-	controllerIssue: string | null;
-	message: string;
-	error: string | null;
-	exitCode: number | null;
-	debugEnabled: boolean;
-	debugLines: PairingDebugLine[];
+type MutablePairingStatus = PairingStatusFields<PairingDebugLine[]> & {
 	staticIp: string | null;
 	gateway: string | null;
 	subnet: string | null;
@@ -282,16 +266,7 @@ export function startUsbSetup(serverUrl: string, input: UsbPairingInput): UsbSet
 		return getUsbSetupSnapshot();
 	}
 	child.stdin.end(JSON.stringify(buildScriptConfig(serverUrl, input)));
-	child.on('error', (error) => {
-		failPairing(`Could not start USB setup script: ${error.message}`);
-	});
-
-	child.on('close', (code) => {
-		clearCurrentChild(child);
-		if (status.state === 'aborted') {
-			return;
-		}
-		status.exitCode = code;
+	watchUsbScriptProcess(child, 'Could not start USB setup script', (code) => {
 		if (status.state === 'ready') {
 			return;
 		}
@@ -363,15 +338,7 @@ export function startUsbProbe(): UsbSetupSnapshot {
 	appendDebug('system', 'USB probe started.');
 
 	const child = startUsbScript('probe', 'ignore', 'USB probe script error');
-	child.on('error', (error) => {
-		failPairing(`Could not start USB probe script: ${error.message}`);
-	});
-	child.on('close', (code) => {
-		clearCurrentChild(child);
-		if (status.state === 'aborted') {
-			return;
-		}
-		status.exitCode = code;
+	watchUsbScriptProcess(child, 'Could not start USB probe script', (code) => {
 		if (status.state === 'failed' || code !== 0) {
 			failPairing(status.error ?? `USB probe failed with exit code ${code ?? 'unknown'}.`);
 			return;
@@ -426,16 +393,10 @@ export function startFirmwareFlash(): UsbSetupSnapshot {
 	appendDebug('system', 'Firmware flash started.');
 
 	const child = startUsbScript('flash', 'ignore', 'Firmware flash script error');
-	child.on('error', (error) => {
+	child.once('error', () => {
 		status.flashState = 'failed';
-		failPairing(`Could not start firmware flash script: ${error.message}`);
 	});
-	child.on('close', (code) => {
-		clearCurrentChild(child);
-		if (status.state === 'aborted') {
-			return;
-		}
-		status.exitCode = code;
+	watchUsbScriptProcess(child, 'Could not start firmware flash script', (code) => {
 		if (status.state === 'failed' || code !== 0) {
 			status.flashState = 'failed';
 			failPairing(status.error ?? `Firmware flash failed with exit code ${code ?? 'unknown'}.`);
@@ -453,54 +414,6 @@ export function startFirmwareFlash(): UsbSetupSnapshot {
 		startWlanTimeout();
 		writeDebugSnapshot();
 	});
-
-	return getUsbSetupSnapshot();
-}
-
-export function startSavedControllerDiscovery(now: number = Date.now()): UsbSetupSnapshot {
-	if (isPairingBusy(status.state)) {
-		return getUsbSetupSnapshot();
-	}
-
-	const savedConfig = readSavedControllerConfig();
-	if (savedConfig === null) {
-		failStartupDiscovery('Keine gespeicherte Controller-Einrichtung gefunden.');
-		return getUsbSetupSnapshot();
-	}
-
-	const currentTokenHash = hashDevicePairingToken();
-	if (savedConfig.tokenSha256 !== currentTokenHash) {
-		failStartupDiscovery(
-			'Gespeicherter Controller nutzt einen anderen Pairing-Token. Controller bitte neu einrichten.'
-		);
-		return getUsbSetupSnapshot();
-	}
-
-	clearWlanTimeout();
-	status.state = 'wlan_test';
-	status.step = 'Controller im WLAN suchen';
-	status.progress = 70;
-	status.startedAt = now;
-	status.finishedAt = null;
-	status.serverUrl = savedConfig.pairedUrl;
-	status.deviceId = savedConfig.deviceId ?? 'icaros-station-a-m5';
-	status.firmwareVersion = savedConfig.firmwareVersion;
-	status.currentFirmwareVersion = savedConfig.firmwareVersion;
-	status.firmwareStatus = readM5FirmwareStatus(savedConfig.firmwareVersion);
-	status.usbOk = true;
-	status.wlanOk = false;
-	status.lastFrameAt = null;
-	status.controllerIssue = null;
-	status.message = 'Gespeicherte Controller-Einrichtung geladen. Warte auf WLAN/WebSocket.';
-	status.error = null;
-	status.exitCode = null;
-	status.staticIp = savedConfig.staticIp;
-	status.gateway = savedConfig.gateway;
-	status.subnet = savedConfig.subnet;
-	status.dns = savedConfig.dns;
-	appendDebug('system', 'Startup controller discovery started from saved setup.');
-	startWlanTimeout(STARTUP_DISCOVERY_TIMEOUT_MS);
-	writeDebugSnapshot();
 
 	return getUsbSetupSnapshot();
 }
@@ -560,10 +473,6 @@ export function recordPairedDeviceSocketClose(remote: string | null): void {
 	status.error = null;
 	startWlanTimeout();
 	writeDebugSnapshot();
-}
-
-export function recordPairedDeviceTcpConnection(remote: string | null): void {
-	appendDebug('websocket', `Plain device TCP connection from ${remote ?? 'unknown remote'}.`);
 }
 
 export function recordRejectedDeviceSocket(reason: string): void {
@@ -672,6 +581,24 @@ function startUsbScript(
 	child.stdout?.on('data', (chunk: string) => readScriptChunk(chunk));
 	child.stderr?.on('data', (chunk: string) => readScriptErrorChunk(chunk, stderrFailurePrefix));
 	return child;
+}
+
+function watchUsbScriptProcess(
+	child: ChildProcess,
+	startFailureMessage: string,
+	onClose: (code: number | null) => void
+): void {
+	child.on('error', (error) => {
+		failPairing(`${startFailureMessage}: ${error.message}`);
+	});
+	child.on('close', (code) => {
+		clearCurrentChild(child);
+		if (status.state === 'aborted') {
+			return;
+		}
+		status.exitCode = code;
+		onClose(code);
+	});
 }
 
 function readScriptErrorChunk(chunk: string, failurePrefix: string): void {
@@ -805,26 +732,7 @@ function failPairing(error: string): void {
 	writeDebugSnapshot();
 }
 
-function failStartupDiscovery(error: string): void {
-	clearWlanTimeout();
-	status.state = 'failed';
-	status.step = 'Controller nicht gefunden';
-	status.progress = 0;
-	status.startedAt = Date.now();
-	status.finishedAt = status.startedAt;
-	status.serverUrl = null;
-	status.usbOk = false;
-	status.wlanOk = false;
-	status.lastFrameAt = null;
-	status.controllerIssue = null;
-	status.message = 'Controller beim Serverstart nicht gefunden.';
-	status.error = error;
-	status.exitCode = null;
-	appendDebug('system', `Startup controller discovery failed: ${error}`);
-	writeDebugSnapshot();
-}
-
-function startWlanTimeout(timeoutMs: number = WLAN_VERIFY_TIMEOUT_MS): void {
+function startWlanTimeout(): void {
 	clearWlanTimeout();
 	runtime.wlanTimer = setTimeout(() => {
 		if (status.state === 'wlan_test') {
@@ -832,7 +740,7 @@ function startWlanTimeout(timeoutMs: number = WLAN_VERIFY_TIMEOUT_MS): void {
 				status.controllerIssue ?? 'Controller did not connect over WLAN/LAN WebSocket in time.'
 			);
 		}
-	}, timeoutMs);
+	}, WLAN_VERIFY_TIMEOUT_MS);
 }
 
 function clearWlanTimeout(): void {
@@ -1128,14 +1036,4 @@ function clampProgress(value: number): number {
 
 function tomlEscape(value: string): string {
 	return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
-
-function readPositiveIntegerEnv(name: string, fallback: number): number {
-	const value = process.env[name]?.trim();
-	if (value === undefined || value === '') {
-		return fallback;
-	}
-
-	const parsed = Number(value);
-	return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
