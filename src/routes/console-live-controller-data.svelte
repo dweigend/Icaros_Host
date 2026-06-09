@@ -41,11 +41,11 @@
                         : formatSignedUnit(state.debugLastControl.pitch)}
                 </strong>
                 <span>pitch</span>
-            </div>
-            <div class="meter" aria-label="Pitch">
-                <span style:width={`${state.debugPitchPercent}%`}></span>
-            </div>
-        </article>
+			</div>
+			<div class="meter" aria-label="Pitch">
+				<span style:--progress-value={`${state.debugPitchPercent}%`}></span>
+			</div>
+		</article>
 
         <article class="metric">
             <h2>roll</h2>
@@ -56,11 +56,11 @@
                         : formatSignedUnit(state.debugLastControl.roll)}
                 </strong>
                 <span>roll</span>
-            </div>
-            <div class="meter" aria-label="Roll">
-                <span style:width={`${state.debugRollPercent}%`}></span>
-            </div>
-        </article>
+			</div>
+			<div class="meter" aria-label="Roll">
+				<span style:--progress-value={`${state.debugRollPercent}%`}></span>
+			</div>
+		</article>
 
         <article class="metric">
             <h2>quality</h2>
@@ -71,11 +71,11 @@
                         ? "safe mode"
                         : "live"}</span
                 >
-            </div>
-            <div class="meter quality" aria-label="Quality">
-                <span style:width={`${state.debugQualityPercent}%`}></span>
-            </div>
-        </article>
+			</div>
+			<div class="meter quality" aria-label="Quality">
+				<span style:--progress-value={`${state.debugQualityPercent}%`}></span>
+			</div>
+		</article>
 
         <article class="metric">
             <h2>frames</h2>

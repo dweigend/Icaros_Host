@@ -73,7 +73,7 @@ input {
 	min-width: 0;
 	padding: 1rem;
 	border: 1px solid var(--color-border);
-	border-radius: 0.5rem;
+	border-radius: 0;
 	background: var(--color-surface);
 }
 
@@ -119,7 +119,7 @@ input {
 .meter {
 	height: 0.5rem;
 	overflow: hidden;
-	border-radius: 999px;
+	border-radius: 0;
 	background: var(--color-background);
 }
 
@@ -127,6 +127,7 @@ input {
 .meter span {
 	display: block;
 	height: 100%;
+	width: var(--progress-value, 0%);
 	background: var(--color-success);
 }
 
@@ -157,6 +158,9 @@ input {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 0.75rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
 }
 
 .runtime-client {
@@ -165,7 +169,7 @@ input {
 	min-width: 0;
 	padding: 1rem;
 	border: 1px solid var(--color-border);
-	border-radius: 0.5rem;
+	border-radius: 0;
 	background: var(--color-surface-raised);
 }
 

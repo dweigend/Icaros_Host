@@ -53,9 +53,9 @@
         {/if}
     </p>
 
-    <ol class="controller-checklist" aria-label="Controller setup checklist">
+    <ol class="runtime-clients" aria-label="Controller setup checklist">
         {#each state.controllerIndicators as indicator (indicator.label)}
-            <li class="controller-checklist-item" data-tone={indicator.tone}>
+            <li class="runtime-client" data-tone={indicator.tone}>
                 <div class="status">
                     <StatusDot
                         tone={indicator.tone}
@@ -183,10 +183,10 @@
         </div>
     </form>
 
-    <div class="stack compact-status" aria-label="M5 pairing status">
-        <div class="progress" aria-label="Pairing progress">
-            <span style:width={`${state.usbSetup.progress}%`}></span>
-        </div>
+	<div class="stack" aria-label="M5 pairing status">
+		<div class="progress" aria-label="Pairing progress">
+			<span style:--progress-value={`${state.usbSetup.progress}%`}></span>
+		</div>
         <p><strong>{state.usbSetup.step}</strong> // {state.usbSetup.progress}%</p>
         <p>{state.usbSetup.error ?? state.usbSetup.message}</p>
 
@@ -214,48 +214,3 @@
         {/if}
     </div>
 </section>
-
-<style>
-    .controller-checklist {
-        display: grid;
-        gap: 0.55rem;
-        margin: 0;
-        padding: 0;
-        list-style: none;
-    }
-
-    .controller-checklist-item {
-        display: grid;
-        grid-template-columns: 12rem minmax(0, 1fr);
-        gap: 1rem;
-        align-items: start;
-        min-width: 0;
-        padding: 0.85rem 1rem;
-        border: 1px solid var(--color-border);
-        border-radius: 0.5rem;
-        background: var(--color-surface-raised);
-    }
-
-    .controller-checklist-item[data-tone="danger"] {
-        border-color: color-mix(in srgb, var(--color-danger), var(--color-border) 45%);
-    }
-
-    .controller-checklist-item[data-tone="success"] {
-        border-color: color-mix(in srgb, var(--color-success), var(--color-border) 55%);
-    }
-
-    .controller-checklist-item strong {
-        font-size: 1rem;
-        overflow-wrap: anywhere;
-    }
-
-    .compact-status {
-        gap: 0.5rem;
-    }
-
-    @media (max-width: 58rem) {
-        .controller-checklist-item {
-            grid-template-columns: 1fr;
-        }
-    }
-</style>
