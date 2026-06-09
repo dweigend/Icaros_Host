@@ -286,8 +286,12 @@ Der öffentliche Client-Helfer liegt in
 
 Auf Client-Seite findest du dort:
 
-- `createIcarosExperienceClient()` erzeugt den Browser-Client.
-- `start()` öffnet den Runtime-WebSocket.
+- `createIcarosExperienceClient()` erzeugt die Kompatibilitäts-Fassade.
+- `start()` öffnet den öffentlichen Control-Stream und den Runtime-WebSocket
+  für Launch-Registration.
+- `createIcarosControlStreamClient()` abonniert `/ws/control/main`.
+- `createIcarosLaunchRegistrationClient()` registriert den Client auf
+  `/ws/runtime`.
 - `#sendHello()` sendet `client.hello` mit `clientId`, `experienceId`, Titel,
   URL und User-Agent.
 - `#startHeartbeat()` sendet regelmäßig `client.heartbeat`.
@@ -454,7 +458,8 @@ Wenn du den Host als Ablauf liest, passiert Folgendes:
 10. VR Clients melden sich mit `client.hello` an.
 11. Die Konsole wählt einen konkreten aktiven Client.
 12. `/launch` leitet Headsets auf diesen aktiven HTTPS-Client weiter.
-13. Nur dieser Client bekommt `control.orientation`.
+13. Control-Stream-Abonnenten bekommen `control.orientation` über
+    `/ws/control/main`.
 14. Bei Verbindungsverlust sendet der Host neutrale Safe-Mode-Werte.
 
 So entsteht die eigentliche Rolle des Icaros Host: Er ist nicht die Experience,

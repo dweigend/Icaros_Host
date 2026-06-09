@@ -181,8 +181,8 @@ Success criteria:
 
 - Two open `mountain-flight` browser instances appear separately.
 - The operator can select one active client.
-- Only the selected client receives controls once `activeClientId` routing is
-  enabled.
+- Control stream subscribers receive controls; `activeClientId` remains launch
+  routing state.
 
 ## Phase 2: Device Registry And Session Assignment
 

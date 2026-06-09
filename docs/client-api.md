@@ -103,11 +103,20 @@ Options:
 | `experienceId` | `string` | yes | none | Stable slug for the experience, for example `mountain-flight`. |
 | `clientId` | `string` | no | stable `localStorage["icaros.clientId"]` id | Concrete browser or headset instance id. Most experiences should leave this unset. |
 | `title` | `string` | no | `document.title` or `experienceId` | Human-readable title shown in the Host console. |
+| `streamId` | `string` | no | `main` | Public control stream id used for `/ws/control/:streamId`. |
+| `controlPath` | `string` | no | `/ws/control/main` | Explicit Host control stream path. Most experiences should leave this unset. |
 | `runtimePath` | `string` | no | `/ws/runtime` | Host runtime WebSocket path. Most experiences should leave this unset. |
 
-The helper starts in browser lifecycle code, sends `client.hello`, waits for
-`client.registered`, sends heartbeats, exposes `onOrientation(...)`, and closes
-its socket in `dispose()`. It does not expose raw device data.
+The compatibility helper starts in browser lifecycle code, opens the public
+control stream, registers for launch selection on `/ws/runtime`, sends
+heartbeats after `client.registered`, exposes `onOrientation(...)`, and closes
+both sockets in `dispose()`. It does not expose raw device data.
+
+For explicit composition, the helper boundary is split into
+`createIcarosControlStreamClient(...)` for control-only clients on
+`/ws/control/:streamId` and `createIcarosLaunchRegistrationClient(...)` for
+clients that should appear in launch selection on `/ws/runtime`. The shared
+`createIcarosExperienceClient(...)` facade composes both for compatibility.
 
 Standalone clients that cannot import this helper should implement the same
 contract below. Use [Icaros VR Client](https://github.com/dweigend/Icaros_VR_Client)
