@@ -53,6 +53,17 @@ Run the Host from this repository:
 bun start
 ```
 
+`bun start` is the normal friendly Host bootstrap. It verifies TLS, builds the
+app, starts the runtime server, and may move only default ports when they are
+busy. Use fixed station ports with:
+
+```sh
+bun run start:strict
+```
+
+Explicit `PORT` or `ICAROS_DEVICE_WS_PORT` values are contracts and are never
+silently changed.
+
 Expected Host surfaces:
 
 ```txt
@@ -139,11 +150,11 @@ Host process:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `PORT` | `5183` through `bun start` | Host HTTPS port. |
+| `PORT` | `5183` through `bun start` | Host HTTPS port; explicit values are never moved. |
 | `HOST` | `0.0.0.0` through `bun start` | Network bind address. |
 | `ICAROS_TLS_KEY_FILE` | `.certs/icaros-host-key.pem` | TLS key used by the Host process. |
 | `ICAROS_TLS_CERT_FILE` | `.certs/icaros-host.pem` | TLS certificate used by the Host process. |
-| `ICAROS_DEVICE_WS_PORT` | `5184` | Plain M5 device WebSocket port. |
+| `ICAROS_DEVICE_WS_PORT` | `5184` | Plain M5 device WebSocket port; explicit values are never moved. |
 | `ICAROS_DEVICE_WS_ORIGIN` | derived from Host LAN address and device port | Optional explicit M5 device WebSocket origin. |
 
 Standalone VR client:
