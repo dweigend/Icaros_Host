@@ -188,7 +188,6 @@ class IcarosWebSocketGateway {
 				return;
 			}
 
-			request.url = createControlStreamRequestUrl(request.url, streamId);
 			this.#controlServer.handleUpgrade(request, socket, head, (websocket) => {
 				this.#controlServer.emit('connection', websocket, request);
 			});
@@ -230,7 +229,9 @@ class IcarosWebSocketGateway {
 	}
 
 	#handleControlStreamConnection(socket: WebSocket, request: IncomingMessage): void {
-		const streamId = readControlStreamId(request) ?? DEFAULT_CONTROL_STREAM_ID;
+		const streamId =
+			findControlStreamByPath(new URL(request.url ?? '/', 'https://localhost').pathname) ??
+			DEFAULT_CONTROL_STREAM_ID;
 		const client = this.#controlStreamClients.add(socket, streamId);
 
 		socket.send(JSON.stringify(createControlOrientationMessage(this.#lastControl)));
@@ -403,18 +404,6 @@ function readRuntimeClientMessage(input: string): RuntimeClientMessage | null {
 	}
 
 	return null;
-}
-
-function createControlStreamRequestUrl(requestUrl: string | undefined, streamId: string): string {
-	const url = new URL(requestUrl ?? '/', 'https://localhost');
-	url.searchParams.set('streamId', streamId);
-	return `${url.pathname}${url.search}`;
-}
-
-function readControlStreamId(request: IncomingMessage): string | null {
-	const url = new URL(request.url ?? '/', 'https://localhost');
-	const streamId = url.searchParams.get('streamId');
-	return streamId === '' ? null : streamId;
 }
 
 function formatRemoteAddress(request: IncomingMessage): string | null {

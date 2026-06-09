@@ -6,7 +6,7 @@ import { WebSocket } from 'ws';
 import type { ControlOrientationMessage } from '$lib/protocol';
 import { findControlStream } from '$lib/server/control';
 
-export type ControlStreamClient = Readonly<{
+type ControlStreamClient = Readonly<{
 	socket: WebSocket;
 	streamId: string;
 }>;
