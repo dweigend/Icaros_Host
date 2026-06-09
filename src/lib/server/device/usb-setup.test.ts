@@ -28,7 +28,9 @@ afterEach(() => {
 
 	delete (globalThis as Record<symbol, unknown>)[Symbol.for('icaros.host.usbSetupRuntime')];
 	delete (globalThis as Record<symbol, unknown>)[Symbol.for('icaros.host.devicePairingToken')];
-	vi.resetModules();
+	if (typeof vi.resetModules === 'function') {
+		vi.resetModules();
+	}
 });
 
 describe('recordPairedDeviceFrame', () => {

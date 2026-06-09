@@ -460,8 +460,7 @@ Peirce's strongest recommendation:
 
 - Compare firmware `diagnoseResult` fields (`wsHost`, `wsPort`, redacted
   `wsPath`, `webSocketConfigured`, `webSocketConnected`, `lastWebSocketError`)
-  with Host-side `recordPairedDeviceTcpConnection`, `recordPairedDeviceSocketOpen`,
-  and rejected-pairing debug lines.
+  with Host-side WebSocket-open and rejected-pairing debug lines.
 
 ### Architecture, Problem Solving, And Test Matrix
 
