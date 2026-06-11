@@ -45,8 +45,8 @@ export function createConsolePageState(readData: () => PageData): HostConsoleSta
 	const connection = $derived(readData().connection);
 	const station = $derived(readData().station);
 	const usbSetup = $derived(readData().usbSetup);
-	const activeClientId = $derived(station.activeClientId);
-	const launchRegistry = createConsoleLaunchRegistryState(() => activeClientId);
+	const selectedLaunchClientId = $derived(station.selectedLaunchClientId);
+	const launchRegistry = createConsoleLaunchRegistryState(() => selectedLaunchClientId);
 	const connectionUrls = $derived<ConsoleConnectionUrls>({
 		consoleUrl: `${connection.httpOrigin}/`,
 		questLaunchUrl: connection.questLaunchUrl,
@@ -97,8 +97,8 @@ export function createConsolePageState(readData: () => PageData): HostConsoleSta
 	return {
 		usbForm,
 		mountConsoleLiveSockets,
-		get activeClientId() {
-			return launchRegistry.activeClientId;
+		get selectedLaunchClientId() {
+			return launchRegistry.selectedLaunchClientId;
 		},
 		get runtimeClients() {
 			return launchRegistry.runtimeClients;

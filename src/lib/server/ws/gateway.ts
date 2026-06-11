@@ -266,7 +266,7 @@ class IcarosWebSocketGateway {
 
 		socket.on('close', () => {
 			const removedClient = this.#runtimeClients.remove(client);
-			if (removedClient?.clientId === stationStateStore.getState().activeClientId) {
+			if (removedClient?.clientId === stationStateStore.getState().selectedLaunchClientId) {
 				stationStateStore.setLaunchSelection(null, null);
 			}
 			this.#broadcastRuntimeClients();
@@ -275,11 +275,11 @@ class IcarosWebSocketGateway {
 
 	#registerRuntimeClient(client: RuntimeClient, payload: ClientHelloPayload): RuntimeClient {
 		const registeredClient = this.#runtimeClients.registerHello(client, payload, Date.now());
-		const activeClientId = stationStateStore.getState().activeClientId;
+		const selectedLaunchClientId = stationStateStore.getState().selectedLaunchClientId;
 		const message = createClientRegisteredMessage({
 			clientId: payload.clientId,
-			active: activeClientId === payload.clientId,
-			activeClientId
+			selectedForLaunch: selectedLaunchClientId === payload.clientId,
+			selectedLaunchClientId
 		});
 
 		registeredClient.socket.send(JSON.stringify(message));
@@ -321,11 +321,11 @@ class IcarosWebSocketGateway {
 			Date.now(),
 			RUNTIME_CLIENT_STALE_AFTER_MS
 		);
-		const activeClientId = stationStateStore.getState().activeClientId;
+		const selectedLaunchClientId = stationStateStore.getState().selectedLaunchClientId;
 
 		if (
-			activeClientId !== null &&
-			this.#runtimeClients.findSelectableClient(activeClientId) === null
+			selectedLaunchClientId !== null &&
+			this.#runtimeClients.findSelectableClient(selectedLaunchClientId) === null
 		) {
 			stationStateStore.setLaunchSelection(null, null);
 			return;
@@ -346,7 +346,7 @@ class IcarosWebSocketGateway {
 
 	#createRuntimeClientsMessage(): ReturnType<typeof createRuntimeClientsMessage> {
 		return createRuntimeClientsMessage({
-			activeClientId: stationStateStore.getState().activeClientId,
+			selectedLaunchClientId: stationStateStore.getState().selectedLaunchClientId,
 			clients: this.#runtimeClients.listRuntimeClients()
 		});
 	}

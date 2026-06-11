@@ -44,7 +44,7 @@ export type HostConsoleUsbForm = {
 
 export type HostConsoleState = Readonly<{
 	mountConsoleLiveSockets(): () => void;
-	activeClientId: string | null;
+	selectedLaunchClientId: string | null;
 	runtimeClients: readonly RuntimeClientSummary[];
 	connectionUrls: HostConsoleConnectionUrls;
 	usbForm: HostConsoleUsbForm;

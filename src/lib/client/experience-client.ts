@@ -43,7 +43,7 @@ export function createIcarosExperienceClient(
 	let unsubscribeStationState: (() => void) | null = null;
 
 	function handleStationState(state: StationState): void {
-		if (state.activeExperienceId === options.experienceId) {
+		if (state.selectedExperienceId === options.experienceId) {
 			return;
 		}
 

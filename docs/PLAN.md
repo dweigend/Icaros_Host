@@ -25,8 +25,8 @@ small:
 - Stack: Bun, SvelteKit, TypeScript strict, Biome, Bits UI.
 - UI: one page, terminal look, dense and technical.
 - Station model: one station, `station-a`.
-- Launch selection: one concrete `activeClientId` as the `/launch` routing
-  source of truth, plus derived `activeExperienceId` compatibility state.
+- Launch selection: one concrete `selectedLaunchClientId` as the `/launch` routing
+  source of truth, plus derived `selectedExperienceId` compatibility state.
 - Quest support: Meta Quest opens host and WebXR browser clients over HTTPS.
 - Experience clients: browser/WebXR clients open directly or through `/launch`,
   then register over `/ws/runtime`.
@@ -51,7 +51,7 @@ Cross-site POST form submissions are forbidden
 
 Project impact:
 
-- The operator may be unable to set or clear `activeClientId`.
+- The operator may be unable to set or clear `selectedLaunchClientId`.
 - `/launch` then cannot reliably route the Meta Quest to the selected runtime
   client.
 - This is an origin/deployment issue around the SvelteKit form action, not an
@@ -110,7 +110,7 @@ browser/WebXR clients, connect to `/ws/runtime`, and send `client.hello` with
 their stable `clientId`, `experienceId`, title, and HTTPS URL.
 
 The operator selects one concrete online runtime client in the console for
-launch routing. The Host sets `activeClientId`, derives `activeExperienceId`
+launch routing. The Host sets `selectedLaunchClientId`, derives `selectedExperienceId`
 from that client for compatibility, and redirects `/launch` to the selected
 client's registered HTTPS URL. Control delivery is a separate public stream
 contract owned by `/ws/control/main`.

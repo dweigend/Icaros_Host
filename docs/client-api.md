@@ -196,8 +196,8 @@ The Host responds with `client.registered` or `client.rejected`.
 ```ts
 type ClientRegisteredPayload = Readonly<{
 	clientId: string;
-	active: boolean;
-	activeClientId: string | null;
+	selectedForLaunch: boolean;
+	selectedLaunchClientId: string | null;
 }>;
 
 type ClientRejectedPayload = Readonly<{
@@ -272,12 +272,12 @@ message or clamp defensively before applying movement.
 
 ## Station State
 
-The Host may send `station.state` to announce the current active IDs:
+The Host may send `station.state` to announce the current launch selection:
 
 ```ts
 type StationState = Readonly<{
-	activeExperienceId: string | null;
-	activeClientId: string | null;
+	selectedExperienceId: string | null;
+	selectedLaunchClientId: string | null;
 }>;
 ```
 
@@ -291,7 +291,7 @@ clients:
 
 ```ts
 type RuntimeClientsPayload = Readonly<{
-	activeClientId: string | null;
+	selectedLaunchClientId: string | null;
 	clients: readonly RuntimeClientSummary[];
 }>;
 ```

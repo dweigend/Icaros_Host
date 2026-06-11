@@ -11,11 +11,11 @@ import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = () => {
 	const station = stationStateStore.getState();
-	const activeClient =
-		station.activeClientId === null
+	const selectedClient =
+		station.selectedLaunchClientId === null
 			? null
-			: runtimeClientRegistry.findSelectableClient(station.activeClientId);
-	const result = resolveLaunchClientUrl(station.activeClientId, activeClient);
+			: runtimeClientRegistry.findSelectableClient(station.selectedLaunchClientId);
+	const result = resolveLaunchClientUrl(station.selectedLaunchClientId, selectedClient);
 
 	if (!result.ok) {
 		error(result.status, result.message);

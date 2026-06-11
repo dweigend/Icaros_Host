@@ -337,13 +337,13 @@ Der Host speichert:
 
 ```ts
 {
-	activeClientId: string | null;
-	activeExperienceId: string | null;
+	selectedLaunchClientId: string | null;
+	selectedExperienceId: string | null;
 }
 ```
 
-`activeClientId` ist die eigentliche Launch-Routing-Wahrheit.
-`activeExperienceId` bleibt als abgeleitete Information erhalten, weil sie für
+`selectedLaunchClientId` ist die eigentliche Launch-Routing-Wahrheit.
+`selectedExperienceId` bleibt als abgeleitete Information erhalten, weil sie für
 Anzeige und Kompatibilität hilfreich ist.
 
 Sobald sich der aktive Client ändert, sendet der Host neue Nachrichten vom Typ

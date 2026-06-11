@@ -47,8 +47,8 @@ flowchart TD
 3. Runtime clients optionally connect over `/ws/runtime` and register with
    `client.hello` for launch selection.
 4. The operator selects one concrete online launch client.
-5. The Host stores that client's `activeClientId` and derives
-   `activeExperienceId` compatibility state from it.
+5. The Host stores that client's `selectedLaunchClientId` and derives
+   `selectedExperienceId` compatibility state from it.
 6. The Meta Quest opens `/launch` and is redirected to the selected client's
    registered HTTPS URL.
 7. The paired M5 connects over `/ws/device?pairing=<token>` and sends raw
@@ -114,7 +114,7 @@ adapter repository. It may trigger Host actions and read Host-owned artifacts.
 
 | Area | Owner | Boundary |
 | --- | --- | --- |
-| Station state | Host | Stores `activeClientId` plus derived `activeExperienceId`, then broadcasts station state. |
+| Station state | Host | Stores `selectedLaunchClientId` plus derived `selectedExperienceId`, then broadcasts station state. |
 | Device input | Host | Accepts raw M5 frames only on the paired `/ws/device` URL. |
 | M5 pairing and diagnosis | Host core | Owns USB setup state, pairing tokens, bounded debug snapshots, and device socket observations. |
 | Human operation | Web UI `/` | Starts pairing and shows current state for station operators. |

@@ -125,22 +125,22 @@ export function validateClientRegisteredPayload(
 		return clientId;
 	}
 
-	if (typeof input.active !== 'boolean') {
-		return fail('client.registered active must be boolean');
+	if (typeof input.selectedForLaunch !== 'boolean') {
+		return fail('client.registered selectedForLaunch must be boolean');
 	}
 
-	const activeClientId = readNullableString(
-		input.activeClientId,
-		'client.registered activeClientId must be a non-empty string or null'
+	const selectedLaunchClientId = readNullableString(
+		input.selectedLaunchClientId,
+		'client.registered selectedLaunchClientId must be a non-empty string or null'
 	);
-	if (!activeClientId.ok) {
-		return activeClientId;
+	if (!selectedLaunchClientId.ok) {
+		return selectedLaunchClientId;
 	}
 
 	return ok({
 		clientId: clientId.value,
-		active: input.active,
-		activeClientId: activeClientId.value
+		selectedForLaunch: input.selectedForLaunch,
+		selectedLaunchClientId: selectedLaunchClientId.value
 	});
 }
 
@@ -162,22 +162,22 @@ export function validateStationState(input: unknown): ValidationResult<StationSt
 		return fail('station.state payload must be an object');
 	}
 
-	const activeExperienceId = readNullableSlug(input.activeExperienceId);
-	if (!activeExperienceId.ok) {
-		return activeExperienceId;
+	const selectedExperienceId = readNullableSlug(input.selectedExperienceId);
+	if (!selectedExperienceId.ok) {
+		return selectedExperienceId;
 	}
 
-	const activeClientId = readNullableString(
-		input.activeClientId,
-		'station.state activeClientId must be a non-empty string or null'
+	const selectedLaunchClientId = readNullableString(
+		input.selectedLaunchClientId,
+		'station.state selectedLaunchClientId must be a non-empty string or null'
 	);
-	if (!activeClientId.ok) {
-		return activeClientId;
+	if (!selectedLaunchClientId.ok) {
+		return selectedLaunchClientId;
 	}
 
 	return ok({
-		activeExperienceId: activeExperienceId.value,
-		activeClientId: activeClientId.value
+		selectedExperienceId: selectedExperienceId.value,
+		selectedLaunchClientId: selectedLaunchClientId.value
 	});
 }
 
@@ -188,12 +188,12 @@ export function validateRuntimeClientsPayload(
 		return fail('runtime.clients payload must contain a clients array');
 	}
 
-	const activeClientId = readNullableString(
-		input.activeClientId,
-		'runtime.clients activeClientId must be a non-empty string or null'
+	const selectedLaunchClientId = readNullableString(
+		input.selectedLaunchClientId,
+		'runtime.clients selectedLaunchClientId must be a non-empty string or null'
 	);
-	if (!activeClientId.ok) {
-		return activeClientId;
+	if (!selectedLaunchClientId.ok) {
+		return selectedLaunchClientId;
 	}
 
 	const clients: RuntimeClientSummary[] = [];
@@ -205,7 +205,7 @@ export function validateRuntimeClientsPayload(
 		clients.push(validation.value);
 	}
 
-	return ok({ activeClientId: activeClientId.value, clients });
+	return ok({ selectedLaunchClientId: selectedLaunchClientId.value, clients });
 }
 
 export function validateControlOrientation(input: unknown): ValidationResult<ControlOrientation> {
@@ -305,7 +305,7 @@ function readNullableSlug(value: unknown): ValidationResult<string | null> {
 		return ok(null);
 	}
 
-	return readSlug(value, 'station.state activeExperienceId must be a slug or null');
+	return readSlug(value, 'station.state selectedExperienceId must be a slug or null');
 }
 
 function readNullableString(value: unknown, error: string): ValidationResult<string | null> {

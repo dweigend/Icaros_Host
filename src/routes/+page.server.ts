@@ -24,11 +24,11 @@ import type { Actions, PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ url }) => {
 	const station = stationStateStore.getState();
 	const connection = resolveConnectionInfo(url);
-	const activeClient =
-		station.activeClientId === null
+	const selectedClient =
+		station.selectedLaunchClientId === null
 			? null
-			: runtimeClientRegistry.findSelectableClient(station.activeClientId);
-	const launchTarget = resolveLaunchClientUrl(station.activeClientId, activeClient);
+			: runtimeClientRegistry.findSelectableClient(station.selectedLaunchClientId);
+	const launchTarget = resolveLaunchClientUrl(station.selectedLaunchClientId, selectedClient);
 	const pairingStatus = getM5PairingStatus(url);
 
 	return {

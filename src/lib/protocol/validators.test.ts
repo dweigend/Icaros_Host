@@ -62,15 +62,15 @@ describe('runtime client validators', () => {
 		expect(
 			validateClientRegisteredPayload({
 				clientId: 'quest-client',
-				active: false,
-				activeClientId: null
+				selectedForLaunch: false,
+				selectedLaunchClientId: null
 			})
 		).toEqual({
 			ok: true,
 			value: {
 				clientId: 'quest-client',
-				active: false,
-				activeClientId: null
+				selectedForLaunch: false,
+				selectedLaunchClientId: null
 			}
 		});
 	});
@@ -78,7 +78,7 @@ describe('runtime client validators', () => {
 	it('accepts HTTPS runtime client snapshots', () => {
 		expect(
 			validateRuntimeClientsPayload({
-				activeClientId: 'quest-client',
+				selectedLaunchClientId: 'quest-client',
 				clients: [
 					{
 						clientId: 'quest-client',
@@ -94,7 +94,7 @@ describe('runtime client validators', () => {
 		).toEqual({
 			ok: true,
 			value: {
-				activeClientId: 'quest-client',
+				selectedLaunchClientId: 'quest-client',
 				clients: [
 					{
 						clientId: 'quest-client',

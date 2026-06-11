@@ -4,15 +4,17 @@
 import type { RuntimeClientSummary } from '$lib/protocol';
 import { parseRuntimeRegistryMessage } from './runtime-debug';
 
-export function createConsoleLaunchRegistryState(readServerActiveClientId: () => string | null) {
-	let runtimeRegistryActiveClientId = $state<string | null | undefined>(undefined);
+export function createConsoleLaunchRegistryState(
+	readServerSelectedLaunchClientId: () => string | null
+) {
+	let runtimeRegistrySelectedLaunchClientId = $state<string | null | undefined>(undefined);
 	let runtimeClients = $state<readonly RuntimeClientSummary[]>([]);
 	let runtimeRegistrySocket: WebSocket | null = null;
 
-	const activeClientId = $derived(
-		runtimeRegistryActiveClientId === undefined
-			? readServerActiveClientId()
-			: runtimeRegistryActiveClientId
+	const selectedLaunchClientId = $derived(
+		runtimeRegistrySelectedLaunchClientId === undefined
+			? readServerSelectedLaunchClientId()
+			: runtimeRegistrySelectedLaunchClientId
 	);
 
 	function mount(runtimeSocketUrl: string): () => void {
@@ -40,7 +42,7 @@ export function createConsoleLaunchRegistryState(readServerActiveClientId: () =>
 		}
 
 		if (message.type === 'station.state') {
-			runtimeRegistryActiveClientId = message.payload.activeClientId;
+			runtimeRegistrySelectedLaunchClientId = message.payload.selectedLaunchClientId;
 			return;
 		}
 
@@ -49,8 +51,8 @@ export function createConsoleLaunchRegistryState(readServerActiveClientId: () =>
 
 	return {
 		mount,
-		get activeClientId() {
-			return activeClientId;
+		get selectedLaunchClientId() {
+			return selectedLaunchClientId;
 		},
 		get runtimeClients() {
 			return runtimeClients;

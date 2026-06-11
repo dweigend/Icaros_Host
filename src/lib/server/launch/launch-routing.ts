@@ -10,27 +10,27 @@ export type LaunchClientResult =
 	| Readonly<{ ok: false; status: 400 | 409 | 500; message: string }>;
 
 export function resolveLaunchClientUrl(
-	activeClientId: string | null,
-	activeClient: RuntimeClientSummary | null
+	selectedLaunchClientId: string | null,
+	selectedClient: RuntimeClientSummary | null
 ): LaunchClientResult {
-	if (activeClientId === null) {
-		return fail(409, 'No active runtime client is selected.');
+	if (selectedLaunchClientId === null) {
+		return fail(409, 'No launch client is selected.');
 	}
 
-	if (activeClient === null || activeClient.status !== 'online') {
-		return fail(409, 'The active runtime client is not online.');
+	if (selectedClient === null || selectedClient.status !== 'online') {
+		return fail(409, 'The selected launch client is not online.');
 	}
 
 	try {
-		const target = new URL(activeClient.url);
+		const target = new URL(selectedClient.url);
 
 		if (target.protocol !== 'https:') {
-			return fail(500, 'Active runtime client URL must use https for Quest launch.');
+			return fail(500, 'Selected launch client URL must use https for Quest launch.');
 		}
 
 		return { ok: true, url: target.toString() };
 	} catch {
-		return fail(500, 'Active runtime client URL must be a valid HTTPS URL.');
+		return fail(500, 'Selected launch client URL must be a valid HTTPS URL.');
 	}
 }
 

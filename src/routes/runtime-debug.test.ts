@@ -38,12 +38,15 @@ describe('runtime debug helpers', () => {
 			parseRuntimeRegistryMessage(
 				JSON.stringify({
 					type: 'station.state',
-					payload: { activeExperienceId: 'mountain-flight', activeClientId: 'quest-client' }
+					payload: {
+						selectedExperienceId: 'mountain-flight',
+						selectedLaunchClientId: 'quest-client'
+					}
 				})
 			)
 		).toEqual({
 			type: 'station.state',
-			payload: { activeExperienceId: 'mountain-flight', activeClientId: 'quest-client' }
+			payload: { selectedExperienceId: 'mountain-flight', selectedLaunchClientId: 'quest-client' }
 		});
 	});
 
@@ -53,7 +56,7 @@ describe('runtime debug helpers', () => {
 				JSON.stringify({
 					type: 'runtime.clients',
 					payload: {
-						activeClientId: 'quest-client',
+						selectedLaunchClientId: 'quest-client',
 						clients: [
 							{
 								clientId: 'quest-client',
@@ -71,7 +74,7 @@ describe('runtime debug helpers', () => {
 		).toEqual({
 			type: 'runtime.clients',
 			payload: {
-				activeClientId: 'quest-client',
+				selectedLaunchClientId: 'quest-client',
 				clients: [
 					{
 						clientId: 'quest-client',

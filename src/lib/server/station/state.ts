@@ -1,5 +1,5 @@
 /**
- * Purpose: single-station state container for M1. It owns active runtime client
+ * Purpose: single-station state container for M1. It owns launch client
  * selection plus derived experience state; persistence and multi-session
  * behavior are intentionally out of scope.
  */
@@ -14,7 +14,7 @@ type IcarosGlobalState = typeof globalThis & {
 };
 
 class StationStateStore {
-	#state: StationState = { activeExperienceId: null, activeClientId: null };
+	#state: StationState = { selectedExperienceId: null, selectedLaunchClientId: null };
 	#listeners = new Set<StationStateListener>();
 
 	get stationId(): typeof STATION_ID {
@@ -26,17 +26,17 @@ class StationStateStore {
 	}
 
 	setLaunchSelection(
-		activeClientId: string | null,
-		activeExperienceId: string | null
+		selectedLaunchClientId: string | null,
+		selectedExperienceId: string | null
 	): StationState {
 		if (
-			this.#state.activeClientId === activeClientId &&
-			this.#state.activeExperienceId === activeExperienceId
+			this.#state.selectedLaunchClientId === selectedLaunchClientId &&
+			this.#state.selectedExperienceId === selectedExperienceId
 		) {
 			return this.#state;
 		}
 
-		this.#state = { activeExperienceId, activeClientId };
+		this.#state = { selectedExperienceId, selectedLaunchClientId };
 		this.#emit();
 		return this.#state;
 	}
