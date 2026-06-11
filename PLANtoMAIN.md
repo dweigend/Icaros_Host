@@ -98,6 +98,14 @@ at `713fe71`. Later review-note commits may add documentation only.
 - Do not use raw `bun test` for the WebSocket gateway files; this repository's
   authoritative test command is Vitest through `bun run test`.
 
+## Current Remote Main Note
+
+`origin/main` currently includes one commit after this branch's original base:
+`9dd45e4`, which changes only `firmware/m5-controller/README.md`. A
+non-destructive `git merge-tree` check showed no merge conflict with
+`codex/ui-completion-finish`; the later integration should simply carry that
+firmware README title change forward.
+
 ## Manual Stop Point
 
 Do not merge to `main` until the user has reviewed the issue matrix, the
