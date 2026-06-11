@@ -47,7 +47,10 @@ import {
 	recordRejectedDeviceSocket
 } from '$lib/server/device/usb-setup';
 import { stationStateStore } from '$lib/server/station/state';
-import { ControlStreamClientRegistry, findControlStreamByPath } from './control-stream-clients';
+import {
+	createControlStreamClientRegistry,
+	findControlStreamByPath
+} from './control-stream-clients';
 import { type RuntimeClient, runtimeClientRegistry } from './runtime-clients';
 
 const DEVICE_PATH = '/ws/device';
@@ -67,7 +70,7 @@ class IcarosWebSocketGateway {
 	#controlServer = new WebSocketServer({ noServer: true });
 	#deviceServer = new WebSocketServer({ noServer: true });
 	#runtimeServer = new WebSocketServer({ noServer: true });
-	#controlStreamClients = new ControlStreamClientRegistry();
+	#controlStreamClients = createControlStreamClientRegistry();
 	#runtimeClients = runtimeClientRegistry;
 	#lastControl: ControlOrientation = createNeutralControl();
 	#lastDeviceFrameAt: number | null = null;

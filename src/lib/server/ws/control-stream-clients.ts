@@ -11,31 +11,39 @@ type ControlStreamClient = Readonly<{
 	streamId: string;
 }>;
 
-export class ControlStreamClientRegistry {
-	#clients = new Set<ControlStreamClient>();
+export type ControlStreamClientRegistry = Readonly<{
+	add(socket: WebSocket, streamId: string): ControlStreamClient;
+	remove(client: ControlStreamClient): void;
+	closeAll(): void;
+	broadcast(streamId: string, message: ControlOrientationMessage): void;
+	count(streamId: string): number;
+}>;
 
-	add(socket: WebSocket, streamId: string): ControlStreamClient {
+export function createControlStreamClientRegistry(): ControlStreamClientRegistry {
+	const clients = new Set<ControlStreamClient>();
+
+	function add(socket: WebSocket, streamId: string): ControlStreamClient {
 		const client = { socket, streamId };
-		this.#clients.add(client);
+		clients.add(client);
 		return client;
 	}
 
-	remove(client: ControlStreamClient): void {
-		this.#clients.delete(client);
+	function remove(client: ControlStreamClient): void {
+		clients.delete(client);
 	}
 
-	closeAll(): void {
-		for (const client of this.#clients) {
+	function closeAll(): void {
+		for (const client of clients) {
 			client.socket.close();
 		}
 
-		this.#clients.clear();
+		clients.clear();
 	}
 
-	broadcast(streamId: string, message: ControlOrientationMessage): void {
+	function broadcast(streamId: string, message: ControlOrientationMessage): void {
 		const serialized = JSON.stringify(message);
 
-		for (const client of this.#clients) {
+		for (const client of clients) {
 			if (client.streamId !== streamId) {
 				continue;
 			}
@@ -44,9 +52,9 @@ export class ControlStreamClientRegistry {
 		}
 	}
 
-	count(streamId: string): number {
+	function count(streamId: string): number {
 		let count = 0;
-		for (const client of this.#clients) {
+		for (const client of clients) {
 			if (client.streamId === streamId) {
 				count += 1;
 			}
@@ -54,6 +62,8 @@ export class ControlStreamClientRegistry {
 
 		return count;
 	}
+
+	return { add, remove, closeAll, broadcast, count };
 }
 
 export function findControlStreamByPath(pathname: string): string | null {

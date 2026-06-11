@@ -6,11 +6,14 @@ import { describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 
 import { createControlOrientationMessage } from '$lib/protocol';
-import { ControlStreamClientRegistry, findControlStreamByPath } from './control-stream-clients';
+import {
+	createControlStreamClientRegistry,
+	findControlStreamByPath
+} from './control-stream-clients';
 
 describe('ControlStreamClientRegistry', () => {
 	it('broadcasts normalized controls to subscribers of the matching stream only', () => {
-		const registry = new ControlStreamClientRegistry();
+		const registry = createControlStreamClientRegistry();
 		const mainSocket = createOpenSocket();
 		const otherSocket = createOpenSocket();
 
@@ -23,7 +26,7 @@ describe('ControlStreamClientRegistry', () => {
 	});
 
 	it('removes disconnected subscribers', () => {
-		const registry = new ControlStreamClientRegistry();
+		const registry = createControlStreamClientRegistry();
 		const socket = createOpenSocket();
 		const client = registry.add(socket.socket, 'main');
 
