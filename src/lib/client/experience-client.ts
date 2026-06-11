@@ -7,24 +7,12 @@ import { readHttpsConsoleUrl } from './browser-socket-url';
 import {
 	type ControlStreamClientOptions,
 	createIcarosControlStreamClient,
-	type IcarosControlStreamClient,
 	type OrientationListener
 } from './control-stream-client';
 import {
 	createIcarosLaunchRegistrationClient,
-	type IcarosLaunchRegistrationClient,
 	type LaunchRegistrationClientOptions
 } from './launch-registration-client';
-
-export { createIcarosControlStreamClient } from './control-stream-client';
-export { createIcarosLaunchRegistrationClient } from './launch-registration-client';
-export type {
-	ControlStreamClientOptions,
-	IcarosControlStreamClient,
-	IcarosLaunchRegistrationClient,
-	LaunchRegistrationClientOptions,
-	OrientationListener
-};
 
 export type ExperienceClientOptions = LaunchRegistrationClientOptions &
 	Pick<ControlStreamClientOptions, 'streamId' | 'controlPath'>;
