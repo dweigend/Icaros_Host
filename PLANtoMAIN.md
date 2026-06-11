@@ -43,6 +43,32 @@ any final merge to `main`.
 - Confirm public client helpers are intentionally exported even if static
   analysis marks them unused inside this repository.
 
+## Issue Evidence Matrix
+
+Use this matrix for manual review before merging the completion branch into
+`codex/integration-sweep`. It is evidence, not an automatic close action.
+
+| Issues | Review focus | Primary evidence |
+| --- | --- | --- |
+| #1, #2 | Docs separate public control streams from optional launch registration. | `README.md`, `docs/control-streams.md`, `docs/client-api.md`, `docs/client-prompt.md`, `docs/host-lifecycle.md` |
+| #3 | Public control stream names are server-owned and default to `main`. | `src/lib/server/control/control-stream-config.ts`, `src/lib/server/control/control-stream-config.test.ts` |
+| #4 | `/ws/control/:streamId` accepts public normalized subscribers and rejects unknown streams. | `src/lib/server/ws/gateway.ts`, `src/lib/server/ws/control-stream-clients.ts`, `src/lib/server/ws/gateway-control-stream.test.ts` |
+| #5 | Public `ControlOrientation` is only `pitch`, `roll`, `quality`, and required `safeMode`. | `src/lib/protocol/types.ts`, `src/lib/protocol/validators.ts`, `src/lib/server/control/normalizer.ts`, protocol and normalizer tests |
+| #6 | Runtime registry manages launch presence, not control delivery. | `src/lib/server/ws/runtime-clients.ts`, `src/lib/server/ws/gateway.ts`, runtime/client tests |
+| #7 | Launch selection vocabulary replaces active-client routing vocabulary. | `selectedLaunchClientId`, `selectedExperienceId`, `selectedForLaunch`, `setSelectedLaunchClient`, and no legacy active-client field hits |
+| #8 | Launch routing no longer lives under an experiences namespace. | `src/lib/server/launch/launch-routing.ts`, `src/routes/launch/+server.ts` |
+| #9 | Client helpers split public control stream subscription from launch registration. | `src/lib/client/control-stream-client.ts`, `src/lib/client/launch-registration-client.ts`, compatibility facade in `src/lib/client/experience-client.ts` |
+| #10, #20 | Console visibly separates Launch Selection, Public Control Stream, and Launch Client Registry. | `src/lib/blocks/host-console/components/*`, `src/routes/+page.svelte`, SSR/browser smoke |
+| #11 | Runtime socket no longer carries operator diagnostic registration. | `src/routes/runtime-debug.ts`, `src/routes/console-control-stream-state.svelte.ts`, no legacy operator diagnostic registration hits |
+| #12 | `bun start` is Host bootstrap only. | `scripts/start-host.ts`, old clean-start shell wrapper removed, `server/index.ts` stays runtime entrypoint |
+| #13 | Startup has dynamic and strict port modes. | `src/lib/server/startup/host-config.ts`, startup tests, manual port smoke |
+| #14 | Setup docs explain simplified startup and Host without required controller. | `README.md`, `docs/quest-https-launch-routing.md`, `docs/host-lifecycle.md` |
+| #15 | Console tokens align with terminal UI rules. | `src/app.css`, primitive/block classes |
+| #16 | Console panels are block families under `src/lib/blocks`. | `src/lib/blocks/host-console`, thin `src/routes/+page.svelte` |
+| #17, #21 | Bits UI primitive set stays minimal and CSS ownership is explicit. | `src/lib/components/select`, existing primitive families, `src/app.css` |
+| #18 | Reusable route-local console CSS and direct meter widths are removed. | `src/app.css`, block components, `style:--progress-value` custom-property pattern |
+| #19 | Browser state is split by UI responsibility. | `src/routes/console-control-stream-state.svelte.ts`, `src/routes/console-launch-registry-state.svelte.ts`, thin composer in `src/routes/console-state.svelte.ts` |
+
 ## Required Local Gates
 
 - `bun run check`
