@@ -102,28 +102,30 @@ Die Seite wird aus zwei Teilen aufgebaut:
 
 In `load()` entsteht der aktuelle Blick auf die Station: Verbindung-URLs,
 Station-Zustand, aktives Launch-Ziel und M5-Pairing-Status. Die `actions` in
-derselben Datei sind die Bedienhandlungen: aktiven Client setzen, USB-Pairing
+derselben Datei sind die Bedienhandlungen: Launch-Auswahl setzen, USB-Pairing
 starten, Controller prüfen, Firmware flashen, Workflow abbrechen und Debug
 umschalten.
 
-Die sichtbaren Teile sind bewusst in kleine route-lokale Dateien zerlegt:
+Die sichtbaren Teile sind bewusst in kleine Host-Console-Blocks zerlegt:
 
-- [src/routes/console-connection-addresses.svelte](../src/routes/console-connection-addresses.svelte)
+- [src/lib/blocks/host-console/components/connection-addresses-block.svelte](../src/lib/blocks/host-console/components/connection-addresses-block.svelte)
   zeigt Host-, Runtime-, Launch- und M5-Adressen.
-- [src/routes/console-controller-setup.svelte](../src/routes/console-controller-setup.svelte)
+- [src/lib/blocks/host-console/components/controller-setup-block.svelte](../src/lib/blocks/host-console/components/controller-setup-block.svelte)
   zeigt den M5-Setup-Status und die USB/Firmware-Aktionen.
-- [src/routes/console-runtime-clients.svelte](../src/routes/console-runtime-clients.svelte)
-  zeigt registrierte Runtime Clients und erlaubt die Auswahl des aktiven
-  Clients.
-- [src/routes/console-live-controller-data.svelte](../src/routes/console-live-controller-data.svelte)
-  zeigt Live-Diagnose für normalisierte Controller-Daten.
+- [src/lib/blocks/host-console/components/launch-selection-block.svelte](../src/lib/blocks/host-console/components/launch-selection-block.svelte)
+  zeigt die separate Launch-Auswahl für `/launch`.
+- [src/lib/blocks/host-console/components/runtime-clients-block.svelte](../src/lib/blocks/host-console/components/runtime-clients-block.svelte)
+  zeigt die registrierten Runtime Clients ohne Control-Delivery-Besitz.
+- [src/lib/blocks/host-console/components/live-controller-data-block.svelte](../src/lib/blocks/host-console/components/live-controller-data-block.svelte)
+  zeigt Live-Diagnose für den öffentlichen Control Stream.
 - [src/routes/console-state.svelte.ts](../src/routes/console-state.svelte.ts)
-  hält Browser-State, Timer und Diagnose-WebSocket zusammen.
+  komponiert den Browser-State. Launch Registry und Control Stream haben
+  eigene kleine State-Module.
 
 Die Konsole bleibt absichtlich eine einzige Seite. So musst du nicht zwischen
 mehreren UI-Routen unterscheiden. Es gibt eine Station, einen
 sichtbaren Zustand und eine klare Stelle, an der entschieden wird, welcher
-Runtime Client aktiv ist.
+Runtime Client über `/launch` geöffnet wird.
 
 ## 3. Der Host sucht nach einem bekannten Controller
 
@@ -316,13 +318,13 @@ Dort geht es vor allem um diese Funktionen:
 
 Warum konkrete Clients und nicht nur Experience-IDs? Weil dieselbe Experience
 mehrfach offen sein kann: Desktop-Browser, Quest-Browser, Testfenster. Der Host
-muss wissen, welcher konkrete Client gerade die Steuerung bekommen soll.
+muss wissen, welcher konkrete Browser über `/launch` geöffnet werden soll.
 
-## 8. Du wählst einen aktiven Client
+## 8. Du wählst das Launch-Ziel
 
-Registrierung allein bedeutet noch nicht, dass ein Client Steuerdaten bekommt.
-Die Konsole zeigt alle registrierten Runtime Clients, und du wählst genau einen
-als aktiv aus.
+Registrierung allein bedeutet noch nicht, dass `/launch` zu diesem Client
+weiterleitet. Die Konsole zeigt alle registrierten Runtime Clients, und du
+wählst genau einen als Launch-Ziel aus.
 
 Die Auswahl läuft über die Svelte Action `setSelectedLaunchClient` in
 [src/routes/+page.server.ts](../src/routes/+page.server.ts). Der kleine
@@ -340,13 +342,14 @@ Der Host speichert:
 }
 ```
 
-`activeClientId` ist die eigentliche Routing-Wahrheit. `activeExperienceId`
-bleibt als abgeleitete Information erhalten, weil sie für Anzeige und
-Kompatibilität hilfreich ist.
+`activeClientId` ist die eigentliche Launch-Routing-Wahrheit.
+`activeExperienceId` bleibt als abgeleitete Information erhalten, weil sie für
+Anzeige und Kompatibilität hilfreich ist.
 
 Sobald sich der aktive Client ändert, sendet der Host neue Nachrichten vom Typ
 `station.state` und `runtime.clients` an die Runtime-Verbindungen. So wissen
-Clients, ob sie aktiv sind oder nur registriert mitlaufen.
+Clients, welcher konkrete Runtime Client gerade als Launch-Ziel ausgewählt ist.
+Das steuert nicht die öffentliche Control-Stream-Auslieferung.
 
 ## 9. `/launch` bringt das Headset zum richtigen Client
 
