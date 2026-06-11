@@ -117,17 +117,28 @@ input {
 
 .progress,
 .meter {
+	display: block;
+	width: 100%;
 	height: 0.5rem;
 	overflow: hidden;
+	border: 0;
 	border-radius: 0;
+	appearance: none;
 	background: var(--color-background);
 }
 
-.progress span,
-.meter span {
-	display: block;
-	height: 100%;
-	width: var(--progress-value, 0%);
+.progress::-webkit-progress-bar,
+.meter::-webkit-progress-bar {
+	background: var(--color-background);
+}
+
+.progress::-webkit-progress-value,
+.meter::-webkit-progress-value {
+	background: var(--color-success);
+}
+
+.progress::-moz-progress-bar,
+.meter::-moz-progress-bar {
 	background: var(--color-success);
 }
 
@@ -204,6 +215,72 @@ input {
 	color: var(--color-text);
 	font-size: 0.78rem;
 	overflow-wrap: anywhere;
+}
+
+.ui-select__trigger {
+	display: inline-flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	width: min(100%, 28rem);
+	min-height: 2.25rem;
+	padding: 0 0.75rem;
+	border: 1px solid var(--color-border-strong);
+	border-radius: 0;
+	color: var(--color-text-strong);
+	background: var(--color-background);
+	font: inherit;
+	cursor: pointer;
+}
+
+.ui-select__trigger:hover {
+	border-color: var(--color-accent);
+}
+
+.ui-select__trigger:focus-visible {
+	outline: 2px solid var(--color-accent);
+	outline-offset: 2px;
+}
+
+.ui-select__trigger[data-disabled] {
+	cursor: not-allowed;
+	opacity: 0.45;
+}
+
+.ui-select__content {
+	z-index: 50;
+	min-width: var(--bits-select-anchor-width);
+	border: 1px solid var(--color-border-strong);
+	border-radius: 0;
+	color: var(--color-text);
+	background: var(--color-surface-raised);
+}
+
+.ui-select__viewport {
+	display: grid;
+	gap: 0.15rem;
+	padding: 0.25rem;
+}
+
+.ui-select__item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	min-height: 2rem;
+	padding: 0 0.55rem;
+	outline: none;
+	cursor: pointer;
+}
+
+.ui-select__item[data-highlighted] {
+	color: var(--color-accent-contrast);
+	background: var(--color-accent);
+}
+
+.ui-select__item[data-disabled] {
+	cursor: not-allowed;
+	opacity: 0.45;
 }
 
 @media (max-width: 58rem) {

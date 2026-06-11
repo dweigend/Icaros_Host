@@ -7,24 +7,25 @@ die Verbindung zu Icaros, Controller und VR-Brille. Ein anderer Teil rendert die
 eigentliche Experience.
 
 Der Host sitzt direkt an der Station. Er kennt den M5-Controller, die
-Operator-Konsole, das Headset und den Client, der gerade aktiv sein soll. Er
-nimmt rohe Controller-Daten entgegen, prüft sie, glättet sie und wandelt sie in
+Operator-Konsole, das Headset und das ausgewählte Launch-Ziel. Er nimmt rohe
+Controller-Daten entgegen, prüft sie, glättet sie und wandelt sie in
 eine kleine, stabile Steuerinformation um. Eine Experience muss dadurch nicht
 wissen, wie der M5 eingerichtet ist, welche Firmware läuft, wie die Brille
 gestartet wurde oder was passiert, wenn eine Verbindung kurz abbricht.
 
 Die VR Experiences laufen als eigene Clients. Jeder Client hostet seine eigene
-3D-Welt und meldet sich beim Host an. Der Host kann mehrere solcher
-Clients kennen, aber nur ein Client ist aktiv und bekommt die echten
-Steuerdaten. Dadurch bleibt klar: Die Experience baut die Welt. Der Host
-übernimmt Routing, Controller-Daten, Handshake, Launch und sichere
-Verbindungen.
+3D-Welt und kann sich beim Host für die Launch-Auswahl anmelden. Der Host kann
+mehrere solcher Clients kennen; die Operator-Konsole wählt daraus nur das
+Launch-Ziel für `/launch`. Die normierten Steuerdaten sind davon getrennt: Sie
+laufen als öffentlicher Control-Stream, den Experiences abonnieren können.
+Dadurch bleibt klar: Die Experience baut die Welt. Der Host übernimmt Routing,
+Controller-Daten, Handshake, Launch und sichere Verbindungen.
 
 Deshalb gibt es zwei Wege, mit dem Host zu arbeiten. Die Weboberfläche ist für
 Menschen gedacht. Dort siehst du auf einen Blick, ob der M5 verbunden ist,
-welche Clients online sind, welcher Client aktiv ist und ob die Station bereit
-ist. Eine grafische Oberfläche ist dafür sinnvoll, weil sie Zustand, Warnungen
-und Aktionen gemeinsam sichtbar macht.
+welche Clients online sind, welches Launch-Ziel ausgewählt ist und ob die
+Station bereit ist. Eine grafische Oberfläche ist dafür sinnvoll, weil sie
+Zustand, Warnungen und Aktionen gemeinsam sichtbar macht.
 
 Die CLI ist dagegen vor allem für Coding-Agenten und Automation gedacht. Ein
 Coding-Agent kann Werkzeuge aufrufen, Kommandos ausführen und strukturierte
@@ -42,9 +43,10 @@ liegt welche Verantwortung? Welche Datei ist der richtige Einstieg, wenn du
 eine Funktion ändern oder einem Coding-Agenten klar beschreiben willst?
 
 Am Ende sollst du das System als Ablauf lesen können: Der M5 sendet rohe
-Bewegungsdaten. Die Konsole entscheidet, welcher konkrete Runtime Client aktiv
-ist. Der Host prüft, normalisiert, glättet und verteilt genau die Daten, die die
-aktive Experience wirklich braucht.
+Bewegungsdaten. Die Konsole entscheidet, welcher konkrete Runtime Client über
+`/launch` geöffnet wird. Der Host prüft, normalisiert, glättet und veröffentlicht
+die Control-Daten als kleinen öffentlichen Stream, den Experiences für ihre
+Steuerung abonnieren können.
 
 ## 1. Der Server startet
 
@@ -82,7 +84,7 @@ ws://<host-lan-ip-or-name>:5184/ws/device
 ```
 
 Damit ist der Host erreichbar. Ausgewählt ist zu diesem Zeitpunkt aber noch
-nichts: Kein Client ist aktiv, und der Controller darf fehlen. M5-Pairing,
+nichts: Es gibt noch kein Launch-Ziel, und der Controller darf fehlen. M5-Pairing,
 Firmware-Updates, Diagnose und Controller-Setup passieren erst über Konsole oder
 CLI, nicht während `bun start`.
 
@@ -90,8 +92,8 @@ CLI, nicht während `bun start`.
 
 Als Nächstes schaust du auf die sichtbare Oberfläche des Hosts: die
 Operator-Konsole auf `/`. Hier siehst du, welche Verbindungen bekannt sind, ob
-der M5 bereit ist, welche Runtime Clients online sind und welcher Client gerade
-aktiv ist.
+der M5 bereit ist, welche Runtime Clients online sind und welches Launch-Ziel
+ausgewählt ist.
 
 Die Seite wird aus zwei Teilen aufgebaut:
 
@@ -313,8 +315,8 @@ Dort geht es vor allem um diese Funktionen:
 - `recordHeartbeat()` hält Clients frisch.
 - `markStaleClients()` markiert nicht mehr antwortende Clients als `stale`.
 - `listRuntimeClients()` liefert die Liste für die Konsole.
-- `findSelectableClient()` sorgt dafür, dass nur online Clients aktiv gewählt
-  werden können.
+- `findSelectableClient()` sorgt dafür, dass nur online Clients als Launch-Ziel
+  ausgewählt werden können.
 
 Warum konkrete Clients und nicht nur Experience-IDs? Weil dieselbe Experience
 mehrfach offen sein kann: Desktop-Browser, Quest-Browser, Testfenster. Der Host
@@ -346,17 +348,18 @@ Der Host speichert:
 `selectedExperienceId` bleibt als abgeleitete Information erhalten, weil sie für
 Anzeige und Kompatibilität hilfreich ist.
 
-Sobald sich der aktive Client ändert, sendet der Host neue Nachrichten vom Typ
-`station.state` und `runtime.clients` an die Runtime-Verbindungen. So wissen
-Clients, welcher konkrete Runtime Client gerade als Launch-Ziel ausgewählt ist.
-Das steuert nicht die öffentliche Control-Stream-Auslieferung.
+Sobald sich das ausgewählte Launch-Ziel ändert, sendet der Host neue
+Nachrichten vom Typ `station.state` und `runtime.clients` an die
+Runtime-Verbindungen. So wissen Clients, welcher konkrete Runtime Client gerade
+als Launch-Ziel ausgewählt ist. Das steuert nicht die öffentliche
+Control-Stream-Auslieferung.
 
 ## 9. `/launch` bringt das Headset zum richtigen Client
 
 Wenn du ein Headset verwendest, soll es nicht irgendeine alte oder fest
 konfigurierte Experience-URL öffnen. Es öffnet den Host. Der Host schaut nach,
-welcher Runtime Client gerade aktiv ist, und leitet dann genau zu diesem Client
-weiter.
+welcher Runtime Client als Launch-Ziel ausgewählt ist, und leitet dann genau zu
+diesem Client weiter.
 
 Die Route ist [src/routes/launch/+server.ts](../src/routes/launch/+server.ts).
 Die eigentliche Entscheidung liegt in
@@ -367,8 +370,8 @@ ausgewählter Launch-Client existiert, online ist und eine gültige HTTPS-URL
 registriert hat.
 
 Wenn alles passt, antwortet `/launch` mit einem `307` Redirect auf die
-registrierte Client-URL. Wenn nichts aktiv oder die URL unsicher ist, schlägt
-die Route mit einer klaren Fehlermeldung fehl.
+registrierte Client-URL. Wenn kein Launch-Ziel ausgewählt ist oder die URL
+unsicher ist, schlägt die Route mit einer klaren Fehlermeldung fehl.
 
 Das ist absichtlich streng. `/launch` soll nicht raten, keine HTTP-Fallbacks
 nutzen und keine Experience-Builds ausliefern. Es ist ein sicherer Einstieg zum

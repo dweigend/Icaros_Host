@@ -1,7 +1,7 @@
-# Purpose: current integration review notes for bringing Icaros Host changes
-# toward main without losing the refactor decisions.
-
 # PLAN to MAIN
+
+Purpose: current integration review notes for bringing Icaros Host changes
+toward main without losing the refactor decisions.
 
 This file is no longer a worker-thread implementation plan. It is a compact
 integration checklist for reviewing the current issue-driven refactor before
@@ -66,7 +66,7 @@ Use this matrix for manual review before merging the completion branch into
 | #15 | Console tokens align with terminal UI rules. | `src/app.css`, primitive/block classes |
 | #16 | Console panels are block families under `src/lib/blocks`. | `src/lib/blocks/host-console`, thin `src/routes/+page.svelte` |
 | #17, #21 | Bits UI primitive set stays minimal and CSS ownership is explicit. | `src/lib/components/select`, existing primitive families, `src/app.css` |
-| #18 | Reusable route-local console CSS and direct meter widths are removed. | `src/app.css`, block components, `style:--progress-value` custom-property pattern |
+| #18 | Reusable route-local console CSS and direct meter widths are removed. | `src/app.css`, block components, bounded meter fill classes |
 | #19 | Browser state is split by UI responsibility. | `src/routes/console-control-stream-state.svelte.ts`, `src/routes/console-launch-registry-state.svelte.ts`, thin composer in `src/routes/console-state.svelte.ts` |
 
 ## Required Local Gates

@@ -49,8 +49,8 @@ async function main(): Promise<void> {
 
 	const result = await verifyRuntimeClientLaunchAndControl(config);
 
-	console.log(`activeClientId=${SMOKE_CLIENT_ID}`);
-	console.log(`activeExperienceId=${config.experienceId}`);
+	console.log(`selectedLaunchClientId=${SMOKE_CLIENT_ID}`);
+	console.log(`selectedExperienceId=${config.experienceId}`);
 	console.log(`registeredClientUrl=${config.clientUrl}`);
 	console.log(`launchRedirect=${result.launchUrl}`);
 	console.log(`control.orientation pitch=${result.control.pitch} roll=${result.control.roll}`);

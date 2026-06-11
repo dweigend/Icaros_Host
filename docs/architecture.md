@@ -37,7 +37,7 @@ flowchart TD
     ExperienceApp -->|"renders"| World
   end
 
-  Host -->|"redirect to active<br/>experience"| ExperienceOrigin
+  Host -->|"redirect to selected<br/>client URL"| ExperienceOrigin
 ```
 
 ## Data Flow
