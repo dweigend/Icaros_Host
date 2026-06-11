@@ -4,10 +4,10 @@
 <script lang="ts">
 	import { CircleStop, ExternalLink, Save } from '@lucide/svelte';
 	import { Button, Kbd, Select, StatusDot } from '$lib/components';
-	import type { ConsolePageState } from '../../../../routes/console-state.svelte';
+	import type { HostConsoleState } from '../types';
 
     type Props = Readonly<{
-        state: ConsolePageState;
+        state: HostConsoleState;
     }>;
 
     let { state }: Props = $props();

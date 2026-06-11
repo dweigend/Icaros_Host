@@ -11,10 +11,10 @@
         StatusDot,
         Switch,
 	} from '$lib/components';
-	import type { ConsolePageState } from '../../../../routes/console-state.svelte';
+	import type { HostConsoleState } from '../types';
 
     type Props = Readonly<{
-        state: ConsolePageState;
+        state: HostConsoleState;
     }>;
 
     let { state }: Props = $props();

@@ -4,10 +4,10 @@
 <script lang="ts">
 	import { Activity, Glasses, RadioTower, Router, Terminal } from '@lucide/svelte';
 
-	import type { ConsoleConnectionUrls } from '../../../../routes/console-state.svelte';
+	import type { HostConsoleConnectionUrls } from '../types';
 
     type Props = Readonly<{
-        urls: ConsoleConnectionUrls;
+        urls: HostConsoleConnectionUrls;
     }>;
 
     let { urls }: Props = $props();

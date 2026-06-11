@@ -4,11 +4,11 @@
 <script lang="ts">
 	import { Kbd, StatusDot } from '$lib/components';
 	import type { RuntimeClientSummary } from '$lib/protocol';
-	import type { ConsolePageState } from '../../../../routes/console-state.svelte';
-	import { formatAge } from '../../../../routes/runtime-debug';
+	import { formatAge } from '../format';
+	import type { HostConsoleState } from '../types';
 
     type Props = Readonly<{
-        state: ConsolePageState;
+        state: HostConsoleState;
     }>;
 
     let { state }: Props = $props();

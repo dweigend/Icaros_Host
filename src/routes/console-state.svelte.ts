@@ -3,49 +3,32 @@
  * single Icaros Host console page.
  */
 import { invalidateAll } from '$app/navigation';
-
+import { formatAge } from '$lib/blocks/host-console/format';
+import type {
+	HostConsoleConnectionUrls,
+	HostConsoleControllerIndicator,
+	HostConsoleState,
+	HostConsoleUsbForm
+} from '$lib/blocks/host-console/types';
 import type { StatusDotTone } from '$lib/components/status-dot';
 import type { PageData } from './$types';
 import { createConsoleControlStreamState } from './console-control-stream-state.svelte';
 import { createConsoleLaunchRegistryState } from './console-launch-registry-state.svelte';
-import { formatAge } from './runtime-debug';
 
 const DEFAULT_USB_DEVICE_ID = 'icaros-station-a-m5';
 const USB_SETUP_REFRESH_MS = 1_000;
 const CONSOLE_CLOCK_MS = 250;
 const CONTROLLER_FRAME_FRESH_MS = 5_000;
 
-export type ConsoleConnectionUrls = Readonly<{
-	consoleUrl: string;
-	questLaunchUrl: string;
-	experienceTargetUrl: string | null;
-	m5SocketUrl: string;
-	controlSocketUrl: string;
-	runtimeSocketUrl: string;
-}>;
+type ConsoleConnectionUrls = HostConsoleConnectionUrls;
 
-type ConsoleUsbPairingForm = {
-	ssid: string;
-	password: string;
-	deviceId: string;
-	staticIp: string;
-	gateway: string;
-	subnet: string;
-	dns: string;
-};
-
-export type ConsolePageState = ReturnType<typeof createConsolePageState>;
-type ControllerStatusIndicator = Readonly<{
-	label: string;
-	value: string;
-	tone: StatusDotTone;
-	detail: string;
-}>;
+type ConsoleUsbPairingForm = HostConsoleUsbForm;
+type ControllerStatusIndicator = HostConsoleControllerIndicator;
 
 type UsbSetupState = PageData['usbSetup']['state'];
 type UsbSetup = PageData['usbSetup'];
 
-export function createConsolePageState(readData: () => PageData) {
+export function createConsolePageState(readData: () => PageData): HostConsoleState {
 	let usbNow = $state(Date.now());
 	const controlStream = createConsoleControlStreamState();
 
