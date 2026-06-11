@@ -9,5 +9,5 @@ export function setLaunchClientSelection(
 	activeClientId: string | null,
 	activeExperienceId: string | null
 ): void {
-	stationStateStore.setActiveClient(activeClientId, activeExperienceId);
+	stationStateStore.setLaunchSelection(activeClientId, activeExperienceId);
 }

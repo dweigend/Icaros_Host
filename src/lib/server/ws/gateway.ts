@@ -267,7 +267,7 @@ class IcarosWebSocketGateway {
 		socket.on('close', () => {
 			const removedClient = this.#runtimeClients.remove(client);
 			if (removedClient?.clientId === stationStateStore.getState().activeClientId) {
-				stationStateStore.setActiveClient(null, null);
+				stationStateStore.setLaunchSelection(null, null);
 			}
 			this.#broadcastRuntimeClients();
 		});
@@ -327,7 +327,7 @@ class IcarosWebSocketGateway {
 			activeClientId !== null &&
 			this.#runtimeClients.findSelectableClient(activeClientId) === null
 		) {
-			stationStateStore.setActiveClient(null, null);
+			stationStateStore.setLaunchSelection(null, null);
 			return;
 		}
 

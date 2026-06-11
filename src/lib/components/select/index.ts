@@ -1,4 +1,4 @@
 /**
  * Purpose: public entrypoint for the local Select primitive.
  */
-export * from './exports';
+export { default as Select } from './components/select.svelte';

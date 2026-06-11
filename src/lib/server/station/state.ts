@@ -25,7 +25,10 @@ class StationStateStore {
 		return this.#state;
 	}
 
-	setActiveClient(activeClientId: string | null, activeExperienceId: string | null): StationState {
+	setLaunchSelection(
+		activeClientId: string | null,
+		activeExperienceId: string | null
+	): StationState {
 		if (
 			this.#state.activeClientId === activeClientId &&
 			this.#state.activeExperienceId === activeExperienceId

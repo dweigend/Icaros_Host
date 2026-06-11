@@ -6,7 +6,20 @@
 	import { Check, ChevronDown } from '@lucide/svelte';
 	import { Select as SelectPrimitive } from 'bits-ui';
 
-	import type { SelectProps } from '../types';
+	type SelectOption = Readonly<{
+		value: string;
+		label: string;
+		disabled?: boolean;
+	}>;
+
+	type SelectProps = Readonly<{
+		disabled?: boolean;
+		items: SelectOption[];
+		label: string;
+		name?: string;
+		placeholder?: string;
+		value?: string;
+	}>;
 
 	let {
 		disabled = false,
