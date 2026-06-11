@@ -63,19 +63,22 @@ Experience Clients verwenden `/ws/control/main` für Steuerdaten und optional
 `/ws/runtime`, wenn sie in der Launch-Auswahl erscheinen sollen. Sie verbinden
 sich nicht direkt mit dem M5 und lesen keine Rohdaten.
 
-### Runtime-Nachrichten für Experience Clients
+### Nachrichten für Experience Clients
 
-Experience Clients senden:
+Auf `/ws/runtime` senden registrierte Launch Clients:
 
 - `client.hello`
 - `client.heartbeat`
 
-Experience Clients empfangen:
+Auf `/ws/runtime` empfangen sie:
 
 - `client.registered`
 - `client.rejected`
 - `station.state`
 - `runtime.clients`
+
+Auf `/ws/control/main` empfangen Control-Stream-Abonnenten:
+
 - `control.orientation`
 
 Der vollständige Wire Contract steht in
@@ -213,6 +216,7 @@ bun run smoke:runtime
 | [docs/host-lifecycle.md](docs/host-lifecycle.md) | Geführte Reise durch Start, Controller, Clients und Datenfluss |
 | [docs/architecture.md](docs/architecture.md) | Architektur, Grenzen und Datenfluss |
 | [docs/client-api.md](docs/client-api.md) | Schnittstelle für VR Experience Clients |
+| [docs/control-streams.md](docs/control-streams.md) | Öffentliche Control-Stream-Namen und Default-Stream |
 | [docs/client-prompt.md](docs/client-prompt.md) | Checkliste und Prompt für neue Clients |
 | [docs/quest-https-launch-routing.md](docs/quest-https-launch-routing.md) | HTTPS, Quest/PICO Launch und Zertifikate |
 | [docs/m5-pairing-solution.md](docs/m5-pairing-solution.md) | M5-Setup, Pairing und Firmware |
