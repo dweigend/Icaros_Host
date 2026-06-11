@@ -21,7 +21,7 @@ und verbinden sich über die dokumentierte Runtime-Schnittstelle mit dem Host.
 ```mermaid
 flowchart LR
     M5["M5StickC Plus Controller<br/>raw orientation frames"] -->|"ws:// /ws/device"| Host
-    Operator["Operator Console<br/>GET /"] -->|"select active client"| Host
+    Operator["Operator Console<br/>GET /"] -->|"select launch client"| Host
     Quest["Quest / PICO Headset<br/>GET /launch"] -->|"launch request"| Host
 
     Host["Icaros Host Server<br/>routing<br/>handshake<br/>validation<br/>normalization<br/>smoothing<br/>safe mode"]
@@ -51,8 +51,8 @@ Daten veraltet sind, sendet der Host neutrale Safe-Mode-Werte.
 
 | Endpunkt | Protokoll | Client | Zweck |
 | --- | --- | --- | --- |
-| `/` | HTTPS | Operator Browser | Technische Konsole, Auswahl des aktiven Runtime-Clients, M5-Setup |
-| `/launch` | HTTPS | Quest/PICO Browser | Leitet per `307` auf die registrierte HTTPS-URL des aktiven Clients weiter |
+| `/` | HTTPS | Operator Browser | Technische Konsole, Launch-Auswahl, M5-Setup |
+| `/launch` | HTTPS | Quest/PICO Browser | Leitet per `307` auf die registrierte HTTPS-URL des ausgewählten Launch-Clients weiter |
 | `/ws/control/main` | WSS | VR Experience Clients | Öffentlicher normierter Control-Stream |
 | `/ws/runtime` | WSS | VR Experience Clients | Launch-Registration, Client-Status und Präsenz |
 | `/ws/device` | WS | M5 Controller | Firmware-kompatibler Gerätesocket für rohe Controller-Frames |

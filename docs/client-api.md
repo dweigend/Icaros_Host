@@ -282,7 +282,7 @@ type StationState = Readonly<{
 ```
 
 Experience clients can use this for neutral UI state, but they must not decide
-active routing locally. The Host console owns active client selection.
+launch routing locally. The Host console owns launch selection.
 
 ## Runtime Client List
 

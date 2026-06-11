@@ -363,7 +363,8 @@ Die eigentliche Entscheidung liegt in
 [src/lib/server/launch/launch-routing.ts](../src/lib/server/launch/launch-routing.ts).
 
 Die zentrale Funktion ist `resolveLaunchClientUrl()`. Sie prüft, ob ein
-aktiver Client existiert, online ist und eine gültige HTTPS-URL registriert hat.
+ausgewählter Launch-Client existiert, online ist und eine gültige HTTPS-URL
+registriert hat.
 
 Wenn alles passt, antwortet `/launch` mit einem `307` Redirect auf die
 registrierte Client-URL. Wenn nichts aktiv oder die URL unsicher ist, schlägt
@@ -371,7 +372,7 @@ die Route mit einer klaren Fehlermeldung fehl.
 
 Das ist absichtlich streng. `/launch` soll nicht raten, keine HTTP-Fallbacks
 nutzen und keine Experience-Builds ausliefern. Es ist ein sicherer Einstieg zum
-bereits laufenden, aktiven Client.
+bereits laufenden, ausgewählten Launch-Client.
 
 ## 10. Steuerung läuft über den öffentlichen Control Stream
 
@@ -461,8 +462,8 @@ Wenn du den Host als Ablauf liest, passiert Folgendes:
 8. Der Host prüft Firmware, Pairing-Token und eingehende Frames.
 9. Rohdaten werden normalisiert, geglättet und safe-mode-fähig gemacht.
 10. VR Clients melden sich mit `client.hello` an.
-11. Die Konsole wählt einen konkreten aktiven Client.
-12. `/launch` leitet Headsets auf diesen aktiven HTTPS-Client weiter.
+11. Die Konsole wählt einen konkreten Launch-Client.
+12. `/launch` leitet Headsets auf diesen ausgewählten HTTPS-Client weiter.
 13. Control-Stream-Abonnenten bekommen `control.orientation` über
     `/ws/control/main`.
 14. Bei Verbindungsverlust sendet der Host neutrale Safe-Mode-Werte.
