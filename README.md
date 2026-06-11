@@ -27,7 +27,7 @@ flowchart LR
     Host["Icaros Host Server<br/>routing<br/>handshake<br/>validation<br/>normalization<br/>smoothing<br/>safe mode"]
 
     Host -->|"307 redirect to selected HTTPS client URL"| ActiveClient
-    Host -->|"wss:// /ws/control/main<br/>control.orientation"| ActiveClient["Active VR Experience Client<br/>Icaros Flight / WebXR"]
+    Host -->|"wss:// /ws/control/main<br/>control.orientation"| ControlClient["VR Experience Client<br/>Icaros Flight / WebXR"]
     Host -->|"wss:// /ws/runtime<br/>station.state, runtime.clients"| OtherClients["Registered launch clients<br/>online or stale"]
     Diagnostics["CLI / automation diagnostics"] -->|"GET/POST /api/m5-pairing"| Host
 ```

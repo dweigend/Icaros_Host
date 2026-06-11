@@ -91,7 +91,8 @@ flowchart LR
 
 The web UI is for humans. It should stay dense, visible, and station-oriented:
 show the current M5 pairing state, let an operator start USB setup, toggle
-debug mode, copy connection URLs, and select the active runtime client.
+debug mode, copy connection URLs, and select the Launch Client used by
+`/launch`.
 
 The CLI is for Coding LLMs and automation. It should expose repeatable commands
 for environment inspection, redacted pairing URL lookup, health checks,

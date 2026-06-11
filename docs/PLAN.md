@@ -25,12 +25,12 @@ small:
 - Stack: Bun, SvelteKit, TypeScript strict, Biome, Bits UI.
 - UI: one page, terminal look, dense and technical.
 - Station model: one station, `station-a`.
-- Active state: one concrete `activeClientId` as the routing source of truth,
-  plus derived `activeExperienceId` compatibility state.
+- Launch selection: one concrete `activeClientId` as the `/launch` routing
+  source of truth, plus derived `activeExperienceId` compatibility state.
 - Quest support: Meta Quest opens host and WebXR browser clients over HTTPS.
 - Experience clients: browser/WebXR clients open directly or through `/launch`,
   then register over `/ws/runtime`.
-- Active selection: operator selects a concrete runtime client on `/`.
+- Launch selection: operator selects a concrete runtime client on `/`.
 - M5 input: raw frames connect to `/ws/device`.
 - Control clients: subscribe to `/ws/control/main`; HTTPS clients use WSS.
 - Runtime clients: optionally connect to `/ws/runtime` for launch selection;
@@ -42,10 +42,10 @@ small:
 
 The operator console should use one stable origin during a session. Mixing
 `localhost` and the Mac's LAN address can trigger SvelteKit's cross-site form
-POST protection when the active runtime client action is submitted, for example:
+POST protection when the Launch Selection action is submitted, for example:
 
 ```txt
-https://192.168.50.194:5183/?/setActive
+https://192.168.50.194:5183/?/setSelectedLaunchClient
 Cross-site POST form submissions are forbidden
 ```
 
@@ -135,7 +135,7 @@ troubleshooting live in
 - Open the launch URL on the Quest and confirm the WebXR experience connects to
   `wss://<host-lan-ip-or-name>:5183/ws/runtime`.
 - Add or keep automated coverage for selected-client launch routing, stale
-  client handling, non-HTTPS rejection, and active-client control routing.
+  client handling, non-HTTPS rejection, and public control-stream delivery.
 
 ## Runtime Flow
 
@@ -146,7 +146,7 @@ troubleshooting live in
 5. The Meta Quest opens `/launch` and is redirected to the selected WebXR
    client's registered HTTPS URL.
 6. M5 connects to `/ws/device`.
-7. Operator selects the active concrete runtime client.
+7. Operator selects the concrete Launch Client.
 8. Host forwards `station.state` and `runtime.clients` to runtime clients.
 9. Host publishes `control.orientation` on `/ws/control/main`.
 10. Stale or disconnected M5 state produces neutral safe-mode controls.
@@ -156,9 +156,9 @@ troubleshooting live in
 - One page shows station status and runtime connection URLs.
 - `/launch` redirects to the selected online runtime client's registered HTTPS
   URL.
-- Meta Quest can reach the host or active WebXR experience over HTTPS.
+- Meta Quest can reach the Host or selected WebXR experience over HTTPS.
 - HTTPS runtime clients use WSS for `/ws/runtime`.
-- Operator can set and clear the active concrete runtime client.
+- Operator can set and clear the selected Launch Client.
 - A simulated M5 can drive normalized control data.
 - `/ws/control/main` subscribers receive `control.orientation`.
 - Stale/disconnected M5 state produces safe neutral controls.
