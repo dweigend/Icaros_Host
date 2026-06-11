@@ -80,8 +80,8 @@ Use this matrix for manual review before merging the completion branch into
 
 ## Current Review Snapshot
 
-Review snapshot from the completion branch `codex/ui-completion-finish` at
-`d1c8acb`, compared with current `origin/main`.
+Review snapshot from the current completion branch `codex/ui-completion-finish`,
+compared with current `origin/main`.
 
 - Worktree: clean.
 - Diff versus `origin/main`: 92 files changed, 3166 insertions, 3818 deletions.
