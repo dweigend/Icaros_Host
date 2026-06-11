@@ -1,10 +1,10 @@
 <!--
-	Purpose: route-local selected launch client status and launch controls.
+	Purpose: host console block for selected launch client status and launch controls.
 -->
 <script lang="ts">
-    import { ExternalLink } from "@lucide/svelte";
-    import { Button, Kbd, StatusDot } from "$lib/components";
-    import type { ConsolePageState } from "./console-state.svelte";
+	import { ExternalLink } from '@lucide/svelte';
+	import { Button, Kbd, StatusDot } from '$lib/components';
+	import type { ConsolePageState } from '../../../../routes/console-state.svelte';
 
     type Props = Readonly<{
         state: ConsolePageState;

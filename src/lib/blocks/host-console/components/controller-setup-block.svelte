@@ -1,8 +1,8 @@
 <!--
-	Purpose: route-local M5 USB pairing form, status, and bounded debug output.
+	Purpose: host console block for M5 USB pairing form, status, and bounded debug output.
 -->
 <script lang="ts">
-    import { PlugZap, Search, Upload, XCircle } from "@lucide/svelte";
+	import { PlugZap, Search, Upload, XCircle } from '@lucide/svelte';
 
     import {
         Button,
@@ -10,8 +10,8 @@
         ScrollArea,
         StatusDot,
         Switch,
-    } from "$lib/components";
-    import type { ConsolePageState } from "./console-state.svelte";
+	} from '$lib/components';
+	import type { ConsolePageState } from '../../../../routes/console-state.svelte';
 
     type Props = Readonly<{
         state: ConsolePageState;

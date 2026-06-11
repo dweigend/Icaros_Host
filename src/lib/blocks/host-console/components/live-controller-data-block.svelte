@@ -1,16 +1,12 @@
 <!--
-	Purpose: route-local live normalized controller telemetry panel for operators.
+	Purpose: host console block for live normalized controller telemetry.
 -->
 <script lang="ts">
-    import { Gauge } from "@lucide/svelte";
+	import { Gauge } from '@lucide/svelte';
 
-    import { Kbd, ScrollArea, StatusDot } from "$lib/components";
-    import {
-        formatAge,
-        formatSignedUnit,
-        toQualityPercent,
-    } from "./runtime-debug";
-    import type { ConsolePageState } from "./console-state.svelte";
+	import { Kbd, ScrollArea, StatusDot } from '$lib/components';
+	import type { ConsolePageState } from '../../../../routes/console-state.svelte';
+	import { formatAge, formatSignedUnit, toQualityPercent } from '../../../../routes/runtime-debug';
 
     type Props = Readonly<{
         state: ConsolePageState;

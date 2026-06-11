@@ -1,10 +1,10 @@
 <!--
-	Purpose: route-local panel for Host, Quest, M5, runtime, and control URLs.
+	Purpose: host console block for Host, Quest, M5, runtime, and control URLs.
 -->
 <script lang="ts">
-    import { Activity, Glasses, RadioTower, Router, Terminal } from "@lucide/svelte";
+	import { Activity, Glasses, RadioTower, Router, Terminal } from '@lucide/svelte';
 
-    import type { ConsoleConnectionUrls } from "./console-state.svelte";
+	import type { ConsoleConnectionUrls } from '../../../../routes/console-state.svelte';
 
     type Props = Readonly<{
         urls: ConsoleConnectionUrls;

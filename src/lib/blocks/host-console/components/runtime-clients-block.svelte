@@ -1,14 +1,13 @@
 <!--
-	Purpose: route-local runtime client presence panel. It lets the operator pick
-	the concrete HTTPS browser or Quest instance used by `/launch`.
+	Purpose: host console block for runtime client presence.
 -->
 <script lang="ts">
-    import { Check, CircleStop } from "@lucide/svelte";
+	import { Check, CircleStop } from '@lucide/svelte';
 
-    import { Button, Kbd, StatusDot } from "$lib/components";
-    import type { RuntimeClientSummary } from "$lib/protocol";
-    import type { ConsolePageState } from "./console-state.svelte";
-    import { formatAge } from "./runtime-debug";
+	import { Button, Kbd, StatusDot } from '$lib/components';
+	import type { RuntimeClientSummary } from '$lib/protocol';
+	import type { ConsolePageState } from '../../../../routes/console-state.svelte';
+	import { formatAge } from '../../../../routes/runtime-debug';
 
     type Props = Readonly<{
         state: ConsolePageState;
