@@ -15,6 +15,13 @@ import {
 
 const DEBUG_FRAME_LIMIT = 12;
 
+type ControlStreamSocketHandlers = Readonly<{
+	opened(): void;
+	received(data: string): void;
+	failed(): void;
+	closed(): void;
+}>;
+
 export function createConsoleControlStreamState() {
 	let debugNow = $state(Date.now());
 	let debugStatus = $state<RuntimeDebugStatus>('disconnected');
@@ -22,44 +29,41 @@ export function createConsoleControlStreamState() {
 	let debugFrameCount = $state(0);
 	let debugLastControl = $state<ControlOrientation | null>(null);
 	let debugFrames = $state<RuntimeDebugFrame[]>([]);
-	let controlStreamSocket: WebSocket | null = null;
+	let cleanupControlStreamSocket: (() => void) | null = null;
 
 	const debugStatusTone = $derived(readDebugStatusTone(debugStatus));
-	const debugLastMessageAge = $derived(
-		debugLastMessageAt === null ? 'never' : formatAge(debugNow - debugLastMessageAt)
-	);
-	const debugPitchPercent = $derived(toUnitPercent(debugLastControl?.pitch ?? 0));
-	const debugRollPercent = $derived(toUnitPercent(debugLastControl?.roll ?? 0));
-	const debugQualityPercent = $derived(toQualityPercent(debugLastControl?.quality ?? 0));
+	const debugLastMessageAge = $derived(readLastMessageAge(debugLastMessageAt, debugNow));
+	const debugPitchPercent = $derived(readControlPitchPercent(debugLastControl));
+	const debugRollPercent = $derived(readControlRollPercent(debugLastControl));
+	const debugQualityPercent = $derived(readControlQualityPercent(debugLastControl));
 
 	function tick(now: number): void {
 		debugNow = now;
 	}
 
 	function mount(controlSocketUrl: string): () => void {
-		controlStreamSocket = new WebSocket(controlSocketUrl);
+		cleanupControlStreamSocket = closeControlStreamSocket(cleanupControlStreamSocket);
 		debugStatus = 'connecting';
-
-		controlStreamSocket.onopen = () => {
-			debugStatus = 'connected';
-		};
-
-		controlStreamSocket.onmessage = (event: MessageEvent) => {
-			readControlStreamMessage(String(event.data));
-		};
-
-		controlStreamSocket.onerror = () => {
-			debugStatus = 'error';
-		};
-
-		controlStreamSocket.onclose = () => {
-			debugStatus = 'disconnected';
-			controlStreamSocket = null;
-		};
+		let cleanupSocket: (() => void) | null = null;
+		cleanupSocket = connectControlStreamSocket(controlSocketUrl, {
+			opened: () => {
+				debugStatus = 'connected';
+			},
+			received: readControlStreamMessage,
+			failed: () => {
+				debugStatus = 'error';
+			},
+			closed: () => {
+				debugStatus = 'disconnected';
+				if (cleanupControlStreamSocket === cleanupSocket) {
+					cleanupControlStreamSocket = null;
+				}
+			}
+		});
+		cleanupControlStreamSocket = cleanupSocket;
 
 		return () => {
-			controlStreamSocket?.close();
-			controlStreamSocket = null;
+			cleanupControlStreamSocket = closeControlStreamSocket(cleanupControlStreamSocket);
 		};
 	}
 
@@ -114,6 +118,43 @@ export function createConsoleControlStreamState() {
 			return debugQualityPercent;
 		}
 	};
+}
+
+function closeControlStreamSocket(cleanup: (() => void) | null): null {
+	cleanup?.();
+	return null;
+}
+
+function connectControlStreamSocket(
+	controlSocketUrl: string,
+	handlers: ControlStreamSocketHandlers
+): () => void {
+	const socket = new WebSocket(controlSocketUrl);
+	socket.onopen = handlers.opened;
+	socket.onmessage = (event: MessageEvent) => handlers.received(String(event.data));
+	socket.onerror = handlers.failed;
+	socket.onclose = handlers.closed;
+	return () => socket.close();
+}
+
+function readLastMessageAge(lastMessageAt: number | null, now: number): string {
+	if (lastMessageAt === null) {
+		return 'never';
+	}
+
+	return formatAge(now - lastMessageAt);
+}
+
+function readControlPitchPercent(control: ControlOrientation | null): number {
+	return toUnitPercent(control?.pitch ?? 0);
+}
+
+function readControlRollPercent(control: ControlOrientation | null): number {
+	return toUnitPercent(control?.roll ?? 0);
+}
+
+function readControlQualityPercent(control: ControlOrientation | null): number {
+	return toQualityPercent(control?.quality ?? 0);
 }
 
 function readDebugStatusTone(status: RuntimeDebugStatus): StatusDotTone {

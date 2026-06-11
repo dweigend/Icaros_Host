@@ -25,77 +25,66 @@ type ResolvedOptions = Readonly<{
 	runtimePath: string;
 }>;
 
-export class IcarosLaunchRegistrationClient {
-	#options: ResolvedOptions;
-	#socket: WebSocket | null = null;
-	#heartbeat: ReturnType<typeof setInterval> | null = null;
-	#stationStateListeners = new Set<StationStateListener>();
+export type IcarosLaunchRegistrationClient = Readonly<{
+	start(): void;
+	dispose(): void;
+	onStationState(listener: StationStateListener): () => void;
+}>;
 
-	constructor(options: LaunchRegistrationClientOptions) {
-		this.#options = {
-			runtimePath: '/ws/runtime',
-			...options,
-			clientId: options.clientId ?? readStableClientId(),
-			title: options.title ?? readDocumentTitle(options.experienceId)
-		};
-	}
+export function createIcarosLaunchRegistrationClient(
+	options: LaunchRegistrationClientOptions
+): IcarosLaunchRegistrationClient {
+	const resolvedOptions: ResolvedOptions = {
+		runtimePath: '/ws/runtime',
+		...options,
+		clientId: options.clientId ?? readStableClientId(),
+		title: options.title ?? readDocumentTitle(options.experienceId)
+	};
+	let socket: WebSocket | null = null;
+	let heartbeat: ReturnType<typeof setInterval> | null = null;
+	const stationStateListeners = new Set<StationStateListener>();
 
-	start(): void {
-		if (this.#socket !== null) {
+	function handleMessage(data: unknown): void {
+		if (typeof data !== 'string') {
 			return;
 		}
 
-		const socket = new WebSocket(resolveRuntimeUrl(this.#options));
-		this.#socket = socket;
-		socket.addEventListener('open', () => this.#sendHello(socket));
-		socket.addEventListener('message', (event) => this.#handleMessage(event.data));
-		socket.addEventListener('close', () => {
-			this.#stopHeartbeat();
-			this.#socket = null;
-		});
-	}
-
-	dispose(): void {
-		this.#stopHeartbeat();
-		this.#socket?.close();
-		this.#socket = null;
-		this.#stationStateListeners.clear();
-	}
-
-	onStationState(listener: StationStateListener): () => void {
-		this.#stationStateListeners.add(listener);
-		return () => this.#stationStateListeners.delete(listener);
-	}
-
-	#handleMessage(data: unknown): void {
-		const message = typeof data === 'string' ? readHostRuntimeMessage(data) : null;
-		if (message?.type === 'client.registered') {
-			if (message.payload.clientId === this.#options.clientId) {
-				this.#startHeartbeat();
-			}
+		const message = readHostRuntimeMessage(data);
+		if (message === null) {
 			return;
 		}
 
-		if (message?.type === 'client.rejected') {
-			this.#socket?.close();
-			return;
-		}
-
-		if (message?.type === 'station.state') {
-			for (const listener of this.#stationStateListeners) {
-				listener(message.payload);
-			}
+		switch (message.type) {
+			case 'client.registered':
+				if (message.payload.clientId === resolvedOptions.clientId) {
+					startHeartbeat();
+				}
+				break;
+			case 'client.rejected':
+				socket?.close();
+				break;
+			case 'station.state':
+				notifyStationState(message.payload);
+				break;
+			case 'control.orientation':
+				break;
 		}
 	}
 
-	#sendHello(socket: WebSocket): void {
-		socket.send(
+	function notifyStationState(state: StationState): void {
+		for (const listener of stationStateListeners) {
+			listener(state);
+		}
+	}
+
+	function sendHello(target: WebSocket): void {
+		target.send(
 			JSON.stringify(
 				createMessage('client.hello', {
 					role: 'experience',
-					clientId: this.#options.clientId,
-					experienceId: this.#options.experienceId,
-					title: this.#options.title,
+					clientId: resolvedOptions.clientId,
+					experienceId: resolvedOptions.experienceId,
+					title: resolvedOptions.title,
 					url: window.location.href,
 					userAgent: window.navigator.userAgent
 				})
@@ -103,29 +92,53 @@ export class IcarosLaunchRegistrationClient {
 		);
 	}
 
-	#startHeartbeat(): void {
-		this.#stopHeartbeat();
-		this.#heartbeat = setInterval(() => {
-			if (this.#socket?.readyState === WebSocket.OPEN) {
-				this.#socket.send(
-					JSON.stringify(createMessage('client.heartbeat', { clientId: this.#options.clientId }))
+	function startHeartbeat(): void {
+		stopHeartbeat();
+		heartbeat = setInterval(() => {
+			if (socket?.readyState === WebSocket.OPEN) {
+				socket.send(
+					JSON.stringify(createMessage('client.heartbeat', { clientId: resolvedOptions.clientId }))
 				);
 			}
 		}, 4_000);
 	}
 
-	#stopHeartbeat(): void {
-		if (this.#heartbeat !== null) {
-			clearInterval(this.#heartbeat);
-			this.#heartbeat = null;
+	function stopHeartbeat(): void {
+		if (heartbeat !== null) {
+			clearInterval(heartbeat);
+			heartbeat = null;
 		}
 	}
-}
 
-export function createIcarosLaunchRegistrationClient(
-	options: LaunchRegistrationClientOptions
-): IcarosLaunchRegistrationClient {
-	return new IcarosLaunchRegistrationClient(options);
+	return {
+		start(): void {
+			if (socket !== null) {
+				return;
+			}
+
+			socket = new WebSocket(resolveRuntimeUrl(resolvedOptions));
+			socket.addEventListener('open', () => {
+				if (socket !== null) {
+					sendHello(socket);
+				}
+			});
+			socket.addEventListener('message', (event) => handleMessage(event.data));
+			socket.addEventListener('close', () => {
+				stopHeartbeat();
+				socket = null;
+			});
+		},
+		dispose(): void {
+			stopHeartbeat();
+			socket?.close();
+			socket = null;
+			stationStateListeners.clear();
+		},
+		onStationState(listener: StationStateListener): () => void {
+			stationStateListeners.add(listener);
+			return () => stationStateListeners.delete(listener);
+		}
+	};
 }
 
 function resolveRuntimeUrl(options: ResolvedOptions): string {

@@ -16,52 +16,51 @@ export type ControlStreamClientOptions = Readonly<{
 	controlPath?: string;
 }>;
 
-export class IcarosControlStreamClient {
-	#socket: WebSocket | null = null;
-	#listeners = new Set<OrientationListener>();
+export type IcarosControlStreamClient = Readonly<{
+	start(): void;
+	dispose(): void;
+	onOrientation(listener: OrientationListener): () => void;
+}>;
 
-	constructor(readonly options: ControlStreamClientOptions = {}) {}
+export function createIcarosControlStreamClient(
+	options: ControlStreamClientOptions = {}
+): IcarosControlStreamClient {
+	let socket: WebSocket | null = null;
+	const listeners = new Set<OrientationListener>();
 
-	start(): void {
-		if (this.#socket !== null) {
-			return;
-		}
-
-		const socket = new WebSocket(resolveControlUrl(this.options));
-		this.#socket = socket;
-		socket.addEventListener('message', (event) => this.#handleMessage(event.data));
-		socket.addEventListener('close', () => {
-			this.#socket = null;
-		});
-	}
-
-	dispose(): void {
-		this.#socket?.close();
-		this.#socket = null;
-		this.#listeners.clear();
-	}
-
-	onOrientation(listener: OrientationListener): () => void {
-		this.#listeners.add(listener);
-		return () => this.#listeners.delete(listener);
-	}
-
-	#handleMessage(data: unknown): void {
+	function handleMessage(data: unknown): void {
 		const control = typeof data === 'string' ? readControl(data) : null;
 		if (control === null) {
 			return;
 		}
 
-		for (const listener of this.#listeners) {
+		for (const listener of listeners) {
 			listener(control);
 		}
 	}
-}
 
-export function createIcarosControlStreamClient(
-	options: ControlStreamClientOptions = {}
-): IcarosControlStreamClient {
-	return new IcarosControlStreamClient(options);
+	return {
+		start(): void {
+			if (socket !== null) {
+				return;
+			}
+
+			socket = new WebSocket(resolveControlUrl(options));
+			socket.addEventListener('message', (event) => handleMessage(event.data));
+			socket.addEventListener('close', () => {
+				socket = null;
+			});
+		},
+		dispose(): void {
+			socket?.close();
+			socket = null;
+			listeners.clear();
+		},
+		onOrientation(listener: OrientationListener): () => void {
+			listeners.add(listener);
+			return () => listeners.delete(listener);
+		}
+	};
 }
 
 function resolveControlUrl(options: ControlStreamClientOptions): string {
