@@ -5,20 +5,11 @@
 import { invalidateAll } from '$app/navigation';
 
 import type { StatusDotTone } from '$lib/components/status-dot';
-import type { ControlOrientation, RuntimeClientSummary } from '$lib/protocol';
 import type { PageData } from './$types';
-import {
-	createRuntimeDebugFrame,
-	formatAge,
-	parseControlStreamMessage,
-	parseRuntimeRegistryMessage,
-	type RuntimeDebugFrame,
-	type RuntimeDebugStatus,
-	toQualityPercent,
-	toUnitPercent
-} from './runtime-debug';
+import { createConsoleControlStreamState } from './console-control-stream-state.svelte';
+import { createConsoleLaunchRegistryState } from './console-launch-registry-state.svelte';
+import { formatAge } from './runtime-debug';
 
-const DEBUG_FRAME_LIMIT = 12;
 const DEFAULT_USB_DEVICE_ID = 'icaros-station-a-m5';
 const USB_SETUP_REFRESH_MS = 1_000;
 const CONSOLE_CLOCK_MS = 250;
@@ -56,16 +47,7 @@ type UsbSetup = PageData['usbSetup'];
 
 export function createConsolePageState(readData: () => PageData) {
 	let usbNow = $state(Date.now());
-	let debugNow = $state(Date.now());
-	let debugStatus = $state<RuntimeDebugStatus>('disconnected');
-	let debugLastMessageAt = $state<number | null>(null);
-	let debugFrameCount = $state(0);
-	let runtimeRegistryActiveClientId = $state<string | null | undefined>(undefined);
-	let runtimeClients = $state<readonly RuntimeClientSummary[]>([]);
-	let debugLastControl = $state<ControlOrientation | null>(null);
-	let debugFrames = $state<RuntimeDebugFrame[]>([]);
-	let controlStreamSocket: WebSocket | null = null;
-	let runtimeRegistrySocket: WebSocket | null = null;
+	const controlStream = createConsoleControlStreamState();
 
 	const usbForm: ConsoleUsbPairingForm = $state({
 		ssid: '',
@@ -81,6 +63,7 @@ export function createConsolePageState(readData: () => PageData) {
 	const station = $derived(readData().station);
 	const usbSetup = $derived(readData().usbSetup);
 	const activeClientId = $derived(station.activeClientId);
+	const launchRegistry = createConsoleLaunchRegistryState(() => activeClientId);
 	const connectionUrls = $derived<ConsoleConnectionUrls>({
 		consoleUrl: `${connection.httpOrigin}/`,
 		questLaunchUrl: connection.questLaunchUrl,
@@ -89,16 +72,6 @@ export function createConsolePageState(readData: () => PageData) {
 		controlSocketUrl: createBrowserSocketUrl(connection.wsOrigin, '/ws/control/main'),
 		runtimeSocketUrl: createBrowserSocketUrl(connection.wsOrigin, '/ws/runtime')
 	});
-	const runtimeActiveClientId = $derived(
-		runtimeRegistryActiveClientId === undefined ? activeClientId : runtimeRegistryActiveClientId
-	);
-	const debugStatusTone = $derived(readDebugStatusTone(debugStatus));
-	const debugLastMessageAge = $derived(
-		debugLastMessageAt === null ? 'never' : formatAge(debugNow - debugLastMessageAt)
-	);
-	const debugPitchPercent = $derived(toUnitPercent(debugLastControl?.pitch ?? 0));
-	const debugRollPercent = $derived(toUnitPercent(debugLastControl?.roll ?? 0));
-	const debugQualityPercent = $derived(toQualityPercent(debugLastControl?.quality ?? 0));
 	const usbSetupTone = $derived(readUsbSetupTone(usbSetup, usbNow));
 	const usbSetupDuration = $derived(
 		formatUsbSetupDuration(usbSetup.startedAt, usbSetup.finishedAt, usbNow)
@@ -121,80 +94,20 @@ export function createConsolePageState(readData: () => PageData) {
 		return () => window.clearInterval(refresh);
 	});
 
-	function readControlStreamMessage(data: string): void {
-		const control = parseControlStreamMessage(data);
-
-		if (control === null) {
-			return;
-		}
-
-		const receivedAt = Date.now();
-		debugLastMessageAt = receivedAt;
-		debugLastControl = control;
-		debugFrameCount += 1;
-		debugFrames = [
-			createRuntimeDebugFrame(debugFrameCount, control, receivedAt),
-			...debugFrames
-		].slice(0, DEBUG_FRAME_LIMIT);
-	}
-
-	function readRuntimeRegistryMessage(data: string): void {
-		const message = parseRuntimeRegistryMessage(data);
-
-		if (message === null) {
-			return;
-		}
-
-		if (message.type === 'station.state') {
-			runtimeRegistryActiveClientId = message.payload.activeClientId;
-			return;
-		}
-
-		runtimeClients = message.payload.clients;
-	}
-
 	function mountConsoleLiveSockets(): () => void {
-		controlStreamSocket = new WebSocket(connectionUrls.controlSocketUrl);
-		runtimeRegistrySocket = new WebSocket(connectionUrls.runtimeSocketUrl);
-		debugStatus = 'connecting';
+		const cleanupControlStream = controlStream.mount(connectionUrls.controlSocketUrl);
+		const cleanupLaunchRegistry = launchRegistry.mount(connectionUrls.runtimeSocketUrl);
 
 		const clock = window.setInterval(() => {
 			const now = Date.now();
-			debugNow = now;
+			controlStream.tick(now);
 			usbNow = now;
 		}, CONSOLE_CLOCK_MS);
 
-		controlStreamSocket.onopen = () => {
-			debugStatus = 'connected';
-		};
-
-		controlStreamSocket.onmessage = (event: MessageEvent) => {
-			readControlStreamMessage(String(event.data));
-		};
-
-		controlStreamSocket.onerror = () => {
-			debugStatus = 'error';
-		};
-
-		controlStreamSocket.onclose = () => {
-			debugStatus = 'disconnected';
-			controlStreamSocket = null;
-		};
-
-		runtimeRegistrySocket.onmessage = (event: MessageEvent) => {
-			readRuntimeRegistryMessage(String(event.data));
-		};
-
-		runtimeRegistrySocket.onclose = () => {
-			runtimeRegistrySocket = null;
-		};
-
 		return () => {
 			window.clearInterval(clock);
-			controlStreamSocket?.close();
-			runtimeRegistrySocket?.close();
-			controlStreamSocket = null;
-			runtimeRegistrySocket = null;
+			cleanupControlStream();
+			cleanupLaunchRegistry();
 		};
 	}
 
@@ -202,10 +115,10 @@ export function createConsolePageState(readData: () => PageData) {
 		usbForm,
 		mountConsoleLiveSockets,
 		get activeClientId() {
-			return runtimeActiveClientId;
+			return launchRegistry.activeClientId;
 		},
 		get runtimeClients() {
-			return runtimeClients;
+			return launchRegistry.runtimeClients;
 		},
 		get connectionUrls() {
 			return connectionUrls;
@@ -229,52 +142,36 @@ export function createConsolePageState(readData: () => PageData) {
 			return controllerIndicators;
 		},
 		get debugStatus() {
-			return debugStatus;
+			return controlStream.debugStatus;
 		},
 		get debugStatusTone() {
-			return debugStatusTone;
+			return controlStream.debugStatusTone;
 		},
 		get debugLastControl() {
-			return debugLastControl;
+			return controlStream.debugLastControl;
 		},
 		get debugFrames() {
-			return debugFrames;
+			return controlStream.debugFrames;
 		},
 		get debugFrameCount() {
-			return debugFrameCount;
+			return controlStream.debugFrameCount;
 		},
 		get debugLastMessageAge() {
-			return debugLastMessageAge;
+			return controlStream.debugLastMessageAge;
 		},
 		get debugNow() {
-			return debugNow;
+			return controlStream.debugNow;
 		},
 		get debugPitchPercent() {
-			return debugPitchPercent;
+			return controlStream.debugPitchPercent;
 		},
 		get debugRollPercent() {
-			return debugRollPercent;
+			return controlStream.debugRollPercent;
 		},
 		get debugQualityPercent() {
-			return debugQualityPercent;
+			return controlStream.debugQualityPercent;
 		}
 	};
-}
-
-function readDebugStatusTone(status: RuntimeDebugStatus): StatusDotTone {
-	if (status === 'connected') {
-		return 'success';
-	}
-
-	if (status === 'connecting') {
-		return 'warning';
-	}
-
-	if (status === 'error') {
-		return 'danger';
-	}
-
-	return 'default';
 }
 
 function readUsbSetupTone(usbSetup: UsbSetup, now: number): StatusDotTone {
