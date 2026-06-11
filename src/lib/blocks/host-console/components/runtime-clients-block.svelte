@@ -2,9 +2,7 @@
 	Purpose: host console block for runtime client presence.
 -->
 <script lang="ts">
-	import { Check, CircleStop } from '@lucide/svelte';
-
-	import { Button, Kbd, StatusDot } from '$lib/components';
+	import { Kbd, StatusDot } from '$lib/components';
 	import type { RuntimeClientSummary } from '$lib/protocol';
 	import type { ConsolePageState } from '../../../../routes/console-state.svelte';
 	import { formatAge } from '../../../../routes/runtime-debug';
@@ -40,15 +38,6 @@
             />
             <span>{state.runtimeClients.length} online/stale</span>
         </div>
-        {#if state.activeClientId !== null}
-            <form method="POST" action="?/setActiveClient">
-                <input type="hidden" name="clientId" value="" />
-                <Button type="submit" variant="ghost">
-                    <CircleStop size={16} aria-hidden="true" />
-                    Clear Launch
-                </Button>
-            </form>
-        {/if}
     </div>
 
     <div class="runtime-clients">
@@ -86,21 +75,12 @@
                     {/if}
                 </dl>
 
-                <form method="POST" action="?/setActiveClient">
-                    <input
-                        type="hidden"
-                        name="clientId"
-                        value={client.clientId}
-                    />
-                    <Button
-                        type="submit"
-                        variant={isActive(client) ? "secondary" : "primary"}
-                        disabled={client.status !== "online" || isActive(client)}
-                    >
-                        <Check size={16} aria-hidden="true" />
-                        {isActive(client) ? "Selected" : "Select for Launch"}
-                    </Button>
-                </form>
+				{#if isActive(client)}
+					<div class="status">
+						<StatusDot tone="success" label="Selected launch client" />
+						<span>selected launch client</span>
+					</div>
+				{/if}
             </article>
         {:else}
             <p>

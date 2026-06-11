@@ -44,7 +44,7 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-	setActiveClient: async ({ request }) => {
+	setSelectedLaunchClient: async ({ request }) => {
 		const formData = await request.formData();
 		const clientId = readOptionalFormValue(formData, 'clientId');
 

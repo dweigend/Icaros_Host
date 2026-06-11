@@ -6,5 +6,6 @@
 export { Button } from './button';
 export { Kbd } from './kbd';
 export { ScrollArea } from './scroll-area';
+export { Select } from './select';
 export { StatusDot } from './status-dot';
 export { Switch } from './switch';
