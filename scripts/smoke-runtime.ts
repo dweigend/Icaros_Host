@@ -169,7 +169,7 @@ function verifyRuntimeClientLaunchAndControl(config: SmokeConfig): Promise<Smoke
 				}
 
 				try {
-					await setActiveClient(config);
+					await setSelectedLaunchClient(config);
 					launchUrl = await readLaunchRedirect(config);
 					controlStream = openControlStream(config, finish, fail);
 					device = openDeviceSocket(config, fail);
@@ -190,8 +190,8 @@ function verifyRuntimeClientLaunchAndControl(config: SmokeConfig): Promise<Smoke
 	});
 }
 
-async function setActiveClient(config: SmokeConfig): Promise<void> {
-	const response = await fetch(new URL('/?/setActiveClient', config.hostOrigin), {
+async function setSelectedLaunchClient(config: SmokeConfig): Promise<void> {
+	const response = await fetch(new URL('/?/setSelectedLaunchClient', config.hostOrigin), {
 		method: 'POST',
 		headers: {
 			Accept: 'application/json',
@@ -203,7 +203,9 @@ async function setActiveClient(config: SmokeConfig): Promise<void> {
 	});
 
 	if (!response.ok) {
-		throw new Error(`setActiveClient failed with ${response.status}: ${await response.text()}`);
+		throw new Error(
+			`setSelectedLaunchClient failed with ${response.status}: ${await response.text()}`
+		);
 	}
 }
 

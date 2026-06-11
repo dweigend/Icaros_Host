@@ -324,7 +324,7 @@ Registrierung allein bedeutet noch nicht, dass ein Client Steuerdaten bekommt.
 Die Konsole zeigt alle registrierten Runtime Clients, und du wählst genau einen
 als aktiv aus.
 
-Die Auswahl läuft über `setActiveClient` in
+Die Auswahl läuft über die Svelte Action `setSelectedLaunchClient` in
 [src/routes/+page.server.ts](../src/routes/+page.server.ts). Der kleine
 Server-Core dazu liegt in
 [src/lib/server/station/launch-selection.ts](../src/lib/server/station/launch-selection.ts),
