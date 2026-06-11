@@ -78,6 +78,26 @@ Use this matrix for manual review before merging the completion branch into
 - Browser or SSR smoke for the console after visible UI changes.
 - Startup scenarios for dynamic/strict/explicit ports before closing #13.
 
+## Current Review Snapshot
+
+Implementation snapshot from the completion branch `codex/ui-completion-finish`
+at `713fe71`. Later review-note commits may add documentation only.
+
+- Worktree: clean.
+- Diff versus `main`: 92 files changed, 3136 insertions, 3816 deletions.
+- Net line count versus `main`: 680 fewer lines.
+- `bun run check`: passing.
+- `bun run lint`: passing.
+- `bun run test`: passing, 17 files and 81 tests.
+- `bun run build`: passing.
+- Fallow audit: passing for new work, with no introduced dead code, complexity,
+  or duplication.
+- Targeted Vitest gateway check: passing for
+  `src/lib/server/ws/control-stream-clients.test.ts` and
+  `src/lib/server/ws/gateway-control-stream.test.ts`.
+- Do not use raw `bun test` for the WebSocket gateway files; this repository's
+  authoritative test command is Vitest through `bun run test`.
+
 ## Manual Stop Point
 
 Do not merge to `main` until the user has reviewed the issue matrix, the
