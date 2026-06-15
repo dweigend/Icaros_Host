@@ -2,8 +2,7 @@
 
 Purpose: this document summarizes the confirmed M5 USB/WLAN/WebSocket root
 cause, the implemented fix, and the operational best practices. It is the short
-solution report; the chronological evidence log remains in
-`docs/m5-pairing-test-log.md`.
+solution report for current Host operation.
 
 ## Outcome
 

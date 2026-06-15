@@ -26,21 +26,15 @@ export type Message<TType extends string, TPayload> = Readonly<{
 }>;
 
 export type StationState = Readonly<{
-	activeExperienceId: string | null;
-	activeClientId: string | null;
+	selectedExperienceId: string | null;
+	selectedLaunchClientId: string | null;
 }>;
 
 export type ControlOrientation = Readonly<{
 	pitch: number;
 	roll: number;
 	quality: number;
-	source: 'm5';
 	safeMode: boolean;
-	timestamp: number;
-}>;
-
-export type OperatorDiagnosticRegistrationPayload = Readonly<{
-	id: string;
 }>;
 
 export type RuntimeClientStatus = 'online' | 'stale';
@@ -71,8 +65,8 @@ export type ClientHeartbeatPayload = Readonly<{
 
 export type ClientRegisteredPayload = Readonly<{
 	clientId: string;
-	active: boolean;
-	activeClientId: string | null;
+	selectedForLaunch: boolean;
+	selectedLaunchClientId: string | null;
 }>;
 
 export type ClientRejectedPayload = Readonly<{
@@ -80,7 +74,7 @@ export type ClientRejectedPayload = Readonly<{
 }>;
 
 export type RuntimeClientsPayload = Readonly<{
-	activeClientId: string | null;
+	selectedLaunchClientId: string | null;
 	clients: readonly RuntimeClientSummary[];
 }>;
 

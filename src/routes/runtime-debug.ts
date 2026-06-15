@@ -1,8 +1,9 @@
 /**
- * Purpose: parse and format normalized runtime messages for the host console
- * debug panel. This route-local module is transport-free and never exposes raw
- * M5 frames to the UI.
+ * Purpose: parse and format normalized live messages for the host console. This
+ * route-local module is transport-free and never exposes raw M5 frames to the UI.
  */
+
+import type { HostConsoleDebugFrame, HostConsoleDebugStatus } from '$lib/blocks/host-console/types';
 import {
 	type ControlOrientation,
 	type RuntimeClientsPayload,
@@ -12,23 +13,15 @@ import {
 	validateStationState
 } from '$lib/protocol';
 
-export type RuntimeDebugStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
+export type RuntimeDebugStatus = HostConsoleDebugStatus;
 
-export type RuntimeDebugMessage =
-	| Readonly<{ type: 'control.orientation'; payload: ControlOrientation }>
+export type RuntimeRegistryMessage =
 	| Readonly<{ type: 'station.state'; payload: StationState }>
 	| Readonly<{ type: 'runtime.clients'; payload: RuntimeClientsPayload }>;
 
-export type RuntimeDebugFrame = Readonly<{
-	id: number;
-	receivedAt: number;
-	pitch: number;
-	roll: number;
-	quality: number;
-	safeMode: boolean;
-}>;
+export type RuntimeDebugFrame = HostConsoleDebugFrame;
 
-export function parseRuntimeDebugMessage(input: string): RuntimeDebugMessage | null {
+export function parseControlStreamMessage(input: string): ControlOrientation | null {
 	try {
 		const parsed: unknown = JSON.parse(input);
 
@@ -38,7 +31,21 @@ export function parseRuntimeDebugMessage(input: string): RuntimeDebugMessage | n
 
 		if (parsed.type === 'control.orientation') {
 			const validation = validateControlOrientation(parsed.payload);
-			return validation.ok ? { type: 'control.orientation', payload: validation.value } : null;
+			return validation.ok ? validation.value : null;
+		}
+	} catch {
+		return null;
+	}
+
+	return null;
+}
+
+export function parseRuntimeRegistryMessage(input: string): RuntimeRegistryMessage | null {
+	try {
+		const parsed: unknown = JSON.parse(input);
+
+		if (!isRecord(parsed) || typeof parsed.type !== 'string') {
+			return null;
 		}
 
 		if (parsed.type === 'station.state') {
@@ -72,26 +79,11 @@ export function createRuntimeDebugFrame(
 	};
 }
 
-export function formatSignedUnit(value: number): string {
-	const sign = value > 0 ? '+' : '';
-	return `${sign}${value.toFixed(3)}`;
-}
-
-export function formatAge(milliseconds: number): string {
-	if (milliseconds < 1_000) {
-		return `${Math.max(0, Math.round(milliseconds))} ms`;
-	}
-
-	return `${(milliseconds / 1_000).toFixed(1)} s`;
-}
-
-export function toUnitPercent(value: number): number {
-	return Math.round(((Math.max(-1, Math.min(1, value)) + 1) / 2) * 100);
-}
-
-export function toQualityPercent(value: number): number {
-	return Math.round(Math.max(0, Math.min(1, value)) * 100);
-}
+export {
+	formatAge,
+	toQualityPercent,
+	toUnitPercent
+} from '$lib/blocks/host-console/format';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);

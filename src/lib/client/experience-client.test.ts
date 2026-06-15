@@ -1,7 +1,6 @@
 /**
- * Purpose: focused browser-client tests for Host runtime URL resolution. The
- * file keeps transport setup local to the public client and does not exercise
- * server routing or device behavior.
+ * Purpose: focused browser-client tests for the public experience-client
+ * facade. It must keep control stream and launch registration sockets separate.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -11,15 +10,15 @@ const EXPERIENCE_ID = 'mountain-flight';
 const CLIENT_ID = 'quest-client';
 const TITLE = 'Mountain Flight';
 
-const createdRuntimeUrls: string[] = [];
+const createdSocketUrls: string[] = [];
 
-class RuntimeUrlWebSocket {
+class TestWebSocket {
 	static readonly OPEN = 1;
 
 	readonly readyState = 0;
 
 	constructor(url: string | URL) {
-		createdRuntimeUrls.push(url.toString());
+		createdSocketUrls.push(url.toString());
 	}
 
 	addEventListener(_type: string, _listener: () => void): void {}
@@ -29,13 +28,13 @@ class RuntimeUrlWebSocket {
 	send(_data: string): void {}
 }
 
-describe('createIcarosExperienceClient runtime URL resolution', () => {
+describe('createIcarosExperienceClient socket URL resolution', () => {
 	afterEach(() => {
-		createdRuntimeUrls.length = 0;
+		createdSocketUrls.length = 0;
 		vi.unstubAllGlobals();
 	});
 
-	it('uses same-origin WSS as the fallback runtime socket', () => {
+	it('uses same-origin WSS for control stream and launch registration sockets', () => {
 		stubBrowser('client.local:5174');
 
 		createIcarosExperienceClient({
@@ -44,10 +43,13 @@ describe('createIcarosExperienceClient runtime URL resolution', () => {
 			title: TITLE
 		}).start();
 
-		expect(createdRuntimeUrls).toEqual(['wss://client.local:5174/ws/runtime']);
+		expect(createdSocketUrls).toEqual([
+			'wss://client.local:5174/ws/control/main',
+			'wss://client.local:5174/ws/runtime'
+		]);
 	});
 
-	it('derives a WSS runtime socket from an explicit HTTPS Host origin', () => {
+	it('derives both sockets from an explicit HTTPS Host origin', () => {
 		stubBrowser('client.local:5174');
 
 		createIcarosExperienceClient({
@@ -57,10 +59,13 @@ describe('createIcarosExperienceClient runtime URL resolution', () => {
 			hostOrigin: 'https://host.local:5183'
 		}).start();
 
-		expect(createdRuntimeUrls).toEqual(['wss://host.local:5183/ws/runtime']);
+		expect(createdSocketUrls).toEqual([
+			'wss://host.local:5183/ws/control/main',
+			'wss://host.local:5183/ws/runtime'
+		]);
 	});
 
-	it('uses an explicit WSS runtime origin without changing the runtime path', () => {
+	it('uses an explicit WSS Host origin for both sockets without changing paths', () => {
 		stubBrowser('client.local:5174');
 
 		createIcarosExperienceClient({
@@ -70,7 +75,10 @@ describe('createIcarosExperienceClient runtime URL resolution', () => {
 			runtimeOrigin: 'wss://host.local:5183'
 		}).start();
 
-		expect(createdRuntimeUrls).toEqual(['wss://host.local:5183/ws/runtime']);
+		expect(createdSocketUrls).toEqual([
+			'wss://host.local:5183/ws/control/main',
+			'wss://host.local:5183/ws/runtime'
+		]);
 	});
 
 	it('rejects HTTP Host origins before opening a socket', () => {
@@ -83,8 +91,8 @@ describe('createIcarosExperienceClient runtime URL resolution', () => {
 			hostOrigin: 'http://host.local:5183'
 		});
 
-		expect(() => client.start()).toThrow('hostOrigin must use https for browser runtime sockets.');
-		expect(createdRuntimeUrls).toEqual([]);
+		expect(() => client.start()).toThrow('hostOrigin must not use http or ws for browser sockets.');
+		expect(createdSocketUrls).toEqual([]);
 	});
 
 	it('rejects plain WS runtime origins before opening a socket', () => {
@@ -98,9 +106,9 @@ describe('createIcarosExperienceClient runtime URL resolution', () => {
 		});
 
 		expect(() => client.start()).toThrow(
-			'runtimeOrigin must not use http or ws for browser runtime sockets.'
+			'controlOrigin must not use http or ws for browser sockets.'
 		);
-		expect(createdRuntimeUrls).toEqual([]);
+		expect(createdSocketUrls).toEqual([]);
 	});
 });
 
@@ -111,5 +119,5 @@ function stubBrowser(host: string): void {
 			href: `https://${host}/experience`
 		}
 	});
-	vi.stubGlobal('WebSocket', RuntimeUrlWebSocket);
+	vi.stubGlobal('WebSocket', TestWebSocket);
 }

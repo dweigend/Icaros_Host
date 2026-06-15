@@ -2,10 +2,9 @@
  * Purpose: WebSocket gateway for the two M1 socket paths.
  *
  * `/ws/device` is only for the M5. It receives raw firmware frames and converts
- * them to normalized controls. `/ws/runtime` is for browser clients. It sends
- * station state to all registered runtime clients, sends controls to the
- * currently active experience, and mirrors normalized controls to operator
- * clients for diagnostics.
+ * them to normalized controls. `/ws/control/:streamId` is the public normalized
+ * control stream. `/ws/runtime` is for browser launch registration and
+ * launch-selection presence.
  *
  * The gateway owns sockets, timers, and cleanup. It deliberately does not own
  * routing decisions, manifest discovery, or rendering code.
@@ -23,13 +22,12 @@ import {
 	createControlOrientationMessage,
 	createRuntimeClientsMessage,
 	createStationStateMessage,
-	type OperatorDiagnosticRegistrationPayload,
 	validateClientHeartbeatPayload,
-	validateClientHelloPayload,
-	validateOperatorDiagnosticRegistrationPayload
+	validateClientHelloPayload
 } from '$lib/protocol';
 import {
 	createNeutralControl,
+	DEFAULT_CONTROL_STREAM_ID,
 	isM5OrientationFrame,
 	normalizeM5Frame,
 	parseM5Frame,
@@ -49,6 +47,10 @@ import {
 	recordRejectedDeviceSocket
 } from '$lib/server/device/usb-setup';
 import { stationStateStore } from '$lib/server/station/state';
+import {
+	createControlStreamClientRegistry,
+	findControlStreamByPath
+} from './control-stream-clients';
 import { type RuntimeClient, runtimeClientRegistry } from './runtime-clients';
 
 const DEVICE_PATH = '/ws/device';
@@ -62,15 +64,13 @@ type GatewayUpgradeMode = 'all' | 'device-only';
 type RuntimeClientMessage =
 	| Readonly<{ type: 'client.hello'; payload: ClientHelloPayload }>
 	| Readonly<{ type: 'client.heartbeat'; payload: ClientHeartbeatPayload }>
-	| Readonly<{
-			type: 'operator.diagnostic.register';
-			payload: OperatorDiagnosticRegistrationPayload;
-	  }>
 	| Readonly<{ type: 'client.rejected'; reason: string }>;
 
 class IcarosWebSocketGateway {
+	#controlServer = new WebSocketServer({ noServer: true });
 	#deviceServer = new WebSocketServer({ noServer: true });
 	#runtimeServer = new WebSocketServer({ noServer: true });
+	#controlStreamClients = createControlStreamClientRegistry();
 	#runtimeClients = runtimeClientRegistry;
 	#lastControl: ControlOrientation = createNeutralControl();
 	#lastDeviceFrameAt: number | null = null;
@@ -106,7 +106,9 @@ class IcarosWebSocketGateway {
 			this.#runtimePresenceTimer = null;
 		}
 		this.#deviceServer.close();
+		this.#controlServer.close();
 		this.#runtimeServer.close();
+		this.#controlStreamClients.closeAll();
 		this.#runtimeClients.closeAll();
 	}
 
@@ -118,6 +120,9 @@ class IcarosWebSocketGateway {
 		this.#handlersRegistered = true;
 		this.#deviceServer.on('connection', (socket, request) =>
 			this.#handleDeviceConnection(socket, request)
+		);
+		this.#controlServer.on('connection', (socket, request) =>
+			this.#handleControlStreamConnection(socket, request)
 		);
 		this.#runtimeServer.on('connection', (socket) => this.#handleRuntimeConnection(socket));
 		this.#unsubscribeStation = stationStateStore.subscribe((state) => {
@@ -172,6 +177,20 @@ class IcarosWebSocketGateway {
 			return;
 		}
 
+		if (mode === 'all' && pathname.startsWith('/ws/control/')) {
+			const streamId = findControlStreamByPath(pathname);
+			if (streamId === null) {
+				socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
+				socket.destroy();
+				return;
+			}
+
+			this.#controlServer.handleUpgrade(request, socket, head, (websocket) => {
+				this.#controlServer.emit('connection', websocket, request);
+			});
+			return;
+		}
+
 		recordDeviceSocketUpgrade(
 			createDeviceUpgradeDiagnostics(request, url, 'non-device-path', 'unsupported websocket path')
 		);
@@ -206,6 +225,18 @@ class IcarosWebSocketGateway {
 		});
 	}
 
+	#handleControlStreamConnection(socket: WebSocket, request: IncomingMessage): void {
+		const streamId =
+			findControlStreamByPath(new URL(request.url ?? '/', 'https://localhost').pathname) ??
+			DEFAULT_CONTROL_STREAM_ID;
+		const client = this.#controlStreamClients.add(socket, streamId);
+
+		socket.send(JSON.stringify(createControlOrientationMessage(this.#lastControl)));
+		socket.on('close', () => {
+			this.#controlStreamClients.remove(client);
+		});
+	}
+
 	#handleRuntimeConnection(socket: WebSocket): void {
 		let client = this.#runtimeClients.add(socket);
 
@@ -234,22 +265,12 @@ class IcarosWebSocketGateway {
 				this.#recordRuntimeHeartbeat(message.payload);
 				return;
 			}
-
-			client = this.#runtimeClients.replaceRegistration(client, {
-				role: 'operator',
-				id: message.payload.id
-			});
-			this.#runtimeClients.sendControlToClient(
-				client,
-				createControlOrientationMessage(this.#lastControl),
-				stationStateStore.getState().activeClientId
-			);
 		});
 
 		socket.on('close', () => {
 			const removedClient = this.#runtimeClients.remove(client);
-			if (removedClient?.clientId === stationStateStore.getState().activeClientId) {
-				stationStateStore.setActiveClient(null, null);
+			if (removedClient?.clientId === stationStateStore.getState().selectedLaunchClientId) {
+				stationStateStore.setLaunchSelection(null, null);
 			}
 			this.#broadcastRuntimeClients();
 		});
@@ -257,19 +278,14 @@ class IcarosWebSocketGateway {
 
 	#registerRuntimeClient(client: RuntimeClient, payload: ClientHelloPayload): RuntimeClient {
 		const registeredClient = this.#runtimeClients.registerHello(client, payload, Date.now());
-		const activeClientId = stationStateStore.getState().activeClientId;
+		const selectedLaunchClientId = stationStateStore.getState().selectedLaunchClientId;
 		const message = createClientRegisteredMessage({
 			clientId: payload.clientId,
-			active: activeClientId === payload.clientId,
-			activeClientId
+			selectedForLaunch: selectedLaunchClientId === payload.clientId,
+			selectedLaunchClientId
 		});
 
 		registeredClient.socket.send(JSON.stringify(message));
-		this.#runtimeClients.sendControlToClient(
-			registeredClient,
-			createControlOrientationMessage(this.#lastControl),
-			activeClientId
-		);
 		this.#broadcastRuntimeClients();
 		return registeredClient;
 	}
@@ -284,9 +300,9 @@ class IcarosWebSocketGateway {
 
 	#publishControl(control: ControlOrientation): void {
 		this.#lastControl = control;
-		this.#runtimeClients.sendControlToActiveClientAndOperators(
-			createControlOrientationMessage(control),
-			stationStateStore.getState().activeClientId
+		this.#controlStreamClients.broadcast(
+			DEFAULT_CONTROL_STREAM_ID,
+			createControlOrientationMessage(control)
 		);
 	}
 
@@ -308,13 +324,13 @@ class IcarosWebSocketGateway {
 			Date.now(),
 			RUNTIME_CLIENT_STALE_AFTER_MS
 		);
-		const activeClientId = stationStateStore.getState().activeClientId;
+		const selectedLaunchClientId = stationStateStore.getState().selectedLaunchClientId;
 
 		if (
-			activeClientId !== null &&
-			this.#runtimeClients.findSelectableClient(activeClientId) === null
+			selectedLaunchClientId !== null &&
+			this.#runtimeClients.findSelectableClient(selectedLaunchClientId) === null
 		) {
-			stationStateStore.setActiveClient(null, null);
+			stationStateStore.setLaunchSelection(null, null);
 			return;
 		}
 
@@ -333,7 +349,7 @@ class IcarosWebSocketGateway {
 
 	#createRuntimeClientsMessage(): ReturnType<typeof createRuntimeClientsMessage> {
 		return createRuntimeClientsMessage({
-			activeClientId: stationStateStore.getState().activeClientId,
+			selectedLaunchClientId: stationStateStore.getState().selectedLaunchClientId,
 			clients: this.#runtimeClients.listRuntimeClients()
 		});
 	}
@@ -367,13 +383,6 @@ function readRuntimeClientMessage(input: string): RuntimeClientMessage | null {
 		if (parsed.type === 'client.heartbeat') {
 			const validation = validateClientHeartbeatPayload(parsed.payload);
 			return validation.ok ? { type: 'client.heartbeat', payload: validation.value } : null;
-		}
-
-		if (parsed.type === 'operator.diagnostic.register') {
-			const validation = validateOperatorDiagnosticRegistrationPayload(parsed.payload);
-			return validation.ok
-				? { type: 'operator.diagnostic.register', payload: validation.value }
-				: { type: 'client.rejected', reason: validation.error };
 		}
 	} catch {
 		return null;

@@ -3,70 +3,34 @@
  * single Icaros Host console page.
  */
 import { invalidateAll } from '$app/navigation';
-
+import { formatAge } from '$lib/blocks/host-console/format';
+import type {
+	HostConsoleConnectionUrls,
+	HostConsoleControllerIndicator,
+	HostConsoleState,
+	HostConsoleUsbForm
+} from '$lib/blocks/host-console/types';
 import type { StatusDotTone } from '$lib/components/status-dot';
-import type { ControlOrientation, RuntimeClientSummary } from '$lib/protocol';
 import type { PageData } from './$types';
-import {
-	createRuntimeDebugFrame,
-	formatAge,
-	parseRuntimeDebugMessage,
-	type RuntimeDebugFrame,
-	type RuntimeDebugStatus,
-	toQualityPercent,
-	toUnitPercent
-} from './runtime-debug';
+import { createConsoleControlStreamState } from './console-control-stream-state.svelte';
+import { createConsoleLaunchRegistryState } from './console-launch-registry-state.svelte';
 
-const DEBUG_FRAME_LIMIT = 12;
-const DIAGNOSTIC_CLIENT_ID = 'host-console-debug';
 const DEFAULT_USB_DEVICE_ID = 'icaros-station-a-m5';
 const USB_SETUP_REFRESH_MS = 1_000;
 const CONSOLE_CLOCK_MS = 250;
 const CONTROLLER_FRAME_FRESH_MS = 5_000;
 
-export type ConsoleConnectionUrls = Readonly<{
-	consoleUrl: string;
-	questLaunchUrl: string;
-	experienceTargetUrl: string | null;
-	m5SocketUrl: string;
-	runtimeSocketUrl: string;
-}>;
+type ConsoleConnectionUrls = HostConsoleConnectionUrls;
 
-type ConsoleUsbPairingForm = {
-	ssid: string;
-	password: string;
-	deviceId: string;
-	staticIp: string;
-	gateway: string;
-	subnet: string;
-	dns: string;
-};
-
-export type ConsolePageState = ReturnType<typeof createConsolePageState>;
-type ControllerStatusIndicator = Readonly<{
-	label: string;
-	value: string;
-	tone: StatusDotTone;
-	detail: string;
-}>;
+type ConsoleUsbPairingForm = HostConsoleUsbForm;
+type ControllerStatusIndicator = HostConsoleControllerIndicator;
 
 type UsbSetupState = PageData['usbSetup']['state'];
 type UsbSetup = PageData['usbSetup'];
 
-export function createConsolePageState(readData: () => PageData) {
-	let selectedExperienceId = $state('');
+export function createConsolePageState(readData: () => PageData): HostConsoleState {
 	let usbNow = $state(Date.now());
-	let debugNow = $state(Date.now());
-	let debugStatus = $state<RuntimeDebugStatus>('disconnected');
-	let debugSocketOpen = $state(false);
-	let debugLastMessageAt = $state<number | null>(null);
-	let debugFrameCount = $state(0);
-	let debugStationActiveExperienceId = $state<string | null | undefined>(undefined);
-	let debugStationActiveClientId = $state<string | null | undefined>(undefined);
-	let runtimeClients = $state<readonly RuntimeClientSummary[]>([]);
-	let debugLastControl = $state<ControlOrientation | null>(null);
-	let debugFrames = $state<RuntimeDebugFrame[]>([]);
-	let debugSocket: WebSocket | null = null;
+	const controlStream = createConsoleControlStreamState();
 
 	const usbForm: ConsoleUsbPairingForm = $state({
 		ssid: '',
@@ -81,30 +45,16 @@ export function createConsolePageState(readData: () => PageData) {
 	const connection = $derived(readData().connection);
 	const station = $derived(readData().station);
 	const usbSetup = $derived(readData().usbSetup);
-	const activeExperienceId = $derived(station.activeExperienceId);
-	const activeClientId = $derived(station.activeClientId);
+	const selectedLaunchClientId = $derived(station.selectedLaunchClientId);
+	const launchRegistry = createConsoleLaunchRegistryState(() => selectedLaunchClientId);
 	const connectionUrls = $derived<ConsoleConnectionUrls>({
 		consoleUrl: `${connection.httpOrigin}/`,
 		questLaunchUrl: connection.questLaunchUrl,
 		experienceTargetUrl: connection.experienceTargetUrl,
 		m5SocketUrl: connection.pairedDeviceUrl,
-		runtimeSocketUrl: createBrowserRuntimeSocketUrl(connection.wsOrigin)
+		controlSocketUrl: createBrowserSocketUrl(connection.wsOrigin, '/ws/control/main'),
+		runtimeSocketUrl: createBrowserSocketUrl(connection.wsOrigin, '/ws/runtime')
 	});
-	const debugTargetExperienceId = $derived(
-		debugStationActiveExperienceId === undefined
-			? activeExperienceId
-			: debugStationActiveExperienceId
-	);
-	const runtimeActiveClientId = $derived(
-		debugStationActiveClientId === undefined ? activeClientId : debugStationActiveClientId
-	);
-	const debugStatusTone = $derived(readDebugStatusTone(debugStatus));
-	const debugLastMessageAge = $derived(
-		debugLastMessageAt === null ? 'never' : formatAge(debugNow - debugLastMessageAt)
-	);
-	const debugPitchPercent = $derived(toUnitPercent(debugLastControl?.pitch ?? 0));
-	const debugRollPercent = $derived(toUnitPercent(debugLastControl?.roll ?? 0));
-	const debugQualityPercent = $derived(toQualityPercent(debugLastControl?.quality ?? 0));
 	const usbSetupTone = $derived(readUsbSetupTone(usbSetup, usbNow));
 	const usbSetupDuration = $derived(
 		formatUsbSetupDuration(usbSetup.startedAt, usbSetup.finishedAt, usbNow)
@@ -114,12 +64,6 @@ export function createConsolePageState(readData: () => PageData) {
 		usbSetup.lastFrameAt === null ? 'never' : formatAge(usbNow - usbSetup.lastFrameAt)
 	);
 	const controllerIndicators = $derived(readControllerIndicators(usbSetup, usbLastFrameAge));
-
-	$effect(() => {
-		if (selectedExperienceId === '' && activeExperienceId !== null) {
-			selectedExperienceId = activeExperienceId;
-		}
-	});
 
 	$effect(() => {
 		if (!isUsbSetupBusy(usbSetup.state) && usbSetup.state !== 'ready') {
@@ -133,97 +77,31 @@ export function createConsolePageState(readData: () => PageData) {
 		return () => window.clearInterval(refresh);
 	});
 
-	$effect(() => {
-		if (debugSocketOpen && debugSocket !== null) {
-			registerDiagnosticTap(debugSocket);
-		}
-	});
-
-	function readDebugMessage(data: string): void {
-		const message = parseRuntimeDebugMessage(data);
-
-		if (message === null) {
-			return;
-		}
-
-		const receivedAt = Date.now();
-		debugLastMessageAt = receivedAt;
-
-		if (message.type === 'station.state') {
-			debugStationActiveExperienceId = message.payload.activeExperienceId;
-			debugStationActiveClientId = message.payload.activeClientId;
-			return;
-		}
-
-		if (message.type === 'runtime.clients') {
-			runtimeClients = message.payload.clients;
-			return;
-		}
-
-		debugLastControl = message.payload;
-		debugFrameCount += 1;
-		debugFrames = [
-			createRuntimeDebugFrame(debugFrameCount, message.payload, receivedAt),
-			...debugFrames
-		].slice(0, DEBUG_FRAME_LIMIT);
-	}
-
-	function mountRuntimeDebugSocket(): () => void {
-		debugSocket = new WebSocket(connectionUrls.runtimeSocketUrl);
-		debugStatus = 'connecting';
+	function mountConsoleLiveSockets(): () => void {
+		const cleanupControlStream = controlStream.mount(connectionUrls.controlSocketUrl);
+		const cleanupLaunchRegistry = launchRegistry.mount(connectionUrls.runtimeSocketUrl);
 
 		const clock = window.setInterval(() => {
 			const now = Date.now();
-			debugNow = now;
+			controlStream.tick(now);
 			usbNow = now;
 		}, CONSOLE_CLOCK_MS);
 
-		debugSocket.onopen = () => {
-			debugStatus = 'connected';
-			debugSocketOpen = true;
-			if (debugSocket !== null) {
-				registerDiagnosticTap(debugSocket);
-			}
-		};
-
-		debugSocket.onmessage = (event: MessageEvent) => {
-			readDebugMessage(String(event.data));
-		};
-
-		debugSocket.onerror = () => {
-			debugStatus = 'error';
-		};
-
-		debugSocket.onclose = () => {
-			debugSocketOpen = false;
-			debugStatus = 'disconnected';
-		};
-
 		return () => {
 			window.clearInterval(clock);
-			debugSocketOpen = false;
-			debugSocket?.close();
-			debugSocket = null;
+			cleanupControlStream();
+			cleanupLaunchRegistry();
 		};
 	}
 
 	return {
 		usbForm,
-		mountRuntimeDebugSocket,
-		get activeExperienceId() {
-			return activeExperienceId;
-		},
-		get activeClientId() {
-			return runtimeActiveClientId;
+		mountConsoleLiveSockets,
+		get selectedLaunchClientId() {
+			return launchRegistry.selectedLaunchClientId;
 		},
 		get runtimeClients() {
-			return runtimeClients;
-		},
-		get selectedExperienceId() {
-			return selectedExperienceId;
-		},
-		set selectedExperienceId(value: string) {
-			selectedExperienceId = value;
+			return launchRegistry.runtimeClients;
 		},
 		get connectionUrls() {
 			return connectionUrls;
@@ -247,68 +125,36 @@ export function createConsolePageState(readData: () => PageData) {
 			return controllerIndicators;
 		},
 		get debugStatus() {
-			return debugStatus;
+			return controlStream.debugStatus;
 		},
 		get debugStatusTone() {
-			return debugStatusTone;
+			return controlStream.debugStatusTone;
 		},
 		get debugLastControl() {
-			return debugLastControl;
+			return controlStream.debugLastControl;
 		},
 		get debugFrames() {
-			return debugFrames;
+			return controlStream.debugFrames;
 		},
 		get debugFrameCount() {
-			return debugFrameCount;
+			return controlStream.debugFrameCount;
 		},
 		get debugLastMessageAge() {
-			return debugLastMessageAge;
-		},
-		get debugTargetExperienceId() {
-			return debugTargetExperienceId;
+			return controlStream.debugLastMessageAge;
 		},
 		get debugNow() {
-			return debugNow;
+			return controlStream.debugNow;
 		},
 		get debugPitchPercent() {
-			return debugPitchPercent;
+			return controlStream.debugPitchPercent;
 		},
 		get debugRollPercent() {
-			return debugRollPercent;
+			return controlStream.debugRollPercent;
 		},
 		get debugQualityPercent() {
-			return debugQualityPercent;
+			return controlStream.debugQualityPercent;
 		}
 	};
-}
-
-function registerDiagnosticTap(socket: WebSocket): void {
-	if (socket.readyState !== WebSocket.OPEN) {
-		return;
-	}
-
-	socket.send(
-		JSON.stringify({
-			type: 'operator.diagnostic.register',
-			payload: { id: DIAGNOSTIC_CLIENT_ID }
-		})
-	);
-}
-
-function readDebugStatusTone(status: RuntimeDebugStatus): StatusDotTone {
-	if (status === 'connected') {
-		return 'success';
-	}
-
-	if (status === 'connecting') {
-		return 'warning';
-	}
-
-	if (status === 'error') {
-		return 'danger';
-	}
-
-	return 'default';
 }
 
 function readUsbSetupTone(usbSetup: UsbSetup, now: number): StatusDotTone {
@@ -488,12 +334,12 @@ function createIndicator(
 	return { label, value, tone, detail };
 }
 
-function createBrowserRuntimeSocketUrl(fallbackWsOrigin: string): string {
+function createBrowserSocketUrl(fallbackWsOrigin: string, path: string): string {
 	if (typeof window === 'undefined') {
-		return `${fallbackWsOrigin}/ws/runtime`;
+		return `${fallbackWsOrigin}${path}`;
 	}
 
-	return `wss://${window.location.host}/ws/runtime`;
+	return `wss://${window.location.host}${path}`;
 }
 
 function isControllerFrameFresh(usbSetup: UsbSetup, now: number): boolean {

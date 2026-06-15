@@ -40,14 +40,12 @@ export type M5RawFrame = Readonly<{
 
 // 2. Public normalization API
 
-export function createNeutralControl(timestamp: number = Date.now()): ControlOrientation {
+export function createNeutralControl(_timestamp: number = Date.now()): ControlOrientation {
 	return {
 		pitch: 0,
 		roll: 0,
 		quality: 0,
-		source: 'm5',
-		safeMode: true,
-		timestamp
+		safeMode: true
 	};
 }
 
@@ -70,9 +68,7 @@ export function normalizeM5Frame(frame: M5RawFrame, now: number = Date.now()): C
 		pitch: clampUnit(pitchDegrees / MAX_ANGLE_DEGREES),
 		roll: clampUnit(rollDegrees / MAX_ANGLE_DEGREES),
 		quality: readQuality(frame.quality),
-		source: 'm5',
-		safeMode: false,
-		timestamp
+		safeMode: false
 	};
 }
 

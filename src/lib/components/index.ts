@@ -4,8 +4,8 @@
  * Host console so the MVP stays small and teachable.
  */
 export { Button } from './button';
-export * as Collapsible from './collapsible';
 export { Kbd } from './kbd';
 export { ScrollArea } from './scroll-area';
+export { Select } from './select';
 export { StatusDot } from './status-dot';
 export { Switch } from './switch';
