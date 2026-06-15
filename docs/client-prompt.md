@@ -13,9 +13,11 @@ Host.
 - Setze kein bestehendes Projektwissen voraus.
 - Der Host-Server laeuft getrennt von dieser Experience.
 - Die Experience rendert die Szene selbst.
-- Die Experience verbindet sich mit dem Host ueber `/ws/runtime`.
-- Die Experience nutzt exakt den Envelope, die Registrierung, den Heartbeat und
-  das `control.orientation`-Payload aus `docs/client-api.md`.
+- Die Experience verbindet sich fuer Steuerdaten mit `/ws/control/main`.
+- Optional registriert sie sich ueber `/ws/runtime`, damit sie in der
+  Launch-Auswahl erscheint.
+- Die Experience nutzt exakt den Envelope, die optionale Registrierung, den
+  Heartbeat und das `control.orientation`-Payload aus `docs/client-api.md`.
 - Keine eigene Hardware-, M5-, Pairing- oder Geraetelogik einbauen.
 
 ## Experience
@@ -23,12 +25,13 @@ Host.
 - Experience-ID: `mountain-flight`
 - Titel: `Mountain Flight`
 - Ziel: browserbasierte VR-Experience mit Three.js und WebXR
-- Laufzeit: HTTPS fuer Quest/WebXR, WSS fuer den Host-Runtime-Socket
+- Laufzeit: HTTPS fuer Quest/WebXR, WSS fuer Host-Control-Stream und optionalen
+  Host-Runtime-Socket
 
 ## Architektur
 
-- Trenne Rendering, Runtime-WebSocket-Client und Steuerungszustand in kleine
-  Module.
+- Trenne Rendering, Control-Stream-Client, optionale Launch-Registration und
+  Steuerungszustand in kleine Module.
 - Der WebSocket-Client hat klare Lifecycle-Funktionen wie `start()` und
   `dispose()`.
 - Externe WebSocket-Nachrichten werden vor Nutzung validiert.
@@ -50,7 +53,8 @@ Host.
 
 - Eine lauffaehige Three.js/WebXR Experience.
 - Eine klare Stelle, an der `experienceId` gesetzt wird.
-- Runtime-Handshake mit enveloped `client.hello`, `client.registered` und
-  `client.heartbeat` gemaess `docs/client-api.md`.
+- Control-Stream-Abo auf `/ws/control/main`.
+- Optionaler Runtime-Handshake mit enveloped `client.hello`,
+  `client.registered` und `client.heartbeat` gemaess `docs/client-api.md`.
 - Anwendung der empfangenen `pitch`/`roll`-Steuerdaten auf die VR-Szene.
 - Sauberes Cleanup beim Verlassen der Seite.

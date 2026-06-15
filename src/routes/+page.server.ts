@@ -14,9 +14,9 @@ import {
 	startM5UsbPairing
 } from '$lib/server/device/pairing-service';
 import type { UsbPairingInput } from '$lib/server/device/usb-setup';
-import { resolveExperienceLaunchUrl } from '$lib/server/experiences';
+import { resolveLaunchClientUrl } from '$lib/server/launch';
 import { createQuestLaunchUrl, resolveConnectionInfo } from '$lib/server/network';
-import { setActiveClient } from '$lib/server/station/active-experience';
+import { setLaunchClientSelection } from '$lib/server/station/launch-selection';
 import { stationStateStore } from '$lib/server/station/state';
 import { runtimeClientRegistry } from '$lib/server/ws/runtime-clients';
 import type { Actions, PageServerLoad } from './$types';
@@ -24,11 +24,11 @@ import type { Actions, PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ url }) => {
 	const station = stationStateStore.getState();
 	const connection = resolveConnectionInfo(url);
-	const activeClient =
-		station.activeClientId === null
+	const selectedClient =
+		station.selectedLaunchClientId === null
 			? null
-			: runtimeClientRegistry.findSelectableClient(station.activeClientId);
-	const launchTarget = resolveExperienceLaunchUrl(station.activeClientId, activeClient);
+			: runtimeClientRegistry.findSelectableClient(station.selectedLaunchClientId);
+	const launchTarget = resolveLaunchClientUrl(station.selectedLaunchClientId, selectedClient);
 	const pairingStatus = getM5PairingStatus(url);
 
 	return {
@@ -44,12 +44,12 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-	setActiveClient: async ({ request }) => {
+	setSelectedLaunchClient: async ({ request }) => {
 		const formData = await request.formData();
 		const clientId = readOptionalFormValue(formData, 'clientId');
 
 		if (clientId === null) {
-			setActiveClient(null, null);
+			setLaunchClientSelection(null, null);
 			return { ok: true };
 		}
 
@@ -58,7 +58,7 @@ export const actions: Actions = {
 			return fail(400, { message: 'Runtime client is not online.' });
 		}
 
-		setActiveClient(client.clientId, client.experienceId);
+		setLaunchClientSelection(client.clientId, client.experienceId);
 		return { ok: true };
 	},
 	connectUsb: async ({ request, url }) => {

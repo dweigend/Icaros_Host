@@ -31,16 +31,19 @@ Hard rules:
 
 1. Start the Host on a LAN-facing HTTPS address.
 2. Start the standalone experience client on its own HTTPS origin.
-3. The experience opens `wss://<host-lan-ip-or-name>:5183/ws/runtime`.
-4. The experience sends enveloped `client.hello` with its stable `clientId`,
+3. The experience opens `wss://<host-lan-ip-or-name>:5183/ws/control/main` for
+   controls.
+4. Optionally, the experience opens
+   `wss://<host-lan-ip-or-name>:5183/ws/runtime` for launch registration.
+5. The experience sends enveloped `client.hello` with its stable `clientId`,
    `experienceId`, title, and HTTPS `url`.
-5. The Host accepts the client with `client.registered`.
-6. The operator opens `https://<host-lan-ip-or-name>:5183/` and selects the
+6. The Host accepts the client with `client.registered`.
+7. The operator opens `https://<host-lan-ip-or-name>:5183/` and selects the
    concrete runtime client.
-7. The Quest opens `https://<host-lan-ip-or-name>:5183/launch`.
-8. The Host responds with `307 Temporary Redirect` to the selected client's
+8. The Quest opens `https://<host-lan-ip-or-name>:5183/launch`.
+9. The Host responds with `307 Temporary Redirect` to the selected client's
    registered HTTPS URL.
-9. The selected client receives `control.orientation` while the M5 is live.
+10. Control subscribers receive `control.orientation` while the M5 is live.
 
 Never append `/launch` to the experience client port. `/launch` belongs only to
 the Host origin.
@@ -52,6 +55,17 @@ Run the Host from this repository:
 ```sh
 bun start
 ```
+
+`bun start` is the normal friendly Host bootstrap. It verifies TLS, builds the
+app, starts the runtime server, and may move only default ports when they are
+busy. Use fixed station ports with:
+
+```sh
+bun run start:strict
+```
+
+Explicit `PORT` or `ICAROS_DEVICE_WS_PORT` values are contracts and are never
+silently changed.
 
 Expected Host surfaces:
 
@@ -139,11 +153,11 @@ Host process:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `PORT` | `5183` through `bun start` | Host HTTPS port. |
+| `PORT` | `5183` through `bun start` | Host HTTPS port; explicit values are never moved. |
 | `HOST` | `0.0.0.0` through `bun start` | Network bind address. |
 | `ICAROS_TLS_KEY_FILE` | `.certs/icaros-host-key.pem` | TLS key used by the Host process. |
 | `ICAROS_TLS_CERT_FILE` | `.certs/icaros-host.pem` | TLS certificate used by the Host process. |
-| `ICAROS_DEVICE_WS_PORT` | `5184` | Plain M5 device WebSocket port. |
+| `ICAROS_DEVICE_WS_PORT` | `5184` | Plain M5 device WebSocket port; explicit values are never moved. |
 | `ICAROS_DEVICE_WS_ORIGIN` | derived from Host LAN address and device port | Optional explicit M5 device WebSocket origin. |
 
 Standalone VR client:
@@ -151,7 +165,7 @@ Standalone VR client:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `ICAROS_DEMO_PORT` | `5174` | Demo client HTTPS port. |
-| `ICAROS_HOST_ORIGIN` | `https://localhost:5183` for same-machine checks | Host origin used to build `wss://.../ws/runtime`; set this to the Host LAN HTTPS origin for Quest sessions. |
+| `ICAROS_HOST_ORIGIN` | `https://localhost:5183` for same-machine checks | Host origin used to build `wss://.../ws/control/main` and optional `wss://.../ws/runtime`; set this to the Host LAN HTTPS origin for Quest sessions. |
 
 Do not use environment variables to create a second public launch target. The
 selected runtime client's registered HTTPS `url` is the launch target.
@@ -177,9 +191,9 @@ The Quest opens the experience but WebXR or WSS fails. Install the mkcert root
 CA on the headset and use certificates that include the exact LAN IP or
 hostname for both the Host and Client origins.
 
-The experience page opens but receives no controls. Check that the selected
-runtime client is online, the M5 or simulator is sending fresh frames, and the
-experience waits for `client.registered` before applying controls.
+The experience page opens but receives no controls. Check that it subscribes to
+`/ws/control/main`, the M5 or simulator is sending fresh frames, and the page is
+using WSS to reach the Host control stream.
 
 The M5 pairing URL should stay plain `ws://`, but it must point at the device
 port, not the HTTPS UI/runtime port. With the default Host, the M5 endpoint is:

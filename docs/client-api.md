@@ -2,17 +2,18 @@
 
 Purpose: this document is the canonical interface for browser/WebXR experiences
 that connect to Icaros Host. It describes only the public experience-client
-contract: registration, runtime messages, normalized controls, and the checklist
-student projects should follow. Device pairing, Quest certificate setup, and
-`/launch` operations live in [Quest HTTPS Launch Routing](quest-https-launch-routing.md).
+contract: public control streams, optional launch registration, and the
+checklist student projects should follow. Device pairing, Quest certificate
+setup, and `/launch` operations live in
+[Quest HTTPS Launch Routing](quest-https-launch-routing.md).
 
 If another prompt or document disagrees with this page, use this page.
 
 ## Boundary
 
 An experience is an external browser/WebXR client. It renders its own scene and
-connects to the Host runtime socket. The Host owns the M5, station state,
-normalization, safe-mode behavior, active client selection, and launch routing.
+connects to the Host public control stream. The Host owns the M5, station
+state, normalization, safe-mode behavior, launch selection, and launch routing.
 
 Experience code must not:
 
@@ -24,10 +25,8 @@ Experience code must not:
 
 Experience code should:
 
-- open the Host runtime socket at `/ws/runtime`
-- send `client.hello`
-- wait for `client.registered`
-- send `client.heartbeat`
+- open the Host control stream at `/ws/control/main`
+- optionally register on `/ws/runtime` to appear in the launch selection
 - validate incoming messages before using them
 - apply only normalized `control.orientation` payloads
 - stop movement when `safeMode` is `true`
@@ -104,19 +103,39 @@ Options:
 | `experienceId` | `string` | yes | none | Stable slug for the experience, for example `mountain-flight`. |
 | `clientId` | `string` | no | stable `localStorage["icaros.clientId"]` id | Concrete browser or headset instance id. Most experiences should leave this unset. |
 | `title` | `string` | no | `document.title` or `experienceId` | Human-readable title shown in the Host console. |
+| `streamId` | `string` | no | `main` | Public control stream id used for `/ws/control/:streamId`. |
+| `controlPath` | `string` | no | `/ws/control/main` | Explicit Host control stream path. Most experiences should leave this unset. |
 | `runtimePath` | `string` | no | `/ws/runtime` | Host runtime WebSocket path. Most experiences should leave this unset. |
 
-The helper starts in browser lifecycle code, sends `client.hello`, waits for
-`client.registered`, sends heartbeats, exposes `onOrientation(...)`, and closes
-its socket in `dispose()`. It does not expose raw device data.
+The compatibility helper starts in browser lifecycle code, opens the public
+control stream, registers for launch selection on `/ws/runtime`, sends
+heartbeats after `client.registered`, exposes `onOrientation(...)`, and closes
+both sockets in `dispose()`. It does not expose raw device data.
+
+For explicit composition, the helper boundary is split into
+`createIcarosControlStreamClient(...)` for control-only clients on
+`/ws/control/:streamId` and `createIcarosLaunchRegistrationClient(...)` for
+clients that should appear in launch selection on `/ws/runtime`. The shared
+`createIcarosExperienceClient(...)` facade composes both for compatibility.
 
 Standalone clients that cannot import this helper should implement the same
 contract below. Use [Icaros VR Client](https://github.com/dweigend/Icaros_VR_Client)
 as the related standalone client repository.
 
+## Public Control Stream
+
+The M1 public control stream is:
+
+```txt
+wss://<host-lan-ip-or-name>:5183/ws/control/main
+```
+
+The stream name is server-owned and device-agnostic. Clients should not care
+whether the input comes from an M5, joystick, keyboard, or another controller.
+
 ## Runtime Socket
 
-The runtime socket is:
+The runtime socket is optional for launch registration:
 
 ```txt
 wss://<host-lan-ip-or-name>:5183/ws/runtime
@@ -143,7 +162,7 @@ if (storedClientId === null) {
 }
 ```
 
-After the socket opens, send `client.hello`:
+After the optional runtime socket opens, send `client.hello`:
 
 ```json
 {
@@ -177,8 +196,8 @@ The Host responds with `client.registered` or `client.rejected`.
 ```ts
 type ClientRegisteredPayload = Readonly<{
 	clientId: string;
-	active: boolean;
-	activeClientId: string | null;
+	selectedForLaunch: boolean;
+	selectedLaunchClientId: string | null;
 }>;
 
 type ClientRejectedPayload = Readonly<{
@@ -211,20 +230,18 @@ After registration, send `client.heartbeat` every 3 to 5 seconds:
 ```
 
 The Host marks clients stale when heartbeats stop. A stale client is not
-selectable and must not receive control frames.
+selectable as a launch target.
 
 ## Controls
 
-The Host sends normalized controls only to the selected active runtime client:
+The Host sends normalized controls on the public control stream:
 
 ```ts
 type ControlOrientation = Readonly<{
 	pitch: number;
 	roll: number;
 	quality: number;
-	source: 'm5';
 	safeMode: boolean;
-	timestamp: number;
 }>;
 ```
 
@@ -235,9 +252,7 @@ Fields:
 | `pitch` | `number` | Normalized forward/backward value in `-1..1`. |
 | `roll` | `number` | Normalized left/right value in `-1..1`. |
 | `quality` | `number` | Host-provided signal quality in `0..1`. |
-| `source` | `'m5'` | Host source label. Treat it as metadata, not a reason to parse raw M5 data. |
 | `safeMode` | `boolean` | `true` means neutral safe controls. Stop movement or hold neutral state. |
-| `timestamp` | `number` | Host timestamp for the normalized control update. |
 
 Use only valid control payloads:
 
@@ -257,17 +272,17 @@ message or clamp defensively before applying movement.
 
 ## Station State
 
-The Host may send `station.state` to announce the current active IDs:
+The Host may send `station.state` to announce the current launch selection:
 
 ```ts
 type StationState = Readonly<{
-	activeExperienceId: string | null;
-	activeClientId: string | null;
+	selectedExperienceId: string | null;
+	selectedLaunchClientId: string | null;
 }>;
 ```
 
 Experience clients can use this for neutral UI state, but they must not decide
-active routing locally. The Host console owns active client selection.
+launch routing locally. The Host console owns launch selection.
 
 ## Runtime Client List
 
@@ -276,7 +291,7 @@ clients:
 
 ```ts
 type RuntimeClientsPayload = Readonly<{
-	activeClientId: string | null;
+	selectedLaunchClientId: string | null;
 	clients: readonly RuntimeClientSummary[];
 }>;
 ```
@@ -290,10 +305,10 @@ error.
 - Use a fixed `experienceId` slug and a human-readable title.
 - Use a stable per-browser `clientId` from `localStorage`.
 - Load the page from HTTPS for headset/WebXR use.
-- Open the Host runtime socket with WSS at `/ws/runtime`.
-- Send enveloped `client.hello` after socket open.
-- Wait for matching `client.registered` before applying controls.
-- Send enveloped `client.heartbeat` every 3 to 5 seconds.
+- Open the Host control stream with WSS at `/ws/control/main`.
+- Optionally open the Host runtime socket with WSS at `/ws/runtime`.
+- Send enveloped `client.hello` and `client.heartbeat` only for launch
+  registration.
 - Validate every incoming message before using `payload`.
 - Apply only `control.orientation`.
 - Stop or neutralize movement when `safeMode` is `true`.

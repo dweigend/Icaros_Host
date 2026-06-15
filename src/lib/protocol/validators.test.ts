@@ -8,7 +8,7 @@ import {
 	validateClientHeartbeatPayload,
 	validateClientHelloPayload,
 	validateClientRegisteredPayload,
-	validateOperatorDiagnosticRegistrationPayload,
+	validateControlOrientation,
 	validateRuntimeClientsPayload
 } from './validators';
 
@@ -58,39 +58,19 @@ describe('runtime client validators', () => {
 		});
 	});
 
-	it('accepts operator diagnostic registrations', () => {
-		expect(validateOperatorDiagnosticRegistrationPayload({ id: 'host-console-debug' })).toEqual({
-			ok: true,
-			value: { id: 'host-console-debug' }
-		});
-	});
-
-	it('rejects diagnostic registrations with runtime client identity fields', () => {
-		expect(
-			validateOperatorDiagnosticRegistrationPayload({
-				role: 'experience',
-				id: 'host-console-debug',
-				experienceId: 'mountain-flight'
-			})
-		).toEqual({
-			ok: false,
-			error: 'operator.diagnostic.register payload must not include client identity fields'
-		});
-	});
-
 	it('accepts full client registration acknowledgements', () => {
 		expect(
 			validateClientRegisteredPayload({
 				clientId: 'quest-client',
-				active: false,
-				activeClientId: null
+				selectedForLaunch: false,
+				selectedLaunchClientId: null
 			})
 		).toEqual({
 			ok: true,
 			value: {
 				clientId: 'quest-client',
-				active: false,
-				activeClientId: null
+				selectedForLaunch: false,
+				selectedLaunchClientId: null
 			}
 		});
 	});
@@ -98,7 +78,7 @@ describe('runtime client validators', () => {
 	it('accepts HTTPS runtime client snapshots', () => {
 		expect(
 			validateRuntimeClientsPayload({
-				activeClientId: 'quest-client',
+				selectedLaunchClientId: 'quest-client',
 				clients: [
 					{
 						clientId: 'quest-client',
@@ -114,7 +94,7 @@ describe('runtime client validators', () => {
 		).toEqual({
 			ok: true,
 			value: {
-				activeClientId: 'quest-client',
+				selectedLaunchClientId: 'quest-client',
 				clients: [
 					{
 						clientId: 'quest-client',
@@ -127,6 +107,50 @@ describe('runtime client validators', () => {
 					}
 				]
 			}
+		});
+	});
+
+	it('accepts the small public control orientation payload', () => {
+		expect(
+			validateControlOrientation({
+				pitch: 0.25,
+				roll: -0.5,
+				quality: 0.8,
+				safeMode: false
+			})
+		).toEqual({
+			ok: true,
+			value: {
+				pitch: 0.25,
+				roll: -0.5,
+				quality: 0.8,
+				safeMode: false
+			}
+		});
+	});
+
+	it('rejects invalid public control orientation values', () => {
+		expect(
+			validateControlOrientation({
+				pitch: 1.25,
+				roll: 0,
+				quality: 1,
+				safeMode: false
+			})
+		).toEqual({
+			ok: false,
+			error: 'control.orientation pitch must be a -1..1 number'
+		});
+
+		expect(
+			validateControlOrientation({
+				pitch: 0,
+				roll: 0,
+				quality: 1
+			})
+		).toEqual({
+			ok: false,
+			error: 'control.orientation safeMode must be boolean'
 		});
 	});
 });

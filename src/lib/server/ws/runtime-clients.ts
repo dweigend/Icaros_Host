@@ -6,7 +6,6 @@
 import { WebSocket } from 'ws';
 import type {
 	ClientHelloPayload,
-	ControlOrientationMessage,
 	RuntimeClientSummary,
 	RuntimeClientsMessage,
 	StationStateMessage
@@ -24,16 +23,11 @@ export type RuntimeClient = Readonly<{
 	presence: RuntimeClientSummary | null;
 }>;
 
-type RuntimeClientRegistration =
-	| Readonly<{
-			role: 'operator';
-			id: string;
-	  }>
-	| Readonly<{
-			role: 'experience';
-			id: string;
-			experienceId: string;
-	  }>;
+type RuntimeClientRegistration = Readonly<{
+	role: 'experience';
+	id: string;
+	experienceId: string;
+}>;
 
 export class RuntimeClientRegistry {
 	#clients = new Set<RuntimeClient>();
@@ -42,13 +36,6 @@ export class RuntimeClientRegistry {
 		const client: RuntimeClient = { socket, registration: null, presence: null };
 		this.#clients.add(client);
 		return client;
-	}
-
-	replaceRegistration(
-		client: RuntimeClient,
-		registration: RuntimeClientRegistration
-	): RuntimeClient {
-		return this.#replace(client, { registration, presence: null });
 	}
 
 	registerHello(client: RuntimeClient, payload: ClientHelloPayload, now: number): RuntimeClient {
@@ -146,33 +133,6 @@ export class RuntimeClientRegistry {
 		this.#sendToAll(JSON.stringify(message));
 	}
 
-	sendControlToActiveClientAndOperators(
-		message: ControlOrientationMessage,
-		activeClientId: string | null
-	): void {
-		const serialized = JSON.stringify(message);
-
-		for (const client of this.#clients) {
-			if (!canReceiveControl(client, activeClientId)) {
-				continue;
-			}
-
-			sendIfOpen(client.socket, serialized);
-		}
-	}
-
-	sendControlToClient(
-		client: RuntimeClient,
-		message: ControlOrientationMessage,
-		activeClientId: string | null
-	): void {
-		if (!canReceiveControl(client, activeClientId)) {
-			return;
-		}
-
-		sendIfOpen(client.socket, JSON.stringify(message));
-	}
-
 	#replace(
 		client: RuntimeClient,
 		next: Pick<RuntimeClient, 'registration' | 'presence'>
@@ -219,18 +179,6 @@ export const runtimeClientRegistry =
 	(globalThis as IcarosGlobalRuntime)[RUNTIME_CLIENT_REGISTRY_KEY] ?? new RuntimeClientRegistry();
 
 (globalThis as IcarosGlobalRuntime)[RUNTIME_CLIENT_REGISTRY_KEY] = runtimeClientRegistry;
-
-function canReceiveControl(client: RuntimeClient, activeClientId: string | null): boolean {
-	if (client.registration?.role === 'operator') {
-		return true;
-	}
-
-	return (
-		activeClientId !== null &&
-		client.presence?.clientId === activeClientId &&
-		client.presence.status === 'online'
-	);
-}
 
 function compareRuntimeClients(a: RuntimeClientSummary, b: RuntimeClientSummary): number {
 	if (a.status !== b.status) {

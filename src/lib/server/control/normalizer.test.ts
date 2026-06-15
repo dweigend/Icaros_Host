@@ -41,8 +41,7 @@ describe('normalizeM5Frame', () => {
 			pitch: 0.25,
 			roll: -0.25,
 			quality: 1,
-			safeMode: false,
-			timestamp: 200
+			safeMode: false
 		});
 	});
 

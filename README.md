@@ -6,11 +6,11 @@ Der Server wurde insbesondere für die Icaros Flight Installation entwickelt. Er
 verbindet den M5-Controller, die Operator-Konsole und externe WebXR/VR-Clients.
 Die wichtigsten Aufgaben sind:
 
-- Experiences registrieren und routen
-- den aktiven VR-Client auswählen
+- Experiences für Launch-Auswahl registrieren
+- den Launch-Client auswählen
 - Controller-Daten vom M5 empfangen
 - Rohdaten bereinigen, normalisieren und glätten
-- sichere Controller-Daten an die aktive Experience weitergeben
+- sichere Controller-Daten als öffentlichen normierten Stream bereitstellen
 - HTTPS/WSS für Quest- und Browser-Clients erzwingen
 
 Der Host rendert keine VR Experience. Die Experiences laufen als eigene Clients
@@ -21,14 +21,14 @@ und verbinden sich über die dokumentierte Runtime-Schnittstelle mit dem Host.
 ```mermaid
 flowchart LR
     M5["M5StickC Plus Controller<br/>raw orientation frames"] -->|"ws:// /ws/device"| Host
-    Operator["Operator Console<br/>GET /"] -->|"select active client"| Host
+    Operator["Operator Console<br/>GET /"] -->|"select launch client"| Host
     Quest["Quest / PICO Headset<br/>GET /launch"] -->|"launch request"| Host
 
     Host["Icaros Host Server<br/>routing<br/>handshake<br/>validation<br/>normalization<br/>smoothing<br/>safe mode"]
 
-    Host -->|"307 redirect to selected HTTPS client URL"| ActiveClient
-    Host -->|"wss:// /ws/runtime<br/>control.orientation"| ActiveClient["Active VR Experience Client<br/>Icaros Flight / WebXR"]
-    Host -->|"wss:// /ws/runtime<br/>station.state, runtime.clients"| OtherClients["Other registered clients<br/>online or stale"]
+    Host -->|"307 redirect to selected HTTPS client URL"| SelectedLaunchClient
+    Host -->|"wss:// /ws/control/main<br/>control.orientation"| ControlClient["VR Experience Client<br/>Icaros Flight / WebXR"]
+    Host -->|"wss:// /ws/runtime<br/>station.state, runtime.clients"| OtherClients["Registered launch clients<br/>online or stale"]
     Diagnostics["CLI / automation diagnostics"] -->|"GET/POST /api/m5-pairing"| Host
 ```
 
@@ -40,9 +40,7 @@ kleine, stabile Steuerinformation für Experiences:
 	pitch: number;
 	roll: number;
 	quality: number;
-	source: 'm5';
 	safeMode: boolean;
-	timestamp: number;
 }
 ```
 
@@ -53,29 +51,34 @@ Daten veraltet sind, sendet der Host neutrale Safe-Mode-Werte.
 
 | Endpunkt | Protokoll | Client | Zweck |
 | --- | --- | --- | --- |
-| `/` | HTTPS | Operator Browser | Technische Konsole, Auswahl des aktiven Runtime-Clients, M5-Setup |
-| `/launch` | HTTPS | Quest/PICO Browser | Leitet per `307` auf die registrierte HTTPS-URL des aktiven Clients weiter |
-| `/ws/runtime` | WSS | VR Experience Clients | Runtime-Handshake, Client-Status und normalisierte Controller-Daten |
+| `/` | HTTPS | Operator Browser | Technische Konsole, Launch-Auswahl, M5-Setup |
+| `/launch` | HTTPS | Quest/PICO Browser | Leitet per `307` auf die registrierte HTTPS-URL des ausgewählten Launch-Clients weiter |
+| `/ws/control/main` | WSS | VR Experience Clients | Öffentlicher normierter Control-Stream |
+| `/ws/runtime` | WSS | VR Experience Clients | Launch-Registration, Client-Status und Präsenz |
 | `/ws/device` | WS | M5 Controller | Firmware-kompatibler Gerätesocket für rohe Controller-Frames |
 | `/health` | HTTPS | CLI, Monitoring | Einfache Erreichbarkeitsprüfung |
 | `/api/m5-pairing` | HTTPS JSON | CLI, Automation | Diagnose- und Pairing-Adapter für M5-Setup |
 
-Experience Clients verwenden nur `/ws/runtime`. Sie verbinden sich nicht direkt
-mit dem M5 und lesen keine Rohdaten.
+Experience Clients verwenden `/ws/control/main` für Steuerdaten und optional
+`/ws/runtime`, wenn sie in der Launch-Auswahl erscheinen sollen. Sie verbinden
+sich nicht direkt mit dem M5 und lesen keine Rohdaten.
 
-### Runtime-Nachrichten für Experience Clients
+### Nachrichten für Experience Clients
 
-Experience Clients senden:
+Auf `/ws/runtime` senden registrierte Launch Clients:
 
 - `client.hello`
 - `client.heartbeat`
 
-Experience Clients empfangen:
+Auf `/ws/runtime` empfangen sie:
 
 - `client.registered`
 - `client.rejected`
 - `station.state`
 - `runtime.clients`
+
+Auf `/ws/control/main` empfangen Control-Stream-Abonnenten:
+
 - `control.orientation`
 
 Der vollständige Wire Contract steht in
@@ -102,19 +105,36 @@ beschrieben. Host und VR Client besitzen jeweils eigene Zertifikate.
 
 ## Server Starten
 
-Für die echte Installation:
+Normaler Start für Entwicklung und Betrieb:
 
 ```sh
 bun start
 ```
 
-Der Startbefehl baut die App, prüft TLS, räumt die Standardports auf und startet:
+Der Startbefehl ist ein freundlicher Host-Bootstrap: Er prüft TLS, baut die App,
+startet den Runtime-Server und gibt die erreichbaren URLs aus. Wenn die
+Default-Ports in einem unkonfigurierten Prototyping-Setup belegt sind, wählt er
+freie Ersatzports.
 
 ```txt
 https://localhost:5183/
 https://<host-lan-ip-or-name>:5183/
 ws://<host-lan-ip-or-name>:5184/ws/device
 ```
+
+Für feste Stations-Setups:
+
+```sh
+bun run start:strict
+```
+
+`start:strict` verwendet feste Ports oder schlägt klar fehl. Explizit gesetzte
+Ports wie `PORT` oder `ICAROS_DEVICE_WS_PORT` sind immer ein Vertrag und werden
+nicht still geändert.
+
+Der Host darf ohne konfigurierten Controller starten. M5-Pairing,
+Firmware-Updates, Diagnose und Controller-Setup laufen danach über die Konsole
+oder die CLI, nicht als Teil von `bun start`.
 
 Der Prozess bleibt im Terminal aktiv. Stoppen mit `Ctrl-C`.
 
@@ -135,7 +155,8 @@ bun run dev:ui-only
 
 3. M5-Controller über die Konsole oder CLI einrichten.
 4. Einen VR Experience Client separat über HTTPS starten.
-5. Der Client sendet `client.hello` an `/ws/runtime`.
+5. Der Client verbindet sich mit `/ws/control/main` und sendet optional
+   `client.hello` an `/ws/runtime`.
 6. In der Operator-Konsole den konkreten Runtime-Client auswählen.
 7. Quest/PICO öffnet:
 
@@ -150,10 +171,9 @@ bun run dev:ui-only
 Ein neuer VR Client ist ein eigenständiges WebXR-Projekt. Er muss:
 
 - über HTTPS laufen
-- den Host über `wss://<host-origin>/ws/runtime` erreichen
-- beim Start `client.hello` senden
-- danach regelmäßig `client.heartbeat` senden
-- nur `control.orientation` für die Steuerung verwenden
+- den Host über `wss://<host-origin>/ws/control/main` für Steuerdaten erreichen
+- optional `client.hello` und danach `client.heartbeat` an `/ws/runtime` senden
+- nur die öffentlichen `control.orientation`-Werte für die Steuerung verwenden
 - bei `safeMode: true` Bewegung stoppen oder neutralisieren
 - eigene TLS-Zertifikate verwenden
 
@@ -196,6 +216,7 @@ bun run smoke:runtime
 | [docs/host-lifecycle.md](docs/host-lifecycle.md) | Geführte Reise durch Start, Controller, Clients und Datenfluss |
 | [docs/architecture.md](docs/architecture.md) | Architektur, Grenzen und Datenfluss |
 | [docs/client-api.md](docs/client-api.md) | Schnittstelle für VR Experience Clients |
+| [docs/control-streams.md](docs/control-streams.md) | Öffentliche Control-Stream-Namen und Default-Stream |
 | [docs/client-prompt.md](docs/client-prompt.md) | Checkliste und Prompt für neue Clients |
 | [docs/quest-https-launch-routing.md](docs/quest-https-launch-routing.md) | HTTPS, Quest/PICO Launch und Zertifikate |
 | [docs/m5-pairing-solution.md](docs/m5-pairing-solution.md) | M5-Setup, Pairing und Firmware |

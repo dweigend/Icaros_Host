@@ -69,7 +69,7 @@
 
 	:global(.ui-scroll-area__thumb) {
 		flex: 1;
-		border-radius: 999px;
+		border-radius: 0;
 		background: var(--color-border-strong);
 	}
 </style>

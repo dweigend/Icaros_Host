@@ -71,7 +71,7 @@
 		height: 1.2rem;
 		padding: 0;
 		border: 1px solid var(--color-border-strong);
-		border-radius: 999px;
+		border-radius: 0;
 		background: var(--color-surface);
 		cursor: pointer;
 		transition:
@@ -88,7 +88,7 @@
 		display: block;
 		width: 0.9rem;
 		height: 0.9rem;
-		border-radius: 999px;
+		border-radius: 0;
 		background: var(--color-text-strong);
 		transform: translateX(0.12rem);
 		transition: transform 120ms ease;
