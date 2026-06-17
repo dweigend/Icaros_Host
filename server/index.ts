@@ -51,14 +51,7 @@ async function start(): Promise<void> {
 		});
 	}
 
-	const stop = (): void => {
-		gateway.dispose();
-		server.close();
-		plainDeviceServer?.close();
-	};
-
-	process.on('SIGINT', stop);
-	process.on('SIGTERM', stop);
+	await waitForShutdown({ gateway, server, plainDeviceServer });
 }
 
 function createPlainDeviceServer(
@@ -120,6 +113,28 @@ function resolvePlainDeviceWsPort(): number | null {
 	}
 
 	return devicePort;
+}
+
+function waitForShutdown({
+	gateway,
+	server,
+	plainDeviceServer
+}: Readonly<{
+	gateway: ReturnType<typeof createIcarosWebSocketGateway>;
+	server: ReturnType<typeof createHttpsServer>;
+	plainDeviceServer: HttpServer | null;
+}>): Promise<void> {
+	return new Promise((resolve) => {
+		const stop = (): void => {
+			gateway.dispose();
+			server.close();
+			plainDeviceServer?.close();
+			resolve();
+		};
+
+		process.once('SIGINT', stop);
+		process.once('SIGTERM', stop);
+	});
 }
 
 function readPort(value: string, name: string): number {
