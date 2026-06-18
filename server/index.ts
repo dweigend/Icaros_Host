@@ -19,16 +19,22 @@ import { DEFAULT_HTTPS_DEVICE_WS_PORT } from '../src/lib/server/device/pairing';
 import { resolveServerOpenUrls } from '../src/lib/server/network';
 import { createIcarosWebSocketGateway } from '../src/lib/server/ws';
 
-const port = Number(process.env.PORT ?? 3000);
+const DEFAULT_HOST_PORT = 5183;
+const BUILD_HANDLER_URL = new URL('../build/handler.js', import.meta.url);
+
+const port = Number(process.env.PORT ?? DEFAULT_HOST_PORT);
 const host = process.env.HOST ?? '0.0.0.0';
 const DEFAULT_TLS_CERT_FILE = '.certs/icaros-host.pem';
 const DEFAULT_TLS_KEY_FILE = '.certs/icaros-host-key.pem';
 const PROTOCOL_HEADER = 'x-forwarded-proto';
 
+type RuntimeServer = HttpServer | ReturnType<typeof createHttpsServer>;
+
 async function start(): Promise<void> {
 	process.env.PROTOCOL_HEADER ??= PROTOCOL_HEADER;
 
-	const { handler } = await import('../build/handler.js');
+	ensureBuildHandler();
+	const { handler } = await import(BUILD_HANDLER_URL.href);
 	const tlsOptions = loadTlsOptions();
 	const protocol = 'https';
 	const server = createHttpsServer(tlsOptions, createProtocolAwareHandler(handler));
@@ -38,21 +44,41 @@ async function start(): Promise<void> {
 	gateway.attach(server);
 	const plainDeviceServer = plainDeviceWsPort === null ? null : createPlainDeviceServer(gateway);
 
-	server.listen(port, host, () => {
-		console.log(`Icaros Host listening on ${protocol}://${host}:${port}`);
+	try {
+		await listenRuntimeServers({ server, plainDeviceServer, plainDeviceWsPort, protocol });
+		await waitForShutdown({ gateway, server, plainDeviceServer });
+	} catch (error) {
+		gateway.dispose();
+		closeServer(server);
+		closeServer(plainDeviceServer);
+		throw error;
+	}
+}
 
-		for (const openUrl of resolveServerOpenUrls(protocol, host, port)) {
-			console.log(`${openUrl.label}: ${openUrl.url}`);
-		}
-	});
+async function listenRuntimeServers({
+	server,
+	plainDeviceServer,
+	plainDeviceWsPort,
+	protocol
+}: Readonly<{
+	server: ReturnType<typeof createHttpsServer>;
+	plainDeviceServer: HttpServer | null;
+	plainDeviceWsPort: number | null;
+	protocol: 'https';
+}>): Promise<void> {
+	await listenOnPort(server, port, host);
+	console.log(`Icaros Host listening on ${protocol}://${host}:${port}`);
 
-	if (plainDeviceServer !== null && plainDeviceWsPort !== null) {
-		plainDeviceServer.listen(plainDeviceWsPort, host, () => {
-			console.log(`M5 plain device WebSocket listening on ws://${host}:${plainDeviceWsPort}`);
-		});
+	for (const openUrl of resolveServerOpenUrls(protocol, host, port)) {
+		console.log(`${openUrl.label}: ${openUrl.url}`);
 	}
 
-	await waitForShutdown({ gateway, server, plainDeviceServer });
+	if (plainDeviceServer === null || plainDeviceWsPort === null) {
+		return;
+	}
+
+	await listenOnPort(plainDeviceServer, plainDeviceWsPort, host);
+	console.log(`M5 plain device WebSocket listening on ws://${host}:${plainDeviceWsPort}`);
 }
 
 function createPlainDeviceServer(
@@ -66,13 +92,45 @@ function createPlainDeviceServer(
 	return server;
 }
 
-await start();
+try {
+	await start();
+} catch (error) {
+	console.error(error instanceof Error ? error.message : String(error));
+	process.exitCode = 1;
+}
+
+function ensureBuildHandler(): void {
+	if (existsSync(BUILD_HANDLER_URL)) {
+		return;
+	}
+
+	throw new Error(
+		'Missing SvelteKit build output at build/handler.js. Run `bun run build` before `bun start`.'
+	);
+}
 
 function createProtocolAwareHandler(handler: RequestListener): RequestListener {
 	return (request, response) => {
 		request.headers[PROTOCOL_HEADER] ??= 'https';
 		handler(request, response);
 	};
+}
+
+function listenOnPort(server: RuntimeServer, port: number, host: string): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const handleError = (error: Error): void => {
+			server.off('listening', handleListening);
+			reject(error);
+		};
+		const handleListening = (): void => {
+			server.off('error', handleError);
+			resolve();
+		};
+
+		server.once('error', handleError);
+		server.once('listening', handleListening);
+		server.listen(port, host);
+	});
 }
 
 function loadTlsOptions(): HttpsServerOptions {
@@ -136,6 +194,12 @@ function waitForShutdown({
 		process.once('SIGINT', stop);
 		process.once('SIGTERM', stop);
 	});
+}
+
+function closeServer(server: RuntimeServer | null): void {
+	if (server?.listening === true) {
+		server.close();
+	}
 }
 
 function readPort(value: string, name: string): number {

@@ -4,8 +4,8 @@
 	"version": "0.0.1",
 	"type": "module",
 	"scripts": {
-		"start": "bun scripts/start-host.ts",
-		"start:strict": "bun scripts/start-host.ts --strict",
+		"start": "bun server/index.ts",
+		"start:strict": "bun server/index.ts",
 		"dev": "echo 'Use bun start for the HTTPS Host. Use bun run dev:ui-only only for isolated Svelte UI work.' && exit 1",
 		"dev:ui-only": "vite dev --host 127.0.0.1",
 		"dev:lan": "echo 'LAN dev without HTTPS is disabled. Use bun start.' && exit 1",
