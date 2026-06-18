@@ -31,6 +31,7 @@ import {
 	isM5OrientationFrame,
 	normalizeM5Frame,
 	parseM5Frame,
+	protectControlOrientation,
 	STALE_AFTER_MS,
 	smoothControlOrientation
 } from '$lib/server/control';
@@ -215,7 +216,12 @@ class IcarosWebSocketGateway {
 			}
 
 			this.#lastDeviceFrameAt = Date.now();
-			this.#publishControl(smoothControlOrientation(this.#lastControl, normalizeM5Frame(frame)));
+			this.#publishControl(
+				smoothControlOrientation(
+					this.#lastControl,
+					protectControlOrientation(this.#lastControl, normalizeM5Frame(frame))
+				)
+			);
 		});
 
 		socket.on('close', () => {

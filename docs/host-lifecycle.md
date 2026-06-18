@@ -1,479 +1,392 @@
 # Eine Reise durch den Icaros Host
 
-Die wichtigste Idee des Icaros Host ist eine klare Aufgabenteilung: Der Host
-kümmert sich um die Installation, die Experiences um ihre eigene VR-Welt. Diese
-Trennung nennt man Separation of Concerns. Ein Teil des Systems übernimmt also
-die Verbindung zu Icaros, Controller und VR-Brille. Ein anderer Teil rendert die
-eigentliche Experience.
+Dieses Dokument erklärt den Icaros Host aus Sicht einer Person, die eine
+Experience anschließen, den Server starten oder die Codebasis lesen will.
 
-Der Host sitzt direkt an der Station. Er kennt den M5-Controller, die
-Operator-Konsole, das Headset und das ausgewählte Launch-Ziel. Er nimmt rohe
-Controller-Daten entgegen, prüft sie, glättet sie und wandelt sie in
-eine kleine, stabile Steuerinformation um. Eine Experience muss dadurch nicht
-wissen, wie der M5 eingerichtet ist, welche Firmware läuft, wie die Brille
-gestartet wurde oder was passiert, wenn eine Verbindung kurz abbricht.
+Der Host sitzt direkt am Icaros. Er routet VR-Experiences und stellt
+Controller-Daten über eine einfache Schnittstelle bereit.
 
-Die VR Experiences laufen als eigene Clients. Jeder Client hostet seine eigene
-3D-Welt und kann sich beim Host für die Launch-Auswahl anmelden. Der Host kann
-mehrere solcher Clients kennen; die Operator-Konsole wählt daraus nur das
-Launch-Ziel für `/launch`. Die normierten Steuerdaten sind davon getrennt: Sie
-laufen als öffentlicher Control-Stream, den Experiences abonnieren können.
-Dadurch bleibt klar: Die Experience baut die Welt. Der Host übernimmt Routing,
-Controller-Daten, Handshake, Launch und sichere Verbindungen.
-
-Deshalb gibt es zwei Wege, mit dem Host zu arbeiten. Die Weboberfläche ist für
-Menschen gedacht. Dort siehst du auf einen Blick, ob der M5 verbunden ist,
-welche Clients online sind, welches Launch-Ziel ausgewählt ist und ob die
-Station bereit ist. Eine grafische Oberfläche ist dafür sinnvoll, weil sie
-Zustand, Warnungen und Aktionen gemeinsam sichtbar macht.
-
-Die CLI ist dagegen vor allem für Coding-Agenten und Automation gedacht. Ein
-Coding-Agent kann Werkzeuge aufrufen, Kommandos ausführen und strukturierte
-Antworten auswerten. Wenn du den Server mithilfe eines Coding-LLM einrichten,
-prüfen oder konfigurieren möchtest, spricht der Agent über die CLI gezielt mit
-dem Host, ohne eine Oberfläche bedienen zu müssen. Weboberfläche und CLI passen
-also zu unterschiedlichen Arbeitsweisen, nutzen aber dieselbe Host-Logik.
-
-Das ist der rote Faden für dieses Dokument. Wir gehen gemeinsam durch den Host
-und schauen Schritt für Schritt, was passiert, wenn du den Server startest,
-einen Controller einrichtest, einen Client verbindest und eine Experience
-öffnest. Dabei geht es nicht darum, sofort jede einzelne Codezeile zu
-verstehen. Wichtiger ist, dass du die Konzepte erkennst: Was macht der Host? Wo
-liegt welche Verantwortung? Welche Datei ist der richtige Einstieg, wenn du
-eine Funktion ändern oder einem Coding-Agenten klar beschreiben willst?
-
-Am Ende sollst du das System als Ablauf lesen können: Der M5 sendet rohe
-Bewegungsdaten. Die Konsole entscheidet, welcher konkrete Runtime Client über
-`/launch` geöffnet wird. Der Host prüft, normalisiert, glättet und veröffentlicht
-die Control-Daten als kleinen öffentlichen Stream, den Experiences für ihre
-Steuerung abonnieren können.
-
-## 1. Der Server startet
-
-Du beginnst beim Serverstart. In diesem Moment baut der Host seine technische
-Basis auf: Er prüft HTTPS, lädt die gebaute SvelteKit-App und hängt das
-WebSocket-Gateway an. Erst wenn diese Grundlage steht, kann er Browser,
-Headsets, Runtime Clients und den M5 sauber voneinander trennen.
-
-Der normale Einstieg ist [scripts/start-host.ts](../scripts/start-host.ts). Das
-Skript prüft TLS, baut die App, wählt die Startup-Ports und startet danach den
-Runtime-Server. Der Runtime-Einstieg [server/index.ts](../server/index.ts) bleibt
-bewusst kein Ort für Bootstrap-Fachlogik; er verbindet nur HTTPS, SvelteKit und
-das WebSocket-Gateway.
-
-Im Code findest du hier vor allem:
-
-- `readHostBootstrapConfig()` liest die Host-Startkonfiguration.
-- `resolveHostBootstrapPorts()` erlaubt dynamische Default-Ports oder strikte
-  Stationsports.
-- `ensureHostTlsFiles()` prüft die lokalen Host-Zertifikate.
-- `start()` in `server/index.ts` lädt `build/handler.js` und hängt das
-  WebSocket-Gateway an.
-
-Warum ist diese Trennung wichtig? Browser- und Headset-Oberflächen brauchen
-HTTPS und WSS. Der M5-Controller spricht dagegen firmware-kompatibel über einen
-plain WebSocket. Der Host startet deshalb sichere Browser-Wege und einen
-separaten Gerätepfad für den Controller.
-
-Wenn alles läuft, stellt der Host typischerweise diese Adressen bereit:
+Die Experience-Clients stellen eine HTTPS-Website mit der 3D-Experience bereit.
+Der Host routet die Brille zu einem ausgewählten Client. Die Clients bekommen
+nur diese Controller-Daten:
 
 ```txt
-https://localhost:5183/
+M5-Rohdaten -> Host -> control.orientation -> Experience
+```
+
+```ts
+type ControlOrientation = Readonly<{
+	pitch: number;
+	roll: number;
+	quality: number;
+	controllerType: 'm5';
+}>;
+```
+
+Wie die Brille gestartet wird, wie der M5 verbunden ist und wie Sensordaten
+gelesen werden, bleibt Aufgabe des Hosts.
+
+`pitch` und `roll` liegen in `-1..1`. `quality` liegt in `0..1`. Wenn keine
+frischen oder plausiblen Controller-Daten da sind, sendet der Host neutrale Werte:
+`pitch: 0`, `roll: 0`, `quality: 0`.
+
+## 1. Das Bild
+
+Die Brille öffnet eine feste Host-URL. Der Host entscheidet, welcher registrierte
+Client gestartet wird. Die Controller-Daten laufen unabhängig davon als
+öffentlicher Stream zu den Clients.
+
+![Skizze der Host-Runtime-Routing-Architektur](assets/host-runtime-routing-sketch.png)
+
+Die wichtigsten Wege:
+
+| Pfad | Bedeutung |
+| --- | --- |
+| `/` | Operator-Konsole |
+| `/launch` | feste URL für die Brille; leitet zum ausgewählten Client weiter |
+| `/ws/runtime` | Clients registrieren sich für die Launch-Auswahl |
+| `/ws/control/main` | Clients empfangen `control.orientation` |
+| `/ws/device` | M5 sendet Rohdaten an den Host |
+
+## 2. Die Rollen
+
+Der Host hat drei Hauptaufgaben:
+
+1. M5-Daten annehmen und normalisieren.
+2. Einen konkreten Runtime Client für `/launch` auswählen.
+3. Den Experiences eine kleine stabile Steuer-Schnittstelle geben.
+
+Ein Runtime Client ist ein Browser- oder WebXR-Client, der sich beim Host als
+Launch-Ziel registriert. Eine Experience ist die VR-Anwendung, die auf diesem
+Client läuft.
+
+Die wichtigsten Begriffe:
+
+| Begriff | Bedeutung |
+| --- | --- |
+| `clientId` | konkrete Browser- oder Headset-Instanz |
+| `experienceId` | stabile Kennung der Experience |
+| `selectedLaunchClientId` | der Client, zu dem `/launch` weiterleitet |
+| `selectedExperienceId` | abgeleitete Anzeige- und Kompatibilitätsinformation |
+| `control.orientation` | öffentliche Steuer-Nachricht für Experiences |
+
+## 3. Serverstart
+
+Der normale Start ist:
+
+```sh
+bun start
+```
+
+Der Start prüft TLS, baut die SvelteKit-App und startet den Server.
+
+Wichtige Dateien:
+
+| Datei | Aufgabe |
+| --- | --- |
+| [scripts/start-host.ts](../scripts/start-host.ts) | Startlogik: TLS prüfen, Ports wählen, Build starten |
+| [server/index.ts](../server/index.ts) | HTTPS-Server starten und WebSocket-Gateway anhängen |
+| [src/lib/server/startup](../src/lib/server/startup) | Start-Konfiguration und TLS-Prüfung |
+
+Browser, Brille und Experience-Clients nutzen HTTPS/WSS. Der M5 nutzt einen
+separaten unverschlüsselten Geräte-WebSocket, weil die Firmware das so
+erwartet.
+
+Typische URLs:
+
+```txt
 https://<host-lan-ip-or-name>:5183/
 ws://<host-lan-ip-or-name>:5184/ws/device
 ```
 
-Damit ist der Host erreichbar. Ausgewählt ist zu diesem Zeitpunkt aber noch
-nichts: Es gibt noch kein Launch-Ziel, und der Controller darf fehlen. M5-Pairing,
-Firmware-Updates, Diagnose und Controller-Setup passieren erst über Konsole oder
-CLI, nicht während `bun start`.
+## 4. WebSocket-Gateway
 
-## 2. Du öffnest die Operator-Konsole
+Das Gateway nimmt die WebSocket-Verbindungen an und sortiert sie nach Pfad.
 
-Als Nächstes schaust du auf die sichtbare Oberfläche des Hosts: die
-Operator-Konsole auf `/`. Hier siehst du, welche Verbindungen bekannt sind, ob
-der M5 bereit ist, welche Runtime Clients online sind und welches Launch-Ziel
-ausgewählt ist.
-
-Die Seite wird aus zwei Teilen aufgebaut:
-
-- [src/routes/+page.server.ts](../src/routes/+page.server.ts) sammelt den
-  serverseitigen Zustand und verarbeitet die Aktionen der Konsole.
-- [src/routes/+page.svelte](../src/routes/+page.svelte) setzt die sichtbaren
-  Konsolenbereiche zusammen.
-
-In `load()` entsteht der aktuelle Blick auf die Station: Verbindung-URLs,
-Station-Zustand, aktives Launch-Ziel und M5-Pairing-Status. Die `actions` in
-derselben Datei sind die Bedienhandlungen: Launch-Auswahl setzen, USB-Pairing
-starten, Controller prüfen, Firmware flashen, Workflow abbrechen und Debug
-umschalten.
-
-Die sichtbaren Teile sind bewusst route-lokal unter
-[src/routes/_console](../src/routes/_console) zerlegt:
-
-- `components/connection-addresses-panel.svelte` zeigt Host-, Runtime-, Launch-
-  und M5-Adressen.
-- `components/controller-setup-panel.svelte` komponiert den M5-Setup-Status,
-  die USB/Firmware-Aktionen und die Pairing-Diagnose.
-- `components/launch-selection-panel.svelte` zeigt die separate Launch-Auswahl
-  für `/launch`.
-- `components/runtime-clients-panel.svelte` zeigt registrierte Runtime Clients
-  ohne Control-Delivery-Besitz.
-- `components/control-stream-panel.svelte` zeigt Live-Diagnose für den
-  öffentlichen Control Stream.
-- `page-state.svelte.ts`, `launch-registry-state.svelte.ts` und
-  `control-stream-state.svelte.ts` komponieren den Browser-State mit expliziter
-  WebSocket-Lifecycle-Cleanup.
-
-Die Konsole bleibt absichtlich eine einzige Seite. So musst du nicht zwischen
-mehreren UI-Routen unterscheiden. Es gibt eine Station, einen
-sichtbaren Zustand und eine klare Stelle, an der entschieden wird, welcher
-Runtime Client über `/launch` geöffnet wird.
-
-## 3. Der Host sucht nach einem bekannten Controller
-
-Nach dem Start kann ein bekannter M5 ohne neues USB-Setup wieder auftauchen. Der
-Host darf aber auch ohne Controller laufen: Die Konsole bleibt erreichbar, und
-der M5-Status wird erst durch eingehende Frames oder durch explizite
-Setup-Aktionen aktualisiert.
-
-Die wichtigste Datei dafür ist
-[src/lib/server/device/usb-setup.ts](../src/lib/server/device/usb-setup.ts).
-Dort lebt der Status des M5-Setups als kleine Zustandsmaschine.
-
-Besonders wichtig sind:
-
-- `recordPairedDeviceFrame()` lädt bei Bedarf die gespeicherte Einrichtung und
-  markiert den Controller als bereit, sobald ein gültiger Frame vom gepaarten
-  Gerät ankommt.
-- `recordPairedDeviceSocketClose()` setzt den Zustand zurück auf Suche, wenn
-  die Verbindung verloren geht.
-- `getUsbSetupSnapshot()` liefert den kompakten Status für Konsole und CLI.
-
-Die gespeicherte Controller-Konfiguration liegt lokal hier:
+Wichtige Datei:
 
 ```txt
-.icaros/m5-controller.toml
+src/lib/server/ws/gateway.ts
 ```
 
-Der Pairing-Token liegt getrennt davon hier:
+Was dort passiert:
+
+- `/ws/device` nimmt M5-Rohdaten an.
+- `/ws/runtime` nimmt Runtime Clients an.
+- `/ws/control/main` verteilt normalisierte Controller-Daten.
+- alte M5-Daten werden erkannt und in neutrale Controls übersetzt.
+- Runtime Clients ohne Heartbeat werden als `stale` markiert.
+
+Das Gateway besitzt Sockets und Timer. Deshalb hat es eine klare
+`dispose()`-Funktion für das Aufräumen beim Serverende.
+
+## 5. Operator-Konsole
+
+Die Konsole ist die einzige UI-Seite des Hosts:
+
+```txt
+/
+```
+
+Sie zeigt:
+
+- Verbindungsadressen
+- Runtime Clients
+- aktuelle Launch-Auswahl
+- M5-Setup und Pairing
+- Live-Daten aus `/ws/control/main`
+
+Wichtige Dateien:
+
+| Datei | Aufgabe |
+| --- | --- |
+| [src/routes/+page.svelte](../src/routes/+page.svelte) | setzt die Konsolenbereiche zusammen |
+| [src/routes/+page.server.ts](../src/routes/+page.server.ts) | dünner Einstieg für `load` und `actions` |
+| [src/routes/_console](../src/routes/_console) | route-lokale UI- und Browser-State-Dateien |
+
+Die Konsole ist absichtlich route-lokal. Sie ist keine allgemeine
+Komponentenbibliothek, sondern die konkrete Bedienoberfläche für diese Station.
+
+## 6. Launch-Auswahl
+
+`/launch` startet keine Experience selbst. `/launch` leitet zur HTTPS-URL des
+ausgewählten Runtime Clients weiter.
+
+Schlüsselvariable:
+
+```ts
+selectedLaunchClientId: string | null
+```
+
+Der Host leitet nur weiter, wenn:
+
+- ein Client ausgewählt ist
+- dieser Client online ist
+- seine registrierte URL HTTPS nutzt
+
+Wichtige Dateien:
+
+| Datei | Aufgabe |
+| --- | --- |
+| [src/lib/server/station/state.ts](../src/lib/server/station/state.ts) | speichert `selectedLaunchClientId` und `selectedExperienceId` |
+| [src/lib/server/launch/launch-routing.ts](../src/lib/server/launch/launch-routing.ts) | prüft das Launch-Ziel |
+| [src/routes/launch/+server.ts](../src/routes/launch/+server.ts) | antwortet mit `307` oder Fehler |
+
+Das ist wichtig für die Brille: Sie muss nur die feste Host-URL kennen. Der
+Host entscheidet den aktuellen Ziel-Client.
+
+## 7. Runtime Clients
+
+Eine Experience registriert sich optional über:
+
+```txt
+wss://<host-lan-ip-or-name>:5183/ws/runtime
+```
+
+Sie sendet `client.hello` mit:
+
+| Feld | Bedeutung |
+| --- | --- |
+| `clientId` | konkrete Browser-/Headset-Instanz |
+| `experienceId` | stabile Experience-Kennung |
+| `title` | Anzeige in der Konsole |
+| `url` | HTTPS-URL, an die `/launch` weiterleiten darf |
+| `userAgent` | optionale Diagnoseinformation |
+
+Danach sendet der Client regelmäßig `client.heartbeat`. Wenn Heartbeats
+ausbleiben, wird der Client `stale` und ist nicht mehr als Launch-Ziel
+auswählbar.
+
+Wichtige Dateien:
+
+| Datei | Aufgabe |
+| --- | --- |
+| [src/lib/protocol](../src/lib/protocol) | Nachrichtentypen und Validierung |
+| [src/lib/server/ws/runtime-clients.ts](../src/lib/server/ws/runtime-clients.ts) | Registry der Runtime Clients |
+
+## 8. Controller-Daten
+
+Der M5 sendet Rohdaten an:
+
+```txt
+ws://<host-lan-ip-or-name>:5184/ws/device?pairing=...
+```
+
+Die Experience sieht diese Rohdaten nie. Sie bekommt nur:
+
+```txt
+control.orientation
+```
+
+Wichtige Datei:
+
+```txt
+src/lib/server/control/normalizer.ts
+```
+
+Der Normalizer:
+
+- liest bekannte M5-Felder wie `pitch`, `roll`, `angleX`, `angleY`
+- wandelt Winkel in `-1..1` um
+- begrenzt `quality` auf `0..1`
+- glättet gültige Bewegungen
+- erzeugt neutrale Werte, wenn Daten fehlen oder veraltet sind
+
+Zusätzlich prüft [src/lib/server/control/safety.ts](../src/lib/server/control/safety.ts),
+ob ein wiederkehrender Controller in einer extremen Lage startet oder plötzlich
+einen großen Sprung macht. Solche Frames werden im Host neutralisiert. Damit
+soll verhindert werden, dass Nutzerinnen und Nutzer bei einem Ausfall schwindelig
+werden oder in einer extremen Position hängen bleiben.
+
+Das hält Experience-Code klein: Die Experience muss nur `pitch`, `roll` und
+`quality` anwenden. `quality: 0` bedeutet: neutral halten oder Bewegung stoppen.
+
+## 9. Control Stream
+
+Der öffentliche Steuerdaten-Stream ist:
+
+```txt
+wss://<host-lan-ip-or-name>:5183/ws/control/main
+```
+
+Clients abonnieren diesen Stream, wenn sie Controller-Daten brauchen. Das ist
+getrennt von der Launch-Registrierung.
+
+Wichtige Dateien:
+
+| Datei | Aufgabe |
+| --- | --- |
+| [src/lib/server/control/control-stream-config.ts](../src/lib/server/control/control-stream-config.ts) | definiert den Stream `main` |
+| [src/lib/server/ws/control-stream-clients.ts](../src/lib/server/ws/control-stream-clients.ts) | verwaltet Stream-Abonnenten |
+
+Aktuell gibt es nur `main`. Mehrere Streams sind erst ein späteres Thema.
+
+## 10. M5-Setup
+
+USB ist für Setup und Diagnose. Der Betrieb läuft danach über WLAN/LAN und
+`/ws/device`.
+
+Wichtige Dateien:
+
+| Datei | Aufgabe |
+| --- | --- |
+| [src/lib/server/device/pairing-service.ts](../src/lib/server/device/pairing-service.ts) | gemeinsame Logik für Konsole und CLI |
+| [src/lib/server/device/usb-setup.ts](../src/lib/server/device/usb-setup.ts) | USB-/WLAN-Setup-Status |
+| [src/lib/server/device/pairing.ts](../src/lib/server/device/pairing.ts) | Pairing-Token und Geräte-URL |
+| [scripts/connect-m5-usb.py](../scripts/connect-m5-usb.py) | serieller USB-Adapter |
+
+Lokale Dateien:
 
 ```txt
 .icaros/secrets/m5-device-pairing-token
+.icaros/m5-controller.toml
 ```
 
-Diese Trennung ist wichtig. Der Controller darf nur dann als bekannt gelten,
-wenn seine gespeicherte URL noch zum aktuellen Host-Token passt. Wenn ein alter
-Controller eine alte URL gespeichert hat, erkennt der Host das über den
-Token-Fingerprint und fordert ein neues Setup.
+Der Pairing-Token gehört nur zur M5-Grenze. Browser- und WebXR-Clients nutzen
+ihn nicht.
 
-So entsteht ein einfacher Normalfall: Du startest den Host, die Konsole ist
-sofort nutzbar, der bekannte M5 verbindet sich wieder, und die Konsole wird nach
-dem ersten gültigen Frame grün.
+## 11. Client-Bibliothek
 
-## 4. Wenn der M5 neu oder veraltet ist, gehst du über USB
+Experiences können die kleinen Browser-Helfer aus `src/lib/client` nutzen.
 
-Wenn der Controller neu ist, nicht wiedergefunden wird oder noch eine alte
-Firmware hat, führt dich der Host über USB. USB ist hier nicht der normale
-Betrieb, sondern der Einrichtungs- und Prüfkanal. Der spätere Betrieb läuft
-über WLAN und den Geräte-WebSocket.
+Wichtige Funktionen:
 
-Die Konsole und die CLI verwenden dafür denselben Host-Core:
-[src/lib/server/device/pairing-service.ts](../src/lib/server/device/pairing-service.ts).
-Diese Datei ist eine dünne Orchestrierungsschicht. Sie sorgt dafür, dass Web-UI
-und CLI keine zwei verschiedenen Pairing-Logiken entwickeln.
+| Funktion | Aufgabe |
+| --- | --- |
+| `createIcarosControlStreamClient()` | abonniert `/ws/control/main` |
+| `createIcarosLaunchRegistrationClient()` | registriert den Client auf `/ws/runtime` |
+| `createIcarosExperienceClient()` | kombiniert beide Wege |
 
-Du findest dort diese zentralen Funktionen:
-
-- `probeM5UsbController()` startet eine reine USB-Prüfung.
-- `flashM5Firmware()` startet ein Firmware-Update, falls es ausdrücklich
-  erlaubt ist.
-- `startM5UsbPairing()` schreibt WLAN- und Host-Verbindungsdaten auf den
-  Controller.
-- `getM5PairingStatus()` liefert den aktuellen Status und eine redaktierte
-  Geräte-URL.
-
-Der eigentliche USB-Adapter ist
-[scripts/connect-m5-usb.py](../scripts/connect-m5-usb.py). Er sucht einen
-seriellen Port, spricht den Controller an, liest Diagnose- und Telemetriedaten
-und schreibt Setup-Daten, wenn du ein Pairing startest.
-
-Die erwartete Firmware-Version steht zentral in
-[src/lib/server/device/m5-firmware-version.ts](../src/lib/server/device/m5-firmware-version.ts):
-
-```txt
-0.2.2-icaros-ws-reconnect
-```
-
-Der Host prüft diese Version, weil alte Firmware zwar noch USB-Daten liefern
-kann, sich bei WLAN, Diagnose oder Reconnect aber anders verhalten kann. Erst
-mit passender Firmware ist der Controller für das aktuelle Host-Verhalten
-wirklich verlässlich.
-
-Ein Firmware-Update passiert nicht aus Versehen. Flashen ist nur möglich, wenn
-du es ausdrücklich erlaubst:
-
-```txt
-ICAROS_ALLOW_M5_FIRMWARE_UPDATE=true
-```
-
-So bleibt der alltägliche Prüf- und Pairing-Workflow leicht zugänglich.
-Firmware schreiben bleibt dagegen eine bewusste Aktion über Konsole oder CLI;
-`bun start` setzt diese Erlaubnis nicht.
-
-## 5. Der M5 kommt in den laufenden Betrieb
-
-Nach dem Pairing kennt der M5 die Geräte-URL des Hosts. Er verbindet sich über
-den plain WebSocket `/ws/device` und sendet rohe Controller-Frames. Der Host
-nimmt diese Verbindung aber nicht blind an: Zuerst prüft er den Pairing-Token.
-
-Die Token- und URL-Logik liegt in
-[src/lib/server/device/pairing.ts](../src/lib/server/device/pairing.ts).
-
-Hier findest du unter anderem:
-
-- `createPairedDeviceWebSocketUrl()` baut die URL, die auf den M5 geschrieben
-  wird.
-- `isDevicePairingRequest()` prüft eingehende Geräteverbindungen.
-- `redactDevicePairingToken()` sorgt dafür, dass Logs und UI keine Secrets
-  anzeigen.
-- `resolveDeviceWebSocketOrigin()` trennt Browser-WSS und M5-WS sauber.
-
-Die WebSocket-Annahme selbst passiert im Gateway:
-[src/lib/server/ws/gateway.ts](../src/lib/server/ws/gateway.ts).
-
-Dort sind besonders wichtig:
-
-- `#handleUpgrade()` erkennt `/ws/device`, prüft den Pairing-Token und lehnt
-  falsche Geräteverbindungen ab.
-- `#handleDeviceConnection()` liest M5-Frames, aktualisiert den M5-Status und
-  veröffentlicht neue Controller-Daten.
-- `#publishStaleControlIfNeeded()` erkennt, wenn M5-Daten veraltet sind, und
-  schickt neutrale Safe-Mode-Werte.
-
-Die Idee dahinter ist einfach: Der M5 darf Rohdaten senden, aber nur an den
-Host. Kein VR Client soll direkt vom M5 lesen. So bleibt die Experience frei
-von Firmwaredetails und bekommt später nur stabile Steuerdaten.
-
-## 6. Aus Rohdaten werden Steuerdaten
-
-Jetzt passiert die eigentliche Übersetzung. Ein Controller sendet Sensordaten,
-aber eine Experience braucht keine Rohformate. Sie braucht eine einfache,
-stabile Steuerinformation: Pitch, Roll, Qualität, Safe-Mode und Zeitstempel.
-
-Diese Umwandlung lebt in
-[src/lib/server/control/normalizer.ts](../src/lib/server/control/normalizer.ts).
-
-Die wichtigsten Funktionen sind:
-
-- `parseM5Frame()` liest eingehende JSON-Frames.
-- `isM5OrientationFrame()` erkennt relevante Orientierungsdaten.
-- `normalizeM5Frame()` wandelt M5-Werte in den Bereich `-1..1`.
-- `smoothControlOrientation()` glättet Bewegungen.
-- `createNeutralControl()` erzeugt neutrale Safe-Mode-Werte.
-
-Das Ergebnis heißt `control.orientation`. Diese Nachricht ist klein genug, damit
-Experience-Code übersichtlich bleibt, aber vollständig genug, um eine Flug- oder
-Bewegungssteuerung zu bauen.
-
-Der wichtigste Designgedanke: Die Experience soll nicht wissen müssen, welcher
-Controller, welche Firmware oder welches Rohformat gerade im Spiel ist. Sie
-sieht nur normalisierte Steuerung.
-
-## 7. Runtime Clients melden sich an
-
-Eine VR Experience läuft separat, zum Beispiel als eigener SvelteKit/Three.js
-Client. Beim Start öffnet sie einen sicheren WebSocket zum Host und stellt sich
-mit `client.hello` vor. Damit sagt sie: Ich bin ein konkreter Runtime Client,
-ich gehöre zu dieser Experience, und unter dieser HTTPS-URL kannst du mich
-starten.
-
-Der öffentliche Client-Helfer liegt in
-[src/lib/client/experience-client.ts](../src/lib/client/experience-client.ts).
-
-Auf Client-Seite findest du dort:
-
-- `createIcarosExperienceClient()` erzeugt die Kompatibilitäts-Fassade.
-- `start()` öffnet den öffentlichen Control-Stream und den Runtime-WebSocket
-  für Launch-Registration.
-- `createIcarosControlStreamClient()` abonniert `/ws/control/main`.
-- `createIcarosLaunchRegistrationClient()` registriert den Client auf
-  `/ws/runtime`.
-- `#sendHello()` sendet `client.hello` mit `clientId`, `experienceId`, Titel,
-  URL und User-Agent.
-- `#startHeartbeat()` sendet regelmäßig `client.heartbeat`.
-- `onOrientation()` registriert Listener für normalisierte Controller-Daten.
-- `dispose()` räumt Socket, Heartbeat und Listener auf.
-
-Auf Host-Seite wird der Handshake in
-[src/lib/server/ws/gateway.ts](../src/lib/server/ws/gateway.ts) angenommen. Die
-Verwaltung konkreter Clients liegt in
-[src/lib/server/ws/runtime-clients.ts](../src/lib/server/ws/runtime-clients.ts).
-
-Dort geht es vor allem um diese Funktionen:
-
-- `registerHello()` trägt einen konkreten Client ein.
-- `recordHeartbeat()` hält Clients frisch.
-- `markStaleClients()` markiert nicht mehr antwortende Clients als `stale`.
-- `listRuntimeClients()` liefert die Liste für die Konsole.
-- `findSelectableClient()` sorgt dafür, dass nur online Clients als Launch-Ziel
-  ausgewählt werden können.
-
-Warum konkrete Clients und nicht nur Experience-IDs? Weil dieselbe Experience
-mehrfach offen sein kann: Desktop-Browser, Quest-Browser, Testfenster. Der Host
-muss wissen, welcher konkrete Browser über `/launch` geöffnet werden soll.
-
-## 8. Du wählst das Launch-Ziel
-
-Registrierung allein bedeutet noch nicht, dass `/launch` zu diesem Client
-weiterleitet. Die Konsole zeigt alle registrierten Runtime Clients, und du
-wählst genau einen als Launch-Ziel aus.
-
-Die Auswahl läuft über die Svelte Action `setSelectedLaunchClient` in
-[src/routes/+page.server.ts](../src/routes/+page.server.ts). Der kleine
-Server-Core dazu liegt in
-[src/lib/server/station/launch-selection.ts](../src/lib/server/station/launch-selection.ts),
-der Zustand in
-[src/lib/server/station/state.ts](../src/lib/server/station/state.ts).
-
-Der Host speichert:
+Der typische Lifecycle ist:
 
 ```ts
-{
-	selectedLaunchClientId: string | null;
-	selectedExperienceId: string | null;
-}
+client.start();
+client.dispose();
 ```
 
-`selectedLaunchClientId` ist die eigentliche Launch-Routing-Wahrheit.
-`selectedExperienceId` bleibt als abgeleitete Information erhalten, weil sie für
-Anzeige und Kompatibilität hilfreich ist.
+`dispose()` ist wichtig, weil Browser-Sockets, Heartbeats und Listener sonst
+weiterlaufen können.
 
-Sobald sich das ausgewählte Launch-Ziel ändert, sendet der Host neue
-Nachrichten vom Typ `station.state` und `runtime.clients` an die
-Runtime-Verbindungen. So wissen Clients, welcher konkrete Runtime Client gerade
-als Launch-Ziel ausgewählt ist. Das steuert nicht die öffentliche
-Control-Stream-Auslieferung.
+Der vollständige Client-Vertrag steht in [docs/client-api.md](client-api.md).
 
-## 9. `/launch` bringt das Headset zum richtigen Client
+## 12. Diagnose
 
-Wenn du ein Headset verwendest, soll es nicht irgendeine alte oder fest
-konfigurierte Experience-URL öffnen. Es öffnet den Host. Der Host schaut nach,
-welcher Runtime Client als Launch-Ziel ausgewählt ist, und leitet dann genau zu
-diesem Client weiter.
+Menschen nutzen die Konsole. Automation und Coding-Agenten nutzen die CLI:
 
-Die Route ist [src/routes/launch/+server.ts](../src/routes/launch/+server.ts).
-Die eigentliche Entscheidung liegt in
-[src/lib/server/launch/launch-routing.ts](../src/lib/server/launch/launch-routing.ts).
+```sh
+bun run m5:pairing -- health
+bun run m5:pairing -- protocols
+bun run m5:pairing -- snapshot
+bun run m5:pairing -- checklist
+```
 
-Die zentrale Funktion ist `resolveLaunchClientUrl()`. Sie prüft, ob ein
-ausgewählter Launch-Client existiert, online ist und eine gültige HTTPS-URL
-registriert hat.
+Wichtige Dateien:
 
-Wenn alles passt, antwortet `/launch` mit einem `307` Redirect auf die
-registrierte Client-URL. Wenn kein Launch-Ziel ausgewählt ist oder die URL
-unsicher ist, schlägt die Route mit einer klaren Fehlermeldung fehl.
+| Datei | Aufgabe |
+| --- | --- |
+| [scripts/m5-pairing-cli.ts](../scripts/m5-pairing-cli.ts) | CLI für M5-Diagnose |
+| [src/routes/api/m5-pairing/+server.ts](../src/routes/api/m5-pairing/+server.ts) | JSON-Diagnose-Route |
+| [scripts/smoke-runtime.ts](../scripts/smoke-runtime.ts) | Runtime-Smoke-Test |
 
-Das ist absichtlich streng. `/launch` soll nicht raten, keine HTTP-Fallbacks
-nutzen und keine Experience-Builds ausliefern. Es ist ein sicherer Einstieg zum
-bereits laufenden, ausgewählten Launch-Client.
+Konsole und CLI nutzen denselben Host-Core. Die CLI hat keine eigene
+Pairing-Logik.
 
-## 10. Steuerung läuft über den öffentlichen Control Stream
+## 13. Safety und neutrale Controls
 
-Viele Runtime-Clients können verbunden sein, aber Runtime-Registrierung besitzt
-keine normale Steuerdaten-Auslieferung mehr. Launch-Auswahl und Control-Stream
-bleiben getrennte Host-Verantwortungen.
+Safety ist serverseitig gelöst. Die Clients bekommen keinen eigenen
+`safeMode`-Schalter.
 
-Die Steuerdaten-Auslieferung liegt in
-[src/lib/server/ws/control-stream-clients.ts](../src/lib/server/ws/control-stream-clients.ts).
-Das Gateway veröffentlicht normalisierte `control.orientation` Nachrichten auf
-dem konfigurierten öffentlichen Stream, aktuell `/ws/control/main`.
+Der Host sendet neutrale Controls, wenn:
 
-Runtime-Clients sehen weiter Station-State und Client-Listen. Experiences, die
-Steuerdaten brauchen, verbinden sich zusätzlich mit dem öffentlichen Control
-Stream.
+- kein M5 verbunden ist
+- ein Frame ungültig ist
+- ein Frame veraltet ist
+- die M5-Verbindung geschlossen wurde
+- ein Controller nach einer Pause in extremer Lage zurückkommt
+- ein Controller plötzlich einen zu großen Sprung macht
 
-## 11. Diagnose und Automation verwenden denselben Host-Core
+Für die Experience heißt das: Bei `quality: 0` Bewegung stoppen oder neutral
+halten.
 
-Diagnose ist wichtig, soll aber keine zweite Wahrheit erzeugen. Deshalb
-sprechen Web-Konsole und CLI dieselben Host-Funktionen an.
+## 14. Was der Host nicht macht
 
-Die JSON-Diagnose-Route ist
-[src/routes/api/m5-pairing/+server.ts](../src/routes/api/m5-pairing/+server.ts).
-Die CLI ist [scripts/m5-pairing-cli.ts](../scripts/m5-pairing-cli.ts).
+Der Host macht bewusst nicht:
 
-Beide Wege landen im gemeinsamen Service:
-[src/lib/server/device/pairing-service.ts](../src/lib/server/device/pairing-service.ts).
+- VR-Welten rendern
+- Experience-Builds ausliefern
+- Websites über WebSocket streamen
+- Experiences direkt mit dem M5 verbinden
+- M5-Rohdaten in Three.js-Levels auswerten
+- HTTP-Launch-Fallbacks nutzen
+- eine zweite Pairing-Logik in der CLI pflegen
 
-Das bedeutet: Wenn die Konsole einen M5-Status zeigt und die CLI einen Snapshot
-liest, stammen beide aus demselben Statusmodell. Die CLI erfindet keinen
-eigenen Token, keine eigene Geräte-URL und keine eigene Pairing-Logik.
+Diese Grenzen halten den Host klein. Neue Experiences können entstehen, ohne
+dass der Host ihre 3D-Welt kennen muss.
 
-Für schnelle Erreichbarkeit gibt es außerdem
-[src/routes/health/+server.ts](../src/routes/health/+server.ts). Dieser Endpoint
-sagt nur: Der Host ist erreichbar und antwortet.
+## 15. Lesepfade
 
-## 12. Safe-Mode ist die ruhige Fehlerstrategie
+| Frage | Einstieg |
+| --- | --- |
+| Wie startet der Host? | [scripts/start-host.ts](../scripts/start-host.ts), [server/index.ts](../server/index.ts) |
+| Welche Nachrichten gibt es? | [src/lib/protocol/types.ts](../src/lib/protocol/types.ts), [src/lib/protocol/messages.ts](../src/lib/protocol/messages.ts) |
+| Wo werden externe Nutzdaten validiert? | [src/lib/protocol/validators.ts](../src/lib/protocol/validators.ts) |
+| Wo hängen die WebSocket-Pfade? | [src/lib/server/ws/gateway.ts](../src/lib/server/ws/gateway.ts) |
+| Wie funktioniert `/launch`? | [src/lib/server/launch/launch-routing.ts](../src/lib/server/launch/launch-routing.ts), [src/routes/launch/+server.ts](../src/routes/launch/+server.ts) |
+| Wo sitzt die Konsole? | [src/routes/+page.svelte](../src/routes/+page.svelte), [src/routes/_console](../src/routes/_console) |
+| Wo wird normalisiert? | [src/lib/server/control/normalizer.ts](../src/lib/server/control/normalizer.ts) |
+| Wie bauen Experiences den Client? | [src/lib/client](../src/lib/client), [docs/client-api.md](client-api.md) |
+| Wie debugge ich M5? | [docs/debugging.md](debugging.md), [docs/m5-pairing-solution.md](m5-pairing-solution.md) |
+| Wie debugge ich Quest/HTTPS? | [docs/quest-https-launch-routing.md](quest-https-launch-routing.md) |
 
-Wenn Daten fehlen, veraltet sind oder eine Verbindung verloren geht, soll die
-Experience nicht mit alten Bewegungen weiterfliegen. Der Host schickt dann
-neutrale Safe-Mode-Werte.
+## 16. Der Ablauf in kurz
 
-Das passiert an mehreren Stellen gemeinsam:
-
-- [src/lib/server/ws/gateway.ts](../src/lib/server/ws/gateway.ts) erkennt
-  fehlende oder stale M5-Frames.
-- [src/lib/server/control/normalizer.ts](../src/lib/server/control/normalizer.ts)
-  erzeugt neutrale Controls.
-- [src/lib/client/experience-client.ts](../src/lib/client/experience-client.ts)
-  liefert diese Controls an die Experience weiter.
-
-Eine Experience sollte bei `safeMode: true` Bewegung stoppen oder
-neutralisieren. Das ist kein Sonderfall, sondern Teil des normalen
-Betriebsmodells. Geräte und Netzwerke können ausfallen; der Host macht diesen
-Zustand sichtbar und vorhersagbar.
-
-## 13. Was der Host bewusst nicht macht
-
-Ein gutes System wird nicht nur durch seine Funktionen klar, sondern auch durch
-seine Grenzen. Der Host macht einiges absichtlich nicht.
-
-Der Host:
-
-- rendert keine Three.js-Welt
-- serviert keine Experience-Builds
-- lässt Experiences nicht direkt mit dem M5 sprechen
-- leitet `/launch` nicht auf HTTP weiter
-- verwaltet keine parallele zweite Pairing-Logik in der CLI
-- hardcodiert nicht alle Experiences in Host-Code
-
-Diese Grenzen sind in [AGENTS.md](../AGENTS.md) und
-[docs/architecture.md](architecture.md) festgehalten. Sie machen das System
-leichter erweiterbar: Neue Experiences können entstehen, ohne dass der Host
-ihre 3D-Welt kennen muss.
-
-## 14. Die kurze Gesamtreise
-
-Wenn du den Host als Ablauf liest, passiert Folgendes:
-
-1. Der Server startet über [server/index.ts](../server/index.ts).
-2. HTTPS wird geprüft und die SvelteKit-App wird geladen.
-3. Das Runtime-Gateway öffnet `/ws/runtime` für Browser/VR Clients.
-4. Der M5-Geräteport öffnet `/ws/device` für gepaarte Controller.
-5. Der Host lädt eine gespeicherte Controller-Einrichtung, falls vorhanden.
-6. Die Operator-Konsole auf `/` zeigt Zustand, URLs und Aktionen.
-7. Ein M5 verbindet sich über WLAN/WebSocket oder wird per USB eingerichtet.
-8. Der Host prüft Firmware, Pairing-Token und eingehende Frames.
-9. Rohdaten werden normalisiert, geglättet und safe-mode-fähig gemacht.
-10. VR Clients melden sich mit `client.hello` an.
-11. Die Konsole wählt einen konkreten Launch-Client.
-12. `/launch` leitet Headsets auf diesen ausgewählten HTTPS-Client weiter.
-13. Control-Stream-Abonnenten bekommen `control.orientation` über
-    `/ws/control/main`.
-14. Bei Verbindungsverlust sendet der Host neutrale Safe-Mode-Werte.
-
-So entsteht die eigentliche Rolle des Icaros Host: Er ist nicht die Experience,
-sondern die verlässliche Station dazwischen. Er hält die wechselhaften Dinge -
-Geräte, Netzwerk, Pairing, Startreihenfolge, Verbindungsverlust - vom
-Experience-Code fern und gibt stattdessen eine kleine, klare
-Runtime-Schnittstelle weiter.
+1. Host starten.
+2. Operator-Konsole öffnen.
+3. Experience-Client über HTTPS starten.
+4. Client registriert sich optional auf `/ws/runtime`.
+5. Operator wählt den Launch-Client.
+6. Brille öffnet `/launch`.
+7. Host leitet zur Client-URL weiter.
+8. M5 sendet Rohdaten an `/ws/device`.
+9. Host sendet `control.orientation` auf `/ws/control/main`.
+10. Experience nutzt `pitch`, `roll` und `quality`.

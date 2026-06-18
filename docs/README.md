@@ -9,7 +9,7 @@ close to the code while the top-level README stays short.
 - [Architecture](architecture.md): station boundaries, runtime ownership, and
   system data flow.
 - [Host Lifecycle](host-lifecycle.md): a guided journey through startup,
-  controller setup, runtime clients, launch routing, and safe-mode behavior.
+  controller setup, runtime clients, launch routing, and neutral safety behavior.
 - [Implementation Plan](PLAN.md): current MVP decisions, runtime flow, and
   acceptance criteria.
 - [Quest HTTPS Launch Routing](quest-https-launch-routing.md): LAN URLs, HTTPS

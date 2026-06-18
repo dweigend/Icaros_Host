@@ -228,15 +228,15 @@ export function validateControlOrientation(input: unknown): ValidationResult<Con
 		return quality;
 	}
 
-	if (typeof input.safeMode !== 'boolean') {
-		return fail('control.orientation safeMode must be boolean');
+	if (input.controllerType !== 'm5') {
+		return fail('control.orientation controllerType must be m5');
 	}
 
 	return ok({
 		pitch: pitch.value,
 		roll: roll.value,
 		quality: quality.value,
-		safeMode: input.safeMode
+		controllerType: input.controllerType
 	});
 }
 

@@ -53,7 +53,7 @@ flowchart TD
    registered HTTPS URL.
 7. The paired M5 connects over `/ws/device?pairing=<token>` and sends raw
    frames.
-8. The Host validates, normalizes, and safe-modes raw frames.
+8. The Host validates, normalizes, smooths, and neutralizes unsafe raw frames.
 9. Control stream subscribers receive normalized controls.
 10. Runtime clients receive station state and runtime client presence.
 
@@ -102,7 +102,7 @@ over the same Host core rather than a separate UI helper API.
 
 Both surfaces must use the same Host core for M5 pairing and diagnosis. The Host
 core owns pairing tokens, status transitions, USB setup execution, debug event
-collection, paired `/ws/device` observations, and neutral safe-mode behavior.
+collection, paired `/ws/device` observations, and neutral safety behavior.
 When behavior changes, change that core boundary and keep both surfaces thin.
 
 Do not put a second M5 pairing implementation into the CLI. The CLI must not

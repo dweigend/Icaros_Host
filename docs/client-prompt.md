@@ -42,9 +42,10 @@ Host.
 
 - Verwende nur normalisierte `pitch`- und `roll`-Werte aus
   `control.orientation`.
-- Wenn `safeMode` `true` ist, Bewegung stoppen oder neutral halten.
-- Wenn `safeMode` `false` ist, kann `pitch` Vorwaerts/Rueckwaerts-Bewegung oder
-  Neigung steuern und `roll` Links/Rechts-Bewegung oder Rotation.
+- Der Host neutralisiert fehlende, veraltete oder unsichere Controllerdaten
+  bereits serverseitig.
+- `pitch` kann Vorwaerts/Rueckwaerts-Bewegung oder Neigung steuern und `roll`
+  Links/Rechts-Bewegung oder Rotation.
 - Werte ausserhalb der dokumentierten Bereiche ignorieren oder defensiv
   clampen.
 - Keine Rohdaten erwarten und keine Verbindung zum M5 oeffnen.

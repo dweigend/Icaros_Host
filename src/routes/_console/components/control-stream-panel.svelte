@@ -56,7 +56,7 @@
 			<h2>quality</h2>
 			<div class="readout">
 				<strong>{state.debugQualityPercent}%</strong>
-				<span>{state.debugLastControl?.safeMode ? 'safe mode' : 'live'}</span>
+				<span>{state.debugLastControl?.controllerType ?? 'm5'}</span>
 			</div>
 			<progress class="meter quality" max="100" value={state.debugQualityPercent} aria-label="Quality">
 				{state.debugQualityPercent}%
@@ -78,12 +78,12 @@
 
 	<ScrollArea class="log" aria-label="Recent control frames">
 		{#each state.debugFrames as frame (frame.id)}
-			<div class="log-row" data-safe={frame.safeMode}>
+			<div class="log-row" data-neutral={frame.quality <= 0}>
 				<span>{formatAge(state.debugNow - frame.receivedAt)}</span>
 				<code>pitch {formatSignedUnit(frame.pitch)}</code>
 				<code>roll {formatSignedUnit(frame.roll)}</code>
 				<span>q {toQualityPercent(frame.quality)}%</span>
-				<span>{frame.safeMode ? 'safe' : 'live'}</span>
+				<span>{frame.controllerType}</span>
 			</div>
 		{:else}
 			<p>Noch keine <code>control.orientation</code>-Frames empfangen.</p>

@@ -120,7 +120,7 @@ function createDebugFrame(
 		pitch: control.pitch,
 		roll: control.roll,
 		quality: control.quality,
-		safeMode: control.safeMode
+		controllerType: control.controllerType
 	};
 }
 

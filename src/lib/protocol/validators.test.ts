@@ -116,7 +116,7 @@ describe('runtime client validators', () => {
 				pitch: 0.25,
 				roll: -0.5,
 				quality: 0.8,
-				safeMode: false
+				controllerType: 'm5'
 			})
 		).toEqual({
 			ok: true,
@@ -124,7 +124,7 @@ describe('runtime client validators', () => {
 				pitch: 0.25,
 				roll: -0.5,
 				quality: 0.8,
-				safeMode: false
+				controllerType: 'm5'
 			}
 		});
 	});
@@ -135,7 +135,7 @@ describe('runtime client validators', () => {
 				pitch: 1.25,
 				roll: 0,
 				quality: 1,
-				safeMode: false
+				controllerType: 'm5'
 			})
 		).toEqual({
 			ok: false,
@@ -146,11 +146,12 @@ describe('runtime client validators', () => {
 			validateControlOrientation({
 				pitch: 0,
 				roll: 0,
-				quality: 1
+				quality: 1,
+				controllerType: 'unknown'
 			})
 		).toEqual({
 			ok: false,
-			error: 'control.orientation safeMode must be boolean'
+			error: 'control.orientation controllerType must be m5'
 		});
 	});
 });

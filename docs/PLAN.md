@@ -36,7 +36,7 @@ small:
 - Runtime clients: optionally connect to `/ws/runtime` for launch selection;
   HTTPS clients use WSS.
 - Experience API: normalized `pitch` and `roll` in `-1..1`, `quality` in
-  `0..1`, and required `safeMode`.
+  `0..1`, and `controllerType`.
 
 ## Setup Constraint: LAN Origin And Form Actions
 
@@ -149,7 +149,7 @@ troubleshooting live in
 7. Operator selects the concrete Launch Client.
 8. Host forwards `station.state` and `runtime.clients` to runtime clients.
 9. Host publishes `control.orientation` on `/ws/control/main`.
-10. Stale or disconnected M5 state produces neutral safe-mode controls.
+10. Stale, disconnected, or unsafe M5 state produces neutral controls.
 
 ## Acceptance Criteria
 
@@ -161,5 +161,5 @@ troubleshooting live in
 - Operator can set and clear the selected Launch Client.
 - A simulated M5 can drive normalized control data.
 - `/ws/control/main` subscribers receive `control.orientation`.
-- Stale/disconnected M5 state produces safe neutral controls.
+- Stale/disconnected M5 state produces neutral controls.
 - `bun run check`, `bun run lint`, `bun run test`, and `bun run build` pass.

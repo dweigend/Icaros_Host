@@ -4,8 +4,8 @@
  * This module is the Host boundary between firmware-shaped device data and the
  * public experience control API. It parses raw JSON frames, accepts the known M5
  * orientation field aliases, rejects missing or stale orientation data with a
- * neutral safe-mode control, normalizes pitch and roll from degrees into -1..1,
- * clamps quality into 0..1, and optionally smooths consecutive valid controls.
+ * neutral control, normalizes pitch and roll from degrees into -1..1, clamps
+ * quality into 0..1, and optionally smooths consecutive valid controls.
  *
  * Experiences should only receive the resulting ControlOrientation values and
  * never need to know which raw M5 field names were present on the device frame.
@@ -40,7 +40,7 @@ export function createNeutralControl(): ControlOrientation {
 		pitch: 0,
 		roll: 0,
 		quality: 0,
-		safeMode: true
+		controllerType: 'm5'
 	};
 }
 
@@ -59,7 +59,7 @@ export function normalizeM5Frame(frame: M5RawFrame, now: number = Date.now()): C
 		pitch: clamp(orientation.pitch / MAX_ANGLE_DEGREES, -1, 1),
 		roll: clamp(orientation.roll / MAX_ANGLE_DEGREES, -1, 1),
 		quality: readQuality(frame.quality),
-		safeMode: false
+		controllerType: 'm5'
 	};
 }
 
@@ -69,16 +69,18 @@ export function smoothControlOrientation(
 	smoothing: number = DEFAULT_SMOOTHING,
 	enabled = true
 ): ControlOrientation {
-	if (!enabled || previous.safeMode || next.safeMode) {
+	if (!enabled || next.quality <= 0) {
 		return next;
 	}
 
 	const amount = Number.isFinite(smoothing) ? clamp(smoothing, 0, 1) : DEFAULT_SMOOTHING;
+	const previousPitch = previous.quality <= 0 ? 0 : previous.pitch;
+	const previousRoll = previous.quality <= 0 ? 0 : previous.roll;
 
 	return {
 		...next,
-		pitch: lerp(previous.pitch, next.pitch, amount),
-		roll: lerp(previous.roll, next.roll, amount)
+		pitch: lerp(previousPitch, next.pitch, amount),
+		roll: lerp(previousRoll, next.roll, amount)
 	};
 }
 

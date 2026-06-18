@@ -3,3 +3,4 @@
  */
 export * from './control-stream-config';
 export * from './normalizer';
+export * from './safety';

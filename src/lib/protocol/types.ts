@@ -34,7 +34,7 @@ export type ControlOrientation = Readonly<{
 	pitch: number;
 	roll: number;
 	quality: number;
-	safeMode: boolean;
+	controllerType: 'm5';
 }>;
 
 export type RuntimeClientStatus = 'online' | 'stale';

@@ -244,7 +244,7 @@ function openControlStream(
 
 	controlStream.on('message', (data) => {
 		const message = readHostRuntimeMessage(data.toString());
-		if (message?.type === 'control.orientation' && !message.payload.safeMode) {
+		if (message?.type === 'control.orientation' && message.payload.quality > 0) {
 			finish(message.payload);
 		}
 	});

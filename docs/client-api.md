@@ -13,7 +13,8 @@ If another prompt or document disagrees with this page, use this page.
 
 An experience is an external browser/WebXR client. It renders its own scene and
 connects to the Host public control stream. The Host owns the M5, station
-state, normalization, safe-mode behavior, launch selection, and launch routing.
+state, normalization, server-side safety behavior, launch selection, and launch
+routing.
 
 Experience code must not:
 
@@ -29,7 +30,6 @@ Experience code should:
 - optionally register on `/ws/runtime` to appear in the launch selection
 - validate incoming messages before using them
 - apply only normalized `control.orientation` payloads
-- stop movement when `safeMode` is `true`
 - close sockets, timers, and listeners during cleanup
 
 ## Message Envelope
@@ -79,11 +79,6 @@ onMount(() => {
 	});
 
 	const unsubscribe = client.onOrientation((control) => {
-		if (control.safeMode) {
-			stopMovement();
-			return;
-		}
-
 		applyOrientation(control.pitch, control.roll);
 	});
 
@@ -241,7 +236,7 @@ type ControlOrientation = Readonly<{
 	pitch: number;
 	roll: number;
 	quality: number;
-	safeMode: boolean;
+	controllerType: 'm5';
 }>;
 ```
 
@@ -252,20 +247,18 @@ Fields:
 | `pitch` | `number` | Normalized forward/backward value in `-1..1`. |
 | `roll` | `number` | Normalized left/right value in `-1..1`. |
 | `quality` | `number` | Host-provided signal quality in `0..1`. |
-| `safeMode` | `boolean` | `true` means neutral safe controls. Stop movement or hold neutral state. |
+| `controllerType` | `'m5'` | Server-owned controller source for this stream. |
 
 Use only valid control payloads:
 
 ```ts
 function applyControl(control: ControlOrientation): void {
-	if (control.safeMode) {
-		stopMovement();
-		return;
-	}
-
 	applyOrientation(control.pitch, control.roll);
 }
 ```
+
+The Host handles missing, stale, or unsafe controller input before publishing.
+In those cases clients receive neutral `pitch: 0`, `roll: 0`, and `quality: 0`.
 
 If a manual client receives values outside the documented ranges, ignore the
 message or clamp defensively before applying movement.
@@ -311,7 +304,6 @@ error.
   registration.
 - Validate every incoming message before using `payload`.
 - Apply only `control.orientation`.
-- Stop or neutralize movement when `safeMode` is `true`.
 - Dispose WebSockets, intervals, animation loops, and listeners.
 - Never connect directly to the M5.
 - Never call `/api/m5-pairing` from an experience.

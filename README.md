@@ -24,7 +24,7 @@ flowchart LR
     Operator["Operator Console<br/>GET /"] -->|"select launch client"| Host
     Quest["Quest / PICO Headset<br/>GET /launch"] -->|"launch request"| Host
 
-    Host["Icaros Host Server<br/>routing<br/>handshake<br/>validation<br/>normalization<br/>smoothing<br/>safe mode"]
+    Host["Icaros Host Server<br/>routing<br/>handshake<br/>validation<br/>normalization<br/>smoothing<br/>server-side safety"]
 
     Host -->|"307 redirect to selected HTTPS client URL"| SelectedLaunchClient
     Host -->|"wss:// /ws/control/main<br/>control.orientation"| ControlClient["VR Experience Client<br/>Icaros Flight / WebXR"]
@@ -40,12 +40,12 @@ kleine, stabile Steuerinformation für Experiences:
 	pitch: number;
 	roll: number;
 	quality: number;
-	safeMode: boolean;
+	controllerType: 'm5';
 }
 ```
 
 `pitch` und `roll` liegen im Bereich `-1..1`. Wenn der Controller fehlt oder die
-Daten veraltet sind, sendet der Host neutrale Safe-Mode-Werte.
+Daten veraltet sind, sendet der Host neutrale Werte mit `quality: 0`.
 
 ## Client-Endpunkte
 
@@ -174,7 +174,7 @@ Ein neuer VR Client ist ein eigenständiges WebXR-Projekt. Er muss:
 - den Host über `wss://<host-origin>/ws/control/main` für Steuerdaten erreichen
 - optional `client.hello` und danach `client.heartbeat` an `/ws/runtime` senden
 - nur die öffentlichen `control.orientation`-Werte für die Steuerung verwenden
-- bei `safeMode: true` Bewegung stoppen oder neutralisieren
+- neutrale `pitch`/`roll`-Werte direkt anwenden und `quality` als Signalqualität behandeln
 - eigene TLS-Zertifikate verwenden
 
 Als Referenz für Client-Projekte dienen:

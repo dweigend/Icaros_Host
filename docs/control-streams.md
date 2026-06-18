@@ -41,16 +41,17 @@ type ControlOrientation = Readonly<{
 	pitch: number;
 	roll: number;
 	quality: number;
-	safeMode: boolean;
+	controllerType: 'm5';
 }>;
 ```
 
-`pitch` and `roll` are normalized to `-1..1`. `quality` is `0..1`. `safeMode`
-is required; when it is `true`, clients should stop movement or hold neutral
-state.
+`pitch` and `roll` are normalized to `-1..1`. `quality` is `0..1`.
+`controllerType` identifies the server-owned controller source. Missing, stale,
+or unsafe controller input is handled inside the Host and published as neutral
+`pitch: 0`, `roll: 0`, and `quality: 0`.
 
 ## Non-Goals
 
 - This V1 slice does not implement multi-controller routing.
-- Clients must not branch on controller hardware type.
+- Clients must not connect to controller hardware directly.
 - Clients must not read `/ws/device` or parse raw M5 frames.

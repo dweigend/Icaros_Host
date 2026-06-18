@@ -23,7 +23,7 @@ export type HostConsoleDebugFrame = Readonly<{
 	pitch: number;
 	roll: number;
 	quality: number;
-	safeMode: boolean;
+	controllerType: ControlOrientation['controllerType'];
 }>;
 
 export type HostConsoleControllerIndicator = Readonly<{
