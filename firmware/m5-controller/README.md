@@ -11,7 +11,7 @@ USB config, WiFi, one `ws://` client, diagnostics, heartbeat, and IMU orientatio
   reference and is not modified by this project.
 - Firmware upload is manual/explicit. `scripts/connect-m5-usb.py` must not flash
   this project automatically.
-- TLS/WSS is out of scope for this MVP. The firmware accepts only `ws://` URLs.
+- TLS/WSS is out of scope for this firmware. It accepts only `ws://` URLs.
 
 ## Build
 

@@ -1,5 +1,5 @@
 /**
- * Purpose: WebSocket gateway for the two M1 socket paths.
+ * Purpose: WebSocket gateway for Host device, runtime, and control sockets.
  *
  * `/ws/device` is only for the M5. It receives raw firmware frames and converts
  * them to normalized controls. `/ws/control/:streamId` is the public normalized

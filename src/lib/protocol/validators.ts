@@ -1,7 +1,7 @@
 /**
  * Purpose: validation helpers for protocol data crossing filesystem, HTTP, and
  * WebSocket boundaries. They keep external data out of typed runtime state until
- * the M1 contract is proven.
+ * the station contract is proven.
  */
 import type {
 	ClientHeartbeatPayload,

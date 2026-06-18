@@ -1,7 +1,7 @@
 /**
  * Purpose: apply single-console launch client selection changes. The selected
  * launch client derives selectedExperienceId; standalone experience-id routing
- * is not exposed in the M1 station model.
+ * is not exposed in the current station model.
  */
 import { stationStateStore } from './state';
 

@@ -1,5 +1,5 @@
 /**
- * Purpose: single-station state container for M1. It owns launch client
+ * Purpose: single-station state container. It owns launch client
  * selection plus derived experience state; persistence and multi-session
  * behavior are intentionally out of scope.
  */

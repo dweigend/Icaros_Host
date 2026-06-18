@@ -2,8 +2,8 @@
 
 Purpose: this folder contains local UI primitives for the single-page Icaros
 Host operator console. It follows the ui-system primitive-family style where it
-is useful, but it stays smaller than the upstream design system while the M1 UI
-has only a few controls.
+is useful, but stays smaller than the upstream design system while the console
+has only a few reusable controls.
 
 ## Boundary
 

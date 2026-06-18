@@ -1,5 +1,5 @@
 /**
- * Purpose: manage browser runtime WebSocket clients for the single-station MVP.
+ * Purpose: manage browser runtime WebSocket clients for the local station.
  * The registry owns concrete client presence and routing decisions, but leaves
  * station state, device normalization, and rendering outside this boundary.
  */

@@ -1,7 +1,7 @@
 /**
  * Purpose: shared protocol types for Icaros Host messages. The file models the
- * small M1 contract between host, operator, Quest, experiences, and M5 without
- * transport-specific behavior.
+ * small station contract between host, operator, Quest, experiences, and M5
+ * without transport-specific behavior.
  */
 export const PROTOCOL_VERSION = 'neural-flight.v1';
 export const STATION_ID = 'station-a';

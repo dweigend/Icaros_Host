@@ -236,16 +236,12 @@ bun run smoke:runtime
 
 | Dokument | Inhalt |
 | --- | --- |
-| [docs/host-lifecycle.md](docs/host-lifecycle.md) | Geführte Reise durch Start, Controller, Clients und Datenfluss |
-| [docs/architecture.md](docs/architecture.md) | Architektur, Grenzen und Datenfluss |
+| [docs/host-lifecycle.md](docs/host-lifecycle.md) | Kurze Code-Tour durch Start, Gateway, Launch, M5 und Diagnose |
+| [docs/architecture.md](docs/architecture.md) | Architekturgrenzen und Ownership |
 | [docs/client-api.md](docs/client-api.md) | Schnittstelle für VR Experience Clients |
-| [docs/control-streams.md](docs/control-streams.md) | Öffentliche Control-Stream-Namen und Default-Stream |
 | [docs/client-prompt.md](docs/client-prompt.md) | Checkliste und Prompt für neue Clients |
-| [docs/quest-https-launch-routing.md](docs/quest-https-launch-routing.md) | HTTPS, Quest/PICO Launch und Zertifikate |
-| [docs/m5-pairing-solution.md](docs/m5-pairing-solution.md) | M5-Setup, Pairing und Firmware |
+| [docs/quest-https-launch-routing.md](docs/quest-https-launch-routing.md) | HTTPS, Quest/PICO Launch, Zertifikate und Troubleshooting |
 | [docs/debugging.md](docs/debugging.md) | Debugging und Diagnose |
-| [docs/PLAN.md](docs/PLAN.md) | Aktueller Implementierungsplan |
-| [docs/CODINGSTANDARDS.md](docs/CODINGSTANDARDS.md) | Engineering-Standards und Arbeitsweise |
 | [AGENTS.md](AGENTS.md) | Arbeitsregeln für Coding Agents |
 
 ## Checks
