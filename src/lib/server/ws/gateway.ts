@@ -284,7 +284,8 @@ class IcarosWebSocketGateway {
 
 	#registerRuntimeClient(client: RuntimeClient, payload: ClientHelloPayload): RuntimeClient {
 		const registeredClient = this.#runtimeClients.registerHello(client, payload, Date.now());
-		const selectedLaunchClientId = stationStateStore.getState().selectedLaunchClientId;
+		const stationState = stationStateStore.getState();
+		const selectedLaunchClientId = stationState.selectedLaunchClientId;
 		const message = createClientRegisteredMessage({
 			clientId: payload.clientId,
 			selectedForLaunch: selectedLaunchClientId === payload.clientId,
@@ -292,6 +293,12 @@ class IcarosWebSocketGateway {
 		});
 
 		registeredClient.socket.send(JSON.stringify(message));
+		if (
+			selectedLaunchClientId === payload.clientId &&
+			stationState.selectedExperienceId !== payload.experienceId
+		) {
+			stationStateStore.setLaunchSelection(payload.clientId, payload.experienceId);
+		}
 		this.#broadcastRuntimeClients();
 		return registeredClient;
 	}
