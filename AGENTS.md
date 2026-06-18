@@ -1,129 +1,93 @@
 # AGENTS.md
 
-Purpose: this file is the repository-local operating manual for coding agents
-working on Icaros Host. Follow it before making code changes.
+Purpose: repository-local operating manual for agents working on Icaros Host.
+Keep changes small, pragmatic, and aligned with the current architecture.
 
-## Mission
+## Current Phase
 
-Build Icaros Host as the station router, gateway, and translator.
+Icaros Host is close to feature-complete for the local station use case. Default
+work is now refinement:
 
-The host is not the experience. The host owns devices, routing, sessions,
-normalization, active experience state, and operator state. Experiences render WebXR and
-consume a small normalized control API.
+- Refactor toward clearer boundaries, shorter files, and simpler data flow.
+- Improve efficiency, reliability, and startup/runtime ergonomics.
+- Reduce code before adding code; remove duplication and unused abstraction.
+- Add mini features only when they fit the existing host model cleanly.
+- Preserve runtime contracts, M5 compatibility, and Quest HTTPS/WSS behavior.
 
-## Required First Steps
+The host remains the station router, gateway, and translator. It owns devices,
+routing, sessions, normalized controls, active experience state, and operator
+state. Experiences render WebXR and consume only the normalized control API.
 
-Before changing code:
+## Before Changing Code
 
-1. Read `AGENTS.md`.
-2. Read `README.md`.
-3. Read `docs/PLAN.md`.
-4. Read `CODINGSTANDARDS.md`.
-5. Inspect relevant `docs/**` and local folder `README.md` files.
-6. Check the current worktree state.
-7. Identify existing patterns before adding new ones.
+1. Read `AGENTS.md`, `README.md`, and the relevant docs for the touched area.
+2. Inspect local folder `README.md` files.
+3. Check `git status` and never revert user changes unless explicitly asked.
+4. Identify existing services, utilities, components, and patterns first.
+5. Prefer standard library, then existing dependencies, then established new
+   libraries, and only then custom code.
 
-If the task touches Svelte UI, inspect `/Users/weigend/Documents/GitHub/ui-system`
-before designing components.
+For Svelte UI work, inspect `/Users/weigend/Documents/GitHub/ui-system` before
+designing components. For Bits UI work, check the official docs through
+Context7 first.
 
-## Core Architecture Rules
+## Architecture Rules
 
-- The UI is a single technical console page at `/`.
-- Do not add UI subpages unless the user explicitly reopens that scope.
-- WebSocket controls runtime clients.
-- The operator selects the active registered runtime client from `/`.
-- The host stores `activeClientId` and derives `activeExperienceId` from that
-  runtime client; `/launch` redirects only to the selected client's HTTPS URL.
-- The M5 sends raw data only to the host.
-- Experiences receive only normalized control data.
-- No experience may connect directly to the M5.
-- No M5 raw data may be evaluated inside Three.js levels.
+- `/` is the single technical operator console page.
+- Do not add UI subpages unless explicitly requested.
+- `/launch` redirects only to the selected registered runtime client's HTTPS
+  URL; it must not fall back to defaults or `http://`.
+- Runtime clients register over `/ws/runtime`; control subscribers read
+  normalized data from `/ws/control/main`.
+- The M5 sends raw frames only to the host. Experiences must never connect
+  directly to the M5 or evaluate raw M5 data.
 - Do not stream websites over WebSocket.
 - Do not hard-code all experiences into host code.
+- Keep plain `ws://` limited to the M5 device boundary; Quest/browser runtime
+  surfaces use HTTPS/WSS.
 
-## M1 Scope
+## Refactor Priorities
 
-Implement one station:
+- Preserve behavior unless the task explicitly changes it.
+- Simplify first: delete dead code, merge duplicate paths, and remove unused
+  configuration before adding abstractions.
+- Prefer small functions, explicit parameters, early returns, and clear
+  lifecycle methods such as `start()`, `stop()`, and `dispose()`.
+- Split long functions or broad modules when it improves ownership and testable
+  boundaries.
+- Keep runtime objects with sockets, timers, events, or loops explicitly
+  disposable.
+- Keep stale or disconnected M5 state in neutral safe-mode controls.
 
-- `station-a`
-- one Quest
-- one M5
-- one active experience
-- browser/WebXR experience clients that register over `/ws/runtime`
-- minimal operator UI
-- template client library foundation
+## TypeScript And Modules
 
-Prepare but do not fully implement:
-
-- mDNS or LAN scan
-- multi-session
-- real Auth/RBAC
-- Neural/ML
-- production allowlists
-
-## File And Module Rules
-
-- New files start with a short purpose header.
+- No `any`; validate external data before it enters domain logic.
+- Use explicit public return types, `import type`, readonly data, discriminated
+  unions, and result types where they prevent invalid states.
+- New files start with a short header explaining purpose, responsibility, and
+  boundaries.
 - Public APIs should be easy to find near the top of a module.
-- Helper functions should stay below public APIs.
-- Keep modules small and concrete.
-- Prefer explicit data flow through parameters.
-- Do not hide global sources or defaults deep in implementation details.
-- Use `index.ts` files for intentional public exports.
-- Avoid deep imports from implementation files.
-
-## TypeScript Rules
-
-- No `any`.
-- Validate external data before using it.
-- Model invalid states out of the system where practical.
-- Use discriminated unions and explicit result types for protocols.
-- Use `import type` for type-only imports.
-- Public functions should have explicit return types.
+- Use `index.ts` files for intentional public exports and avoid deep imports
+  from implementation files.
 
 ## UI Rules
 
 - `src/lib/components` contains primitives.
-- `src/lib/blocks` contains composed blocks.
+- `src/lib/blocks` contains composed reusable blocks.
 - Route-specific UI remains in `src/routes`.
-- Bits UI wrappers must stay thin.
-- Use existing UI-system families before creating new ones.
-- The operator UI should be dense, technical, and readable.
-
-## Runtime Rules
-
-- M5 compatibility is a boundary. Do not break the existing M5 message shapes.
-- Runtime sockets must support HTTPS/WSS deployment when exposed to clients.
-- Internal services may remain plain HTTP/WS behind the gateway.
-- Quest-facing browser surfaces must be HTTPS. `/launch` must never default,
-  fall back, or redirect to `http://` experience URLs.
-- `/launch` must use the selected registered runtime client as the single source
-  of truth. Missing, inactive, invalid, or non-HTTPS client URLs must fail with
-  a clear error instead of falling back to environment defaults.
-- The standalone VR client must not silently start a Quest/WebXR dev server over
-  HTTP. Missing TLS files must produce a clear startup error.
-- Keep the M5 device boundary separate: firmware-compatible plain `ws://` may
-  exist only on the device WebSocket path or separate device port, not for
-  Quest/browser runtime pages.
-- Prefer the single console page and the thin `/launch` redirect over route-level
-  launch managers.
-- Runtime objects with sockets, timers, events, or loops need explicit cleanup.
-- Stale or disconnected M5 state must produce neutral safe-mode controls.
+- Bits UI wrappers stay thin and preserve official behavior, accessibility,
+  focus management, keyboard navigation, and portal semantics.
+- The operator UI should stay dense, technical, readable, and efficient for
+  repeated station operation.
 
 ## Verification
 
-Use the lightest checks that prove the change:
+Run the lightest checks that prove the change:
 
 - `bun run check`
 - `bun run lint`
 - `bun run test` or `bun test`
 - `bun run build`
 
-If a check is not available yet because the project is still being scaffolded,
-say so explicitly in the final report.
-
-## Git Safety
-
-- Never revert user changes unless explicitly asked.
-- Never run destructive Git commands without explicit instruction.
-- Keep changes small and reviewable.
+If a check is unavailable or not relevant, state that explicitly in the final
+report.

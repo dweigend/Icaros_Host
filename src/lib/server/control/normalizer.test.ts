@@ -1,128 +1,56 @@
 /**
- * Purpose: focused tests for the M5 normalization boundary so raw firmware
- * shapes stay out of experience code.
+ * Purpose: focused tests for server-side M5 control translation. These cases
+ * keep the public stream small while proving that safety stays inside the Host.
  */
 import { describe, expect, it } from 'vitest';
 
 import {
 	createNeutralControl,
-	isM5OrientationFrame,
 	normalizeM5Frame,
-	parseM5Frame,
+	protectControlOrientation,
 	smoothControlOrientation
-} from './normalizer';
+} from './index';
 
-describe('normalizeM5Frame', () => {
-	it('normalizes pitch and roll to -1..1', () => {
-		expect(normalizeM5Frame({ pitch: 45, roll: -45 }, 100)).toMatchObject({
-			pitch: 1,
-			roll: -1,
-			quality: 1,
-			safeMode: false
-		});
-	});
-
-	it('returns neutral safe-mode controls for stale frames', () => {
-		expect(normalizeM5Frame({ pitch: 10, roll: 10, timestamp: 0 }, 2_000)).toEqual(
-			createNeutralControl(2_000)
-		);
-	});
-
-	it('parses compatible JSON object frames', () => {
-		expect(parseM5Frame('{"pitch":1,"roll":2}')).toEqual({ pitch: 1, roll: 2 });
-		expect(parseM5Frame('nope')).toBeNull();
-	});
-
-	it('smooths normalized pitch and roll between consecutive controls', () => {
-		const previous = normalizeM5Frame({ pitch: 0, roll: 0 }, 100);
-		const next = normalizeM5Frame({ pitch: 45, roll: -45 }, 200);
-
-		expect(smoothControlOrientation(previous, next, 0.25)).toMatchObject({
-			pitch: 0.25,
+describe('control normalization', () => {
+	it('publishes the small public control shape for valid M5 frames', () => {
+		expect(normalizeM5Frame({ pitch: 22.5, roll: -11.25, quality: 0.8 })).toEqual({
+			pitch: 0.5,
 			roll: -0.25,
+			quality: 0.8,
+			controllerType: 'm5'
+		});
+	});
+
+	it('uses neutral controls for missing or stale orientation data', () => {
+		expect(normalizeM5Frame({ type: 'heartbeat' })).toEqual(createNeutralControl());
+		expect(normalizeM5Frame({ pitch: 10, roll: 10, timestamp: 1_000 }, 2_500)).toEqual(
+			createNeutralControl()
+		);
+	});
+
+	it('smooths live controls from neutral instead of jumping immediately', () => {
+		expect(
+			smoothControlOrientation(createNeutralControl(), normalizeM5Frame({ pitch: 18, roll: 0 }))
+		).toEqual({
+			pitch: 0.1,
+			roll: 0,
 			quality: 1,
-			safeMode: false,
-			timestamp: 200
+			controllerType: 'm5'
 		});
 	});
+});
 
-	it('can return the unsmoothed control when smoothing is disabled', () => {
-		const previous = normalizeM5Frame({ pitch: 0, roll: 0 }, 100);
-		const next = normalizeM5Frame({ pitch: 45, roll: -45 }, 200);
+describe('control safety', () => {
+	it('keeps a reconnecting controller neutral when it resumes at an extreme angle', () => {
+		const next = normalizeM5Frame({ pitch: 45, roll: 0, quality: 1 });
 
-		expect(smoothControlOrientation(previous, next, 0.25, false)).toEqual(next);
+		expect(protectControlOrientation(createNeutralControl(), next)).toEqual(createNeutralControl());
 	});
 
-	it('does not smooth neutral safe-mode controls', () => {
-		const previous = normalizeM5Frame({ pitch: 45, roll: -45 }, 100);
-		const next = createNeutralControl(200);
+	it('keeps abrupt outlier steps server-side by returning neutral controls', () => {
+		const previous = normalizeM5Frame({ pitch: 0, roll: 0, quality: 1 });
+		const next = normalizeM5Frame({ pitch: 45, roll: 0, quality: 1 });
 
-		expect(smoothControlOrientation(previous, next, 0.25)).toEqual(next);
-	});
-
-	it('accepts neural-flight-template orientation frames', () => {
-		const frame = parseM5Frame(
-			JSON.stringify({
-				type: 'orientation',
-				deviceId: 'm5-template-probe',
-				role: 'controller',
-				seq: 3,
-				timeMs: 300,
-				quality: 0.75,
-				pitch: 30,
-				roll: -15,
-				yaw: 5
-			})
-		);
-
-		if (frame === null) {
-			throw new Error('expected neural-flight-template orientation frame to parse');
-		}
-
-		expect(isM5OrientationFrame(frame)).toBe(true);
-		expect(normalizeM5Frame(frame, 1_000)).toMatchObject({
-			pitch: 2 / 3,
-			roll: -1 / 3,
-			quality: 0.75,
-			safeMode: false
-		});
-	});
-
-	it('identifies template register and heartbeat frames as non-control frames', () => {
-		const registerFrame = parseM5Frame(
-			JSON.stringify({
-				type: 'register',
-				deviceId: 'm5-template-probe',
-				role: 'controller',
-				seq: 1,
-				timeMs: 100,
-				quality: 1,
-				firmwareVersion: 'template-probe',
-				capabilities: ['orientation']
-			})
-		);
-		const heartbeatFrame = parseM5Frame(
-			JSON.stringify({
-				type: 'heartbeat',
-				deviceId: 'm5-template-probe',
-				role: 'controller',
-				seq: 2,
-				timeMs: 200,
-				quality: 1,
-				rssi: -42,
-				freeHeap: 123456,
-				batteryVoltage: 4.1,
-				uptimeMs: 200,
-				calibrated: true,
-				streaming: true
-			})
-		);
-
-		if (registerFrame === null || heartbeatFrame === null) {
-			throw new Error('expected neural-flight-template metadata frames to parse');
-		}
-
-		expect(isM5OrientationFrame(registerFrame)).toBe(false);
-		expect(isM5OrientationFrame(heartbeatFrame)).toBe(false);
+		expect(protectControlOrientation(previous, next)).toEqual(createNeutralControl());
 	});
 });

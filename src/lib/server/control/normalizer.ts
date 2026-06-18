@@ -1,29 +1,21 @@
 /**
  * Purpose: translate M5-compatible raw frames into neutral normalized controls.
- * This boundary keeps firmware shapes away from experiences and rendering code.
+ *
+ * This module is the Host boundary between firmware-shaped device data and the
+ * public experience control API. It parses raw JSON frames, accepts the known M5
+ * orientation field aliases, rejects missing or stale orientation data with a
+ * neutral control, normalizes pitch and roll from degrees into -1..1, clamps
+ * quality into 0..1, and optionally smooths consecutive valid controls.
+ *
+ * Experiences should only receive the resulting ControlOrientation values and
+ * never need to know which raw M5 field names were present on the device frame.
  */
 import type { ControlOrientation } from '$lib/protocol';
 
-// 1. Tuning constants
-
 export const STALE_AFTER_MS = 1_000;
 
-/**
- * Enables smoothing for already normalized values.
- * true = pitch and roll are softened across frames.
- * false = each normalized frame is forwarded without smoothing.
- */
-const SMOOTH_NORMALIZED_CONTROLS = true;
-
-/**
- * Smoothing factor for pitch and roll in the range 0..1.
- * 1 = no visible smoothing, 0 = stays almost entirely at the previous value.
- */
-const NORMALIZED_CONTROL_SMOOTHING = 0.25;
-
 const MAX_ANGLE_DEGREES = 45;
-
-// Chapter: raw input model
+const DEFAULT_SMOOTHING = 0.25;
 
 export type M5RawFrame = Readonly<{
 	type?: string;
@@ -38,89 +30,85 @@ export type M5RawFrame = Readonly<{
 	quality?: number;
 }>;
 
-// 2. Public normalization API
+type OrientationDegrees = Readonly<{
+	pitch: number;
+	roll: number;
+}>;
 
-export function createNeutralControl(timestamp: number = Date.now()): ControlOrientation {
+export function createNeutralControl(): ControlOrientation {
 	return {
 		pitch: 0,
 		roll: 0,
 		quality: 0,
-		source: 'm5',
-		safeMode: true,
-		timestamp
+		controllerType: 'm5'
 	};
 }
 
 export function normalizeM5Frame(frame: M5RawFrame, now: number = Date.now()): ControlOrientation {
-	const timestamp = typeof frame.timestamp === 'number' ? frame.timestamp : now;
-	const age = now - timestamp;
-
-	if (age > STALE_AFTER_MS) {
-		return createNeutralControl(now);
+	if (isStale(frame, now)) {
+		return createNeutralControl();
 	}
 
-	const pitchDegrees = firstNumber(frame.pitch, frame.angleY, frame.rotationY);
-	const rollDegrees = firstNumber(frame.roll, frame.angleX, frame.rotationX);
+	const orientation = readOrientationDegrees(frame);
 
-	if (pitchDegrees === null || rollDegrees === null) {
-		return createNeutralControl(now);
+	if (orientation === null) {
+		return createNeutralControl();
 	}
 
 	return {
-		pitch: clampUnit(pitchDegrees / MAX_ANGLE_DEGREES),
-		roll: clampUnit(rollDegrees / MAX_ANGLE_DEGREES),
+		pitch: clamp(orientation.pitch / MAX_ANGLE_DEGREES, -1, 1),
+		roll: clamp(orientation.roll / MAX_ANGLE_DEGREES, -1, 1),
 		quality: readQuality(frame.quality),
-		source: 'm5',
-		safeMode: false,
-		timestamp
+		controllerType: 'm5'
 	};
 }
 
 export function smoothControlOrientation(
 	previous: ControlOrientation,
 	next: ControlOrientation,
-	smoothing: number = NORMALIZED_CONTROL_SMOOTHING,
-	enabled: boolean = SMOOTH_NORMALIZED_CONTROLS
+	smoothing: number = DEFAULT_SMOOTHING,
+	enabled = true
 ): ControlOrientation {
-	if (!enabled || previous.safeMode || next.safeMode) {
+	if (!enabled || next.quality <= 0) {
 		return next;
 	}
 
-	const amount = readSmoothing(smoothing);
+	const amount = Number.isFinite(smoothing) ? clamp(smoothing, 0, 1) : DEFAULT_SMOOTHING;
+	const previousPitch = previous.quality <= 0 ? 0 : previous.pitch;
+	const previousRoll = previous.quality <= 0 ? 0 : previous.roll;
 
 	return {
 		...next,
-		pitch: lerp(previous.pitch, next.pitch, amount),
-		roll: lerp(previous.roll, next.roll, amount)
+		pitch: lerp(previousPitch, next.pitch, amount),
+		roll: lerp(previousRoll, next.roll, amount)
 	};
 }
 
 export function isM5OrientationFrame(frame: M5RawFrame): boolean {
-	return (
-		firstNumber(frame.pitch, frame.angleY, frame.rotationY) !== null &&
-		firstNumber(frame.roll, frame.angleX, frame.rotationX) !== null
-	);
+	return readOrientationDegrees(frame) !== null;
 }
-
-// 3. Raw frame parsing
 
 export function parseM5Frame(input: string): M5RawFrame | null {
 	try {
 		const parsed: unknown = JSON.parse(input);
-
-		if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-			return null;
-		}
-
-		return parsed;
+		return isFrameObject(parsed) ? parsed : null;
 	} catch {
 		return null;
 	}
 }
 
-// Chapter: private helpers
+function readOrientationDegrees(frame: M5RawFrame): OrientationDegrees | null {
+	const pitch = firstFiniteNumber(frame.pitch, frame.angleY, frame.rotationY);
+	const roll = firstFiniteNumber(frame.roll, frame.angleX, frame.rotationX);
 
-function firstNumber(...values: readonly unknown[]): number | null {
+	return pitch === null || roll === null ? null : { pitch, roll };
+}
+
+function isStale(frame: M5RawFrame, now: number): boolean {
+	return typeof frame.timestamp === 'number' && now - frame.timestamp > STALE_AFTER_MS;
+}
+
+function firstFiniteNumber(...values: readonly unknown[]): number | null {
 	for (const value of values) {
 		if (typeof value === 'number' && Number.isFinite(value)) {
 			return value;
@@ -130,26 +118,18 @@ function firstNumber(...values: readonly unknown[]): number | null {
 	return null;
 }
 
-function clampUnit(value: number): number {
-	return Math.max(-1, Math.min(1, value));
+function readQuality(value: unknown): number {
+	return typeof value === 'number' && Number.isFinite(value) ? clamp(value, 0, 1) : 1;
+}
+
+function isFrameObject(value: unknown): value is M5RawFrame {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function clamp(value: number, min: number, max: number): number {
+	return Math.max(min, Math.min(max, value));
 }
 
 function lerp(from: number, to: number, amount: number): number {
 	return from + (to - from) * amount;
-}
-
-function readSmoothing(value: number): number {
-	if (!Number.isFinite(value)) {
-		return NORMALIZED_CONTROL_SMOOTHING;
-	}
-
-	return Math.max(0, Math.min(1, value));
-}
-
-function readQuality(value: unknown): number {
-	if (typeof value !== 'number' || !Number.isFinite(value)) {
-		return 1;
-	}
-
-	return Math.max(0, Math.min(1, value));
 }

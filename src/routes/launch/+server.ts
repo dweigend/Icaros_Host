@@ -1,22 +1,14 @@
 /**
- * Purpose: Quest launch endpoint for the active experience. It redirects to an
- * externally running experience client instead of serving or starting assets in
- * the host process.
+ * Purpose: Quest launch endpoint for the selected runtime client. It redirects
+ * instead of serving or starting assets in the host process.
  */
 import { error, redirect } from '@sveltejs/kit';
 
-import { resolveExperienceLaunchUrl } from '$lib/server/experiences';
-import { stationStateStore } from '$lib/server/station/state';
-import { runtimeClientRegistry } from '$lib/server/ws/runtime-clients';
+import { resolveSelectedLaunchClientUrl } from '$lib/server/launch';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = () => {
-	const station = stationStateStore.getState();
-	const activeClient =
-		station.activeClientId === null
-			? null
-			: runtimeClientRegistry.findSelectableClient(station.activeClientId);
-	const result = resolveExperienceLaunchUrl(station.activeClientId, activeClient);
+	const result = resolveSelectedLaunchClientUrl();
 
 	if (!result.ok) {
 		error(result.status, result.message);

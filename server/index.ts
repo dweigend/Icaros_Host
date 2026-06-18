@@ -3,6 +3,7 @@
  * Icaros WebSocket runtime. It owns process startup only; protocol and station
  * behavior stay in reusable server libraries.
  */
+
 import { existsSync, readFileSync } from 'node:fs';
 import {
 	createServer as createHttpServer,
@@ -15,65 +16,69 @@ import {
 } from 'node:https';
 
 import { DEFAULT_HTTPS_DEVICE_WS_PORT } from '../src/lib/server/device/pairing';
-import {
-	recordPairedDeviceTcpConnection,
-	startSavedControllerDiscovery
-} from '../src/lib/server/device/usb-setup';
 import { resolveServerOpenUrls } from '../src/lib/server/network';
 import { createIcarosWebSocketGateway } from '../src/lib/server/ws';
 
-const port = Number(process.env.PORT ?? 3000);
+const DEFAULT_HOST_PORT = 5183;
+const BUILD_HANDLER_URL = new URL('../build/handler.js', import.meta.url);
+
+const port = Number(process.env.PORT ?? DEFAULT_HOST_PORT);
 const host = process.env.HOST ?? '0.0.0.0';
 const DEFAULT_TLS_CERT_FILE = '.certs/icaros-host.pem';
 const DEFAULT_TLS_KEY_FILE = '.certs/icaros-host-key.pem';
 const PROTOCOL_HEADER = 'x-forwarded-proto';
 
+type RuntimeServer = HttpServer | ReturnType<typeof createHttpsServer>;
+
 async function start(): Promise<void> {
 	process.env.PROTOCOL_HEADER ??= PROTOCOL_HEADER;
 
-	const { handler } = await import('../build/handler.js');
+	ensureBuildHandler();
+	const { handler } = await import(BUILD_HANDLER_URL.href);
 	const tlsOptions = loadTlsOptions();
 	const protocol = 'https';
 	const server = createHttpsServer(tlsOptions, createProtocolAwareHandler(handler));
 	const gateway = createIcarosWebSocketGateway();
 	const plainDeviceWsPort = resolvePlainDeviceWsPort();
-	let pendingListeners = plainDeviceWsPort === null ? 1 : 2;
-	const markListening = (): void => {
-		pendingListeners -= 1;
-		if (pendingListeners === 0) {
-			const discovery = startSavedControllerDiscovery();
-			console.log(`M5 controller startup discovery: ${discovery.state} (${discovery.step})`);
-		}
-	};
 
 	gateway.attach(server);
 	const plainDeviceServer = plainDeviceWsPort === null ? null : createPlainDeviceServer(gateway);
 
-	server.listen(port, host, () => {
-		console.log(`Icaros Host listening on ${protocol}://${host}:${port}`);
+	try {
+		await listenRuntimeServers({ server, plainDeviceServer, plainDeviceWsPort, protocol });
+		await waitForShutdown({ gateway, server, plainDeviceServer });
+	} catch (error) {
+		gateway.dispose();
+		closeServer(server);
+		closeServer(plainDeviceServer);
+		throw error;
+	}
+}
 
-		for (const openUrl of resolveServerOpenUrls(protocol, host, port)) {
-			console.log(`${openUrl.label}: ${openUrl.url}`);
-		}
+async function listenRuntimeServers({
+	server,
+	plainDeviceServer,
+	plainDeviceWsPort,
+	protocol
+}: Readonly<{
+	server: ReturnType<typeof createHttpsServer>;
+	plainDeviceServer: HttpServer | null;
+	plainDeviceWsPort: number | null;
+	protocol: 'https';
+}>): Promise<void> {
+	await listenOnPort(server, port, host);
+	console.log(`Icaros Host listening on ${protocol}://${host}:${port}`);
 
-		markListening();
-	});
-
-	if (plainDeviceServer !== null && plainDeviceWsPort !== null) {
-		plainDeviceServer.listen(plainDeviceWsPort, host, () => {
-			console.log(`M5 plain device WebSocket listening on ws://${host}:${plainDeviceWsPort}`);
-			markListening();
-		});
+	for (const openUrl of resolveServerOpenUrls(protocol, host, port)) {
+		console.log(`${openUrl.label}: ${openUrl.url}`);
 	}
 
-	const stop = (): void => {
-		gateway.dispose();
-		server.close();
-		plainDeviceServer?.close();
-	};
+	if (plainDeviceServer === null || plainDeviceWsPort === null) {
+		return;
+	}
 
-	process.on('SIGINT', stop);
-	process.on('SIGTERM', stop);
+	await listenOnPort(plainDeviceServer, plainDeviceWsPort, host);
+	console.log(`M5 plain device WebSocket listening on ws://${host}:${plainDeviceWsPort}`);
 }
 
 function createPlainDeviceServer(
@@ -83,20 +88,49 @@ function createPlainDeviceServer(
 		response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
 		response.end('M5 device WebSocket endpoint only.\n');
 	});
-	server.on('connection', (socket) => {
-		recordPairedDeviceTcpConnection(formatRemoteAddress(socket.remoteAddress, socket.remotePort));
-	});
 	gateway.attachDeviceServer(server);
 	return server;
 }
 
-await start();
+try {
+	await start();
+} catch (error) {
+	console.error(error instanceof Error ? error.message : String(error));
+	process.exitCode = 1;
+}
+
+function ensureBuildHandler(): void {
+	if (existsSync(BUILD_HANDLER_URL)) {
+		return;
+	}
+
+	throw new Error(
+		'Missing SvelteKit build output at build/handler.js. Run `bun run build` before `bun start`.'
+	);
+}
 
 function createProtocolAwareHandler(handler: RequestListener): RequestListener {
 	return (request, response) => {
 		request.headers[PROTOCOL_HEADER] ??= 'https';
 		handler(request, response);
 	};
+}
+
+function listenOnPort(server: RuntimeServer, port: number, host: string): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const handleError = (error: Error): void => {
+			server.off('listening', handleListening);
+			reject(error);
+		};
+		const handleListening = (): void => {
+			server.off('error', handleError);
+			resolve();
+		};
+
+		server.once('error', handleError);
+		server.once('listening', handleListening);
+		server.listen(port, host);
+	});
 }
 
 function loadTlsOptions(): HttpsServerOptions {
@@ -140,6 +174,34 @@ function resolvePlainDeviceWsPort(): number | null {
 	return devicePort;
 }
 
+function waitForShutdown({
+	gateway,
+	server,
+	plainDeviceServer
+}: Readonly<{
+	gateway: ReturnType<typeof createIcarosWebSocketGateway>;
+	server: ReturnType<typeof createHttpsServer>;
+	plainDeviceServer: HttpServer | null;
+}>): Promise<void> {
+	return new Promise((resolve) => {
+		const stop = (): void => {
+			gateway.dispose();
+			server.close();
+			plainDeviceServer?.close();
+			resolve();
+		};
+
+		process.once('SIGINT', stop);
+		process.once('SIGTERM', stop);
+	});
+}
+
+function closeServer(server: RuntimeServer | null): void {
+	if (server?.listening === true) {
+		server.close();
+	}
+}
+
 function readPort(value: string, name: string): number {
 	const parsed = Number(value);
 	if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65_535) {
@@ -147,12 +209,4 @@ function readPort(value: string, name: string): number {
 	}
 
 	throw new Error(`${name} must be a TCP port number.`);
-}
-
-function formatRemoteAddress(address: string | undefined, port: number | undefined): string | null {
-	if (address === undefined) {
-		return null;
-	}
-
-	return port === undefined ? address : `${address}:${port}`;
 }

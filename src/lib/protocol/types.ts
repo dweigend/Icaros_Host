@@ -1,7 +1,7 @@
 /**
  * Purpose: shared protocol types for Icaros Host messages. The file models the
- * small M1 contract between host, operator, Quest, experiences, and M5 without
- * transport-specific behavior.
+ * small station contract between host, operator, Quest, experiences, and M5
+ * without transport-specific behavior.
  */
 export const PROTOCOL_VERSION = 'neural-flight.v1';
 export const STATION_ID = 'station-a';
@@ -26,21 +26,15 @@ export type Message<TType extends string, TPayload> = Readonly<{
 }>;
 
 export type StationState = Readonly<{
-	activeExperienceId: string | null;
-	activeClientId: string | null;
+	selectedExperienceId: string | null;
+	selectedLaunchClientId: string | null;
 }>;
 
 export type ControlOrientation = Readonly<{
 	pitch: number;
 	roll: number;
 	quality: number;
-	source: 'm5';
-	safeMode: boolean;
-	timestamp: number;
-}>;
-
-export type OperatorDiagnosticRegistrationPayload = Readonly<{
-	id: string;
+	controllerType: 'm5';
 }>;
 
 export type RuntimeClientStatus = 'online' | 'stale';
@@ -71,8 +65,8 @@ export type ClientHeartbeatPayload = Readonly<{
 
 export type ClientRegisteredPayload = Readonly<{
 	clientId: string;
-	active: boolean;
-	activeClientId: string | null;
+	selectedForLaunch: boolean;
+	selectedLaunchClientId: string | null;
 }>;
 
 export type ClientRejectedPayload = Readonly<{
@@ -80,7 +74,7 @@ export type ClientRejectedPayload = Readonly<{
 }>;
 
 export type RuntimeClientsPayload = Readonly<{
-	activeClientId: string | null;
+	selectedLaunchClientId: string | null;
 	clients: readonly RuntimeClientSummary[];
 }>;
 

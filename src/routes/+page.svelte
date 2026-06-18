@@ -1,36 +1,37 @@
 <!--
-	Purpose: single-page Icaros Host operator console composed from route-local
-	console panels. Route data stays in +page.server.ts.
+	Purpose: single-page Icaros Host operator console. Route-private panels and
+	state live under _console so this route stays a compact composition boundary.
 -->
 <script lang="ts">
-    import { onMount } from "svelte";
+	import { onMount } from 'svelte';
 
-    import ConsoleActiveExperience from "./console-active-experience.svelte";
-    import ConsoleConnectionAddresses from "./console-connection-addresses.svelte";
-    import ConsoleControllerSetup from "./console-controller-setup.svelte";
-    import ConsoleLiveControllerData from "./console-live-controller-data.svelte";
-    import ConsoleRuntimeClients from "./console-runtime-clients.svelte";
-    import { createConsolePageState } from "./console-state.svelte";
-    import type { PageProps } from "./$types";
+	import ConnectionAddressesPanel from './_console/components/connection-addresses-panel.svelte';
+	import ControlStreamPanel from './_console/components/control-stream-panel.svelte';
+	import ControllerSetupPanel from './_console/components/controller-setup-panel.svelte';
+	import LaunchSelectionPanel from './_console/components/launch-selection-panel.svelte';
+	import RuntimeClientsPanel from './_console/components/runtime-clients-panel.svelte';
+	import { createConsolePageState } from './_console';
+	import type { PageProps } from './$types';
 
-    let { data }: PageProps = $props();
+	let { data }: PageProps = $props();
 
-    const consoleState = createConsolePageState(() => data);
+	const consoleState = createConsolePageState(() => data);
 
-    onMount(() => consoleState.mountRuntimeDebugSocket());
+	onMount(() => consoleState.mountConsoleLiveSockets());
 </script>
 
 <svelte:head>
-    <title>Icaros Host Console</title>
+	<title>Icaros Host Console</title>
 </svelte:head>
 
 <main class="console">
-    <header class="top">
-        <h1>Icaros Host</h1>
-    </header>
-    <ConsoleConnectionAddresses urls={consoleState.connectionUrls} />
-    <ConsoleActiveExperience state={consoleState} />
-    <ConsoleRuntimeClients state={consoleState} />
-    <ConsoleControllerSetup state={consoleState} />
-    <ConsoleLiveControllerData state={consoleState} />
+	<header class="top">
+		<h1>Icaros Host</h1>
+	</header>
+
+	<ConnectionAddressesPanel urls={consoleState.connectionUrls} />
+	<LaunchSelectionPanel state={consoleState.launch} />
+	<RuntimeClientsPanel state={consoleState.registry} />
+	<ControllerSetupPanel state={consoleState.controller} />
+	<ControlStreamPanel state={consoleState.controlStream} />
 </main>

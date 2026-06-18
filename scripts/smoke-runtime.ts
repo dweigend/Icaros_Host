@@ -3,19 +3,15 @@
  *
  * The script talks to a running Host process, registers and selects one runtime
  * client, verifies `/launch` redirects to that client's HTTPS URL, simulates one
- * M5 frame, and verifies normalized `control.orientation` reaches the active
- * client. It does not replace Quest, certificate, or real firmware testing.
+ * M5 frame, and verifies normalized `control.orientation` reaches the public
+ * control stream. It does not replace Quest, certificate, or real firmware testing.
  */
 import WebSocket from 'ws';
 
 import {
-	type ClientRegisteredPayload,
-	type ClientRejectedPayload,
 	type ControlOrientation,
 	createMessage,
-	validateClientRegisteredPayload,
-	validateClientRejectedPayload,
-	validateControlOrientation
+	readHostRuntimeMessage
 } from '../src/lib/protocol';
 import {
 	readDevicePairingToken,
@@ -31,20 +27,6 @@ type SmokeConfig = Readonly<{
 	clientUrl: string;
 	devicePairingToken: string;
 }>;
-
-type RuntimeMessage =
-	| Readonly<{
-			type: 'control.orientation';
-			payload: ControlOrientation;
-	  }>
-	| Readonly<{
-			type: 'client.registered';
-			payload: ClientRegisteredPayload;
-	  }>
-	| Readonly<{
-			type: 'client.rejected';
-			payload: ClientRejectedPayload;
-	  }>;
 
 type SmokeRuntimeResult = Readonly<{
 	launchUrl: string;
@@ -67,13 +49,11 @@ async function main(): Promise<void> {
 
 	const result = await verifyRuntimeClientLaunchAndControl(config);
 
-	console.log(`activeClientId=${SMOKE_CLIENT_ID}`);
-	console.log(`activeExperienceId=${config.experienceId}`);
+	console.log(`selectedLaunchClientId=${SMOKE_CLIENT_ID}`);
+	console.log(`selectedExperienceId=${config.experienceId}`);
 	console.log(`registeredClientUrl=${config.clientUrl}`);
 	console.log(`launchRedirect=${result.launchUrl}`);
-	console.log(
-		`control.orientation pitch=${result.control.pitch} roll=${result.control.roll} source=${result.control.source}`
-	);
+	console.log(`control.orientation pitch=${result.control.pitch} roll=${result.control.roll}`);
 }
 
 function readConfig(): SmokeConfig {
@@ -120,6 +100,7 @@ function verifyRuntimeClientLaunchAndControl(config: SmokeConfig): Promise<Smoke
 	return new Promise((resolve, reject) => {
 		let settled = false;
 		const runtime = new WebSocket(toWebSocketUrl(config.hostOrigin, '/ws/runtime'));
+		let controlStream: WebSocket | null = null;
 		let device: WebSocket | null = null;
 		let launchUrl: string | null = null;
 		const timeout = setTimeout(() => {
@@ -138,6 +119,7 @@ function verifyRuntimeClientLaunchAndControl(config: SmokeConfig): Promise<Smoke
 			settled = true;
 			clearTimeout(timeout);
 			runtime.close();
+			controlStream?.close();
 			device?.close();
 			resolve({ launchUrl: verifiedLaunchUrl, control });
 		};
@@ -148,6 +130,7 @@ function verifyRuntimeClientLaunchAndControl(config: SmokeConfig): Promise<Smoke
 			settled = true;
 			clearTimeout(timeout);
 			runtime.close();
+			controlStream?.close();
 			device?.close();
 			reject(error);
 		};
@@ -172,7 +155,7 @@ function verifyRuntimeClientLaunchAndControl(config: SmokeConfig): Promise<Smoke
 		});
 
 		runtime.on('message', async (data) => {
-			const message = parseRuntimeMessage(data.toString());
+			const message = readHostRuntimeMessage(data.toString());
 
 			if (message?.type === 'client.rejected') {
 				fail(new Error(`client.hello rejected: ${message.payload.reason}`));
@@ -186,24 +169,15 @@ function verifyRuntimeClientLaunchAndControl(config: SmokeConfig): Promise<Smoke
 				}
 
 				try {
-					await setActiveClient(config);
+					await setSelectedLaunchClient(config);
 					launchUrl = await readLaunchRedirect(config);
+					controlStream = openControlStream(config, finish, fail);
 					device = openDeviceSocket(config, fail);
 				} catch (error) {
 					fail(error instanceof Error ? error : new Error(String(error)));
 				}
 				return;
 			}
-
-			if (message?.type !== 'control.orientation') {
-				return;
-			}
-
-			if (message.payload.safeMode) {
-				return;
-			}
-
-			finish(message.payload);
 		});
 
 		runtime.on('close', () => {
@@ -216,8 +190,8 @@ function verifyRuntimeClientLaunchAndControl(config: SmokeConfig): Promise<Smoke
 	});
 }
 
-async function setActiveClient(config: SmokeConfig): Promise<void> {
-	const response = await fetch(new URL('/?/setActiveClient', config.hostOrigin), {
+async function setSelectedLaunchClient(config: SmokeConfig): Promise<void> {
+	const response = await fetch(new URL('/?/setSelectedLaunchClient', config.hostOrigin), {
 		method: 'POST',
 		headers: {
 			Accept: 'application/json',
@@ -229,7 +203,9 @@ async function setActiveClient(config: SmokeConfig): Promise<void> {
 	});
 
 	if (!response.ok) {
-		throw new Error(`setActiveClient failed with ${response.status}: ${await response.text()}`);
+		throw new Error(
+			`setSelectedLaunchClient failed with ${response.status}: ${await response.text()}`
+		);
 	}
 }
 
@@ -259,6 +235,29 @@ function openDeviceSocket(config: SmokeConfig, fail: (error: Error) => void): We
 	return device;
 }
 
+function openControlStream(
+	config: SmokeConfig,
+	finish: (control: ControlOrientation) => void,
+	fail: (error: Error) => void
+): WebSocket {
+	const controlStream = new WebSocket(toWebSocketUrl(config.hostOrigin, '/ws/control/main'));
+
+	controlStream.on('message', (data) => {
+		const message = readHostRuntimeMessage(data.toString());
+		if (message?.type === 'control.orientation' && message.payload.quality > 0) {
+			finish(message.payload);
+		}
+	});
+	controlStream.on('error', (error) => {
+		fail(toError(error));
+	});
+	controlStream.on('close', () => {
+		fail(new Error('control stream closed before smoke completed'));
+	});
+
+	return controlStream;
+}
+
 function toDeviceWebSocketUrl(config: SmokeConfig): string {
 	const url = new URL(
 		'/ws/device',
@@ -266,35 +265,6 @@ function toDeviceWebSocketUrl(config: SmokeConfig): string {
 	);
 	url.searchParams.set('pairing', config.devicePairingToken);
 	return url.toString();
-}
-
-function parseRuntimeMessage(data: string): RuntimeMessage | null {
-	try {
-		const parsed: unknown = JSON.parse(data);
-
-		if (!isRuntimeEnvelope(parsed)) {
-			return null;
-		}
-
-		if (parsed.type === 'control.orientation') {
-			const validation = validateControlOrientation(parsed.payload);
-			return validation.ok ? { type: 'control.orientation', payload: validation.value } : null;
-		}
-
-		if (parsed.type === 'client.registered') {
-			const validation = validateClientRegisteredPayload(parsed.payload);
-			return validation.ok ? { type: 'client.registered', payload: validation.value } : null;
-		}
-
-		if (parsed.type === 'client.rejected') {
-			const validation = validateClientRejectedPayload(parsed.payload);
-			return validation.ok ? { type: 'client.rejected', payload: validation.value } : null;
-		}
-	} catch {
-		return null;
-	}
-
-	return null;
 }
 
 function toWebSocketUrl(origin: URL, path: string): string {
@@ -347,10 +317,6 @@ function toError(value: unknown): Error {
 	}
 
 	return new Error(String(value));
-}
-
-function isRuntimeEnvelope(value: unknown): value is Readonly<{ type: string; payload: unknown }> {
-	return isRecord(value) && typeof value.type === 'string' && 'payload' in value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

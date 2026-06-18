@@ -1,4 +1,4 @@
 /**
  * Purpose: public WebSocket gateway entrypoint for production server startup.
  */
-export * from './gateway';
+export { createIcarosWebSocketGateway } from './gateway';

@@ -1,7 +1,7 @@
 /**
  * Purpose: validation helpers for protocol data crossing filesystem, HTTP, and
  * WebSocket boundaries. They keep external data out of typed runtime state until
- * the M1 contract is proven.
+ * the station contract is proven.
  */
 import type {
 	ClientHeartbeatPayload,
@@ -9,7 +9,6 @@ import type {
 	ClientRegisteredPayload,
 	ClientRejectedPayload,
 	ControlOrientation,
-	OperatorDiagnosticRegistrationPayload,
 	RuntimeClientSummary,
 	RuntimeClientsPayload,
 	StationState
@@ -19,23 +18,34 @@ export type ValidationResult<TValue> =
 	| Readonly<{ ok: true; value: TValue }>
 	| Readonly<{ ok: false; error: string }>;
 
-export function validateOperatorDiagnosticRegistrationPayload(
-	input: unknown
-): ValidationResult<OperatorDiagnosticRegistrationPayload> {
-	if (!isRecord(input)) {
-		return fail('operator.diagnostic.register payload must be an object');
-	}
+export type HostRuntimeMessage =
+	| Readonly<{ type: 'client.registered'; payload: ClientRegisteredPayload }>
+	| Readonly<{ type: 'client.rejected'; payload: ClientRejectedPayload }>
+	| Readonly<{ type: 'control.orientation'; payload: ControlOrientation }>
+	| Readonly<{ type: 'station.state'; payload: StationState }>;
 
-	if ('role' in input || 'clientId' in input || 'experienceId' in input) {
-		return fail('operator.diagnostic.register payload must not include client identity fields');
-	}
+export function readHostRuntimeMessage(data: string): HostRuntimeMessage | null {
+	try {
+		const parsed: unknown = JSON.parse(data);
+		if (!isHostRuntimeMessageEnvelope(parsed)) {
+			return null;
+		}
 
-	const id = readString(input.id, 'operator.diagnostic.register id must be a non-empty string');
-	if (!id.ok) {
-		return id;
+		switch (parsed.type) {
+			case 'client.registered':
+				return readValidatedMessage(parsed.type, parsed.payload, validateClientRegisteredPayload);
+			case 'client.rejected':
+				return readValidatedMessage(parsed.type, parsed.payload, validateClientRejectedPayload);
+			case 'control.orientation':
+				return readValidatedMessage(parsed.type, parsed.payload, validateControlOrientation);
+			case 'station.state':
+				return readValidatedMessage(parsed.type, parsed.payload, validateStationState);
+			default:
+				return null;
+		}
+	} catch {
+		return null;
 	}
-
-	return ok({ id: id.value });
 }
 
 export function validateClientHelloPayload(input: unknown): ValidationResult<ClientHelloPayload> {
@@ -115,28 +125,26 @@ export function validateClientRegisteredPayload(
 		return clientId;
 	}
 
-	if (typeof input.active !== 'boolean') {
-		return fail('client.registered active must be boolean');
+	if (typeof input.selectedForLaunch !== 'boolean') {
+		return fail('client.registered selectedForLaunch must be boolean');
 	}
 
-	const activeClientId = readNullableString(
-		input.activeClientId,
-		'client.registered activeClientId must be a non-empty string or null'
+	const selectedLaunchClientId = readNullableString(
+		input.selectedLaunchClientId,
+		'client.registered selectedLaunchClientId must be a non-empty string or null'
 	);
-	if (!activeClientId.ok) {
-		return activeClientId;
+	if (!selectedLaunchClientId.ok) {
+		return selectedLaunchClientId;
 	}
 
 	return ok({
 		clientId: clientId.value,
-		active: input.active,
-		activeClientId: activeClientId.value
+		selectedForLaunch: input.selectedForLaunch,
+		selectedLaunchClientId: selectedLaunchClientId.value
 	});
 }
 
-export function validateClientRejectedPayload(
-	input: unknown
-): ValidationResult<ClientRejectedPayload> {
+function validateClientRejectedPayload(input: unknown): ValidationResult<ClientRejectedPayload> {
 	if (!isRecord(input)) {
 		return fail('client.rejected payload must be an object');
 	}
@@ -154,22 +162,22 @@ export function validateStationState(input: unknown): ValidationResult<StationSt
 		return fail('station.state payload must be an object');
 	}
 
-	const activeExperienceId = readNullableSlug(input.activeExperienceId);
-	if (!activeExperienceId.ok) {
-		return activeExperienceId;
+	const selectedExperienceId = readNullableSlug(input.selectedExperienceId);
+	if (!selectedExperienceId.ok) {
+		return selectedExperienceId;
 	}
 
-	const activeClientId = readNullableString(
-		input.activeClientId,
-		'station.state activeClientId must be a non-empty string or null'
+	const selectedLaunchClientId = readNullableString(
+		input.selectedLaunchClientId,
+		'station.state selectedLaunchClientId must be a non-empty string or null'
 	);
-	if (!activeClientId.ok) {
-		return activeClientId;
+	if (!selectedLaunchClientId.ok) {
+		return selectedLaunchClientId;
 	}
 
 	return ok({
-		activeExperienceId: activeExperienceId.value,
-		activeClientId: activeClientId.value
+		selectedExperienceId: selectedExperienceId.value,
+		selectedLaunchClientId: selectedLaunchClientId.value
 	});
 }
 
@@ -180,12 +188,12 @@ export function validateRuntimeClientsPayload(
 		return fail('runtime.clients payload must contain a clients array');
 	}
 
-	const activeClientId = readNullableString(
-		input.activeClientId,
-		'runtime.clients activeClientId must be a non-empty string or null'
+	const selectedLaunchClientId = readNullableString(
+		input.selectedLaunchClientId,
+		'runtime.clients selectedLaunchClientId must be a non-empty string or null'
 	);
-	if (!activeClientId.ok) {
-		return activeClientId;
+	if (!selectedLaunchClientId.ok) {
+		return selectedLaunchClientId;
 	}
 
 	const clients: RuntimeClientSummary[] = [];
@@ -197,7 +205,7 @@ export function validateRuntimeClientsPayload(
 		clients.push(validation.value);
 	}
 
-	return ok({ activeClientId: activeClientId.value, clients });
+	return ok({ selectedLaunchClientId: selectedLaunchClientId.value, clients });
 }
 
 export function validateControlOrientation(input: unknown): ValidationResult<ControlOrientation> {
@@ -220,25 +228,15 @@ export function validateControlOrientation(input: unknown): ValidationResult<Con
 		return quality;
 	}
 
-	if (input.source !== 'm5') {
-		return fail('control.orientation source must be m5');
-	}
-
-	if (typeof input.safeMode !== 'boolean') {
-		return fail('control.orientation safeMode must be boolean');
-	}
-
-	if (typeof input.timestamp !== 'number' || !Number.isFinite(input.timestamp)) {
-		return fail('control.orientation timestamp must be a finite number');
+	if (input.controllerType !== 'm5') {
+		return fail('control.orientation controllerType must be m5');
 	}
 
 	return ok({
 		pitch: pitch.value,
 		roll: roll.value,
 		quality: quality.value,
-		source: 'm5',
-		safeMode: input.safeMode,
-		timestamp: input.timestamp
+		controllerType: input.controllerType
 	});
 }
 
@@ -248,6 +246,21 @@ function isNonEmptySlug(value: unknown): value is string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isHostRuntimeMessageEnvelope(
+	value: unknown
+): value is Readonly<{ type: string; payload: unknown }> {
+	return isRecord(value) && typeof value.type === 'string' && 'payload' in value;
+}
+
+function readValidatedMessage<TType extends HostRuntimeMessage['type'], TPayload>(
+	type: TType,
+	payload: unknown,
+	validate: (input: unknown) => ValidationResult<TPayload>
+): Readonly<{ type: TType; payload: TPayload }> | null {
+	const validation = validate(payload);
+	return validation.ok ? { type, payload: validation.value } : null;
 }
 
 function fail(error: string): ValidationResult<never> {
@@ -292,7 +305,7 @@ function readNullableSlug(value: unknown): ValidationResult<string | null> {
 		return ok(null);
 	}
 
-	return readSlug(value, 'station.state activeExperienceId must be a slug or null');
+	return readSlug(value, 'station.state selectedExperienceId must be a slug or null');
 }
 
 function readNullableString(value: unknown, error: string): ValidationResult<string | null> {
