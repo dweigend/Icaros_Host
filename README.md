@@ -118,13 +118,13 @@ beschrieben. Host und VR Client besitzen jeweils eigene Zertifikate.
 Normaler Start für Entwicklung und Betrieb:
 
 ```sh
+bun run build
 bun start
 ```
 
-Der Startbefehl ist ein freundlicher Host-Bootstrap: Er prüft TLS, baut die App,
-startet den Runtime-Server und gibt die erreichbaren URLs aus. Wenn die
-Default-Ports in einem unkonfigurierten Prototyping-Setup belegt sind, wählt er
-freie Ersatzports.
+`bun run build` erzeugt das SvelteKit-Produktionsartefakt. `bun start` startet
+dieses Artefakt, prüft TLS und gibt die erreichbaren URLs aus. Es baut nicht
+erneut und weicht nicht still auf Ersatzports aus.
 
 ```txt
 https://localhost:5183/
@@ -132,15 +132,15 @@ https://<host-lan-ip-or-name>:5183/
 ws://<host-lan-ip-or-name>:5184/ws/device
 ```
 
-Für feste Stations-Setups:
+Für feste Stations-Setups bleibt der Alias:
 
 ```sh
 bun run start:strict
 ```
 
-`start:strict` verwendet feste Ports oder schlägt klar fehl. Explizit gesetzte
-Ports wie `PORT` oder `ICAROS_DEVICE_WS_PORT` sind immer ein Vertrag und werden
-nicht still geändert.
+`start:strict` nutzt denselben festen Startpfad. Explizit gesetzte Ports wie
+`PORT` oder `ICAROS_DEVICE_WS_PORT` sind ein Vertrag und werden nicht still
+geändert.
 
 Der Host darf ohne konfigurierten Controller starten. M5-Pairing,
 Firmware-Updates, Diagnose und Controller-Setup laufen danach über die Konsole

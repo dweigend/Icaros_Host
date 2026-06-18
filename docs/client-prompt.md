@@ -22,6 +22,7 @@ Host.
 
 ## Experience
 
+- Beispielwerte vor Projektstart ersetzen.
 - Experience-ID: `mountain-flight`
 - Titel: `Mountain Flight`
 - Ziel: browserbasierte VR-Experience mit Three.js und WebXR

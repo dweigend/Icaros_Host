@@ -76,7 +76,9 @@ reviewable, and learnable for students.
 ## Svelte And UI
 
 - UI primitives belong in `src/lib/components`.
-- Composed blocks belong in `src/lib/blocks`.
+- Composed blocks belong in `src/lib/blocks` once a reusable block family exists.
+  The M1 console currently keeps composed station panels route-local in
+  `src/routes/_console` instead of creating a premature block layer.
 - Route-specific UI stays in `src/routes`.
 - Use `/Users/weigend/Documents/GitHub/ui-system` as the primary design and
   structure reference.
@@ -85,6 +87,9 @@ reviewable, and learnable for students.
   public entry point.
 - `src/app.css` is only for global tokens, reset/base styles, and app shell
   foundations.
+- `$lib` is the public client/protocol entrypoint. UI primitives are imported
+  through `$lib/components` or a family barrel, not re-exported casually from
+  `$lib`.
 
 ## Three.js And Runtime
 

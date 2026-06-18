@@ -1,18 +1,19 @@
-# M5 Pairing Solution
+# Historical M5 Pairing Solution
 
 Purpose: this document summarizes the confirmed M5 USB/WLAN/WebSocket root
-cause, the implemented fix, and the operational best practices. It is the short
-solution report for current Host operation.
+cause, the implemented fix, and reproducible verification commands. It is a
+historical fix report, not the live station runbook. Current diagnostics live in
+[Debugging](debugging.md).
 
-## Outcome
+## Historical Outcome
 
-The M5 controller now connects over WLAN to the Host plain device WebSocket and
-streams accepted controller frames.
+The June 2026 fix proved that the M5 controller could connect over WLAN to the
+Host plain device WebSocket and stream accepted controller frames.
 
-Verified endpoint:
+Verified endpoint shape:
 
 ```txt
-ws://192.168.50.194:5184/ws/device?pairing=redacted
+ws://<host-lan-ip>:5184/ws/device?pairing=redacted
 ```
 
 Verified Host snapshot:
@@ -27,7 +28,7 @@ lastFrameAt=<set>
 Verified socket state:
 
 ```txt
-192.168.50.194:5184->192.168.50.8:<m5-port> ESTABLISHED
+<host-lan-ip>:5184-><m5-lan-ip>:<m5-port> ESTABLISHED
 ```
 
 ## Root Cause
@@ -117,9 +118,9 @@ When pairing fails:
    - `tcpProbeOk=false`: LAN/firewall/AP isolation/routing issue
    - USB telemetry only: firmware is alive, but WLAN/WebSocket is not yet ready
 
-## Verification Matrix
+## Historical Verification Matrix
 
-Latest verification:
+Historical verification command set from the fix period:
 
 ```sh
 bun run lint
@@ -127,7 +128,7 @@ bun run test
 bun run check
 bun run build
 bun run firmware:m5:build
-bun run m5:pairing -- snapshot --host-origin https://192.168.50.194:5183
+bun run m5:pairing -- snapshot --host-origin https://<host-lan-ip>:5183
 ```
 
 Observed:

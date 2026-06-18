@@ -75,18 +75,18 @@ Die wichtigsten Begriffe:
 Der normale Start ist:
 
 ```sh
+bun run build
 bun start
 ```
 
-Der Start prüft TLS, baut die SvelteKit-App und startet den Server.
+Der Build erzeugt das SvelteKit-Produktionsartefakt. Der Start lädt dieses
+Artefakt, prüft TLS und startet den Server auf den festen Stationsports.
 
 Wichtige Dateien:
 
 | Datei | Aufgabe |
 | --- | --- |
-| [scripts/start-host.ts](../scripts/start-host.ts) | Startlogik: TLS prüfen, Ports wählen, Build starten |
-| [server/index.ts](../server/index.ts) | HTTPS-Server starten und WebSocket-Gateway anhängen |
-| [src/lib/server/startup](../src/lib/server/startup) | Start-Konfiguration und TLS-Prüfung |
+| [server/index.ts](../server/index.ts) | Build-Artefakt laden, HTTPS-Server starten und WebSocket-Gateway anhängen |
 
 Browser, Brille und Experience-Clients nutzen HTTPS/WSS. Der M5 nutzt einen
 separaten unverschlüsselten Geräte-WebSocket, weil die Firmware das so
@@ -307,7 +307,11 @@ client.dispose();
 `dispose()` ist wichtig, weil Browser-Sockets, Heartbeats und Listener sonst
 weiterlaufen können.
 
-Der vollständige Client-Vertrag steht in [docs/client-api.md](client-api.md).
+Der vollständige Client-Vertrag steht in [client-api.md](client-api.md).
+Die Convenience-Facade `createIcarosExperienceClient()` registriert den Client,
+abonniert Controls und navigiert bei fremder `station.state`-Auswahl zurück zur
+Host-Konsole. Wer dieses Navigationsverhalten nicht will, nutzt die beiden
+Low-Level-Clients direkt.
 
 ## 12. Diagnose
 
@@ -367,16 +371,16 @@ dass der Host ihre 3D-Welt kennen muss.
 
 | Frage | Einstieg |
 | --- | --- |
-| Wie startet der Host? | [scripts/start-host.ts](../scripts/start-host.ts), [server/index.ts](../server/index.ts) |
+| Wie startet der Host? | [server/index.ts](../server/index.ts) |
 | Welche Nachrichten gibt es? | [src/lib/protocol/types.ts](../src/lib/protocol/types.ts), [src/lib/protocol/messages.ts](../src/lib/protocol/messages.ts) |
 | Wo werden externe Nutzdaten validiert? | [src/lib/protocol/validators.ts](../src/lib/protocol/validators.ts) |
 | Wo hängen die WebSocket-Pfade? | [src/lib/server/ws/gateway.ts](../src/lib/server/ws/gateway.ts) |
 | Wie funktioniert `/launch`? | [src/lib/server/launch/launch-routing.ts](../src/lib/server/launch/launch-routing.ts), [src/routes/launch/+server.ts](../src/routes/launch/+server.ts) |
 | Wo sitzt die Konsole? | [src/routes/+page.svelte](../src/routes/+page.svelte), [src/routes/_console](../src/routes/_console) |
 | Wo wird normalisiert? | [src/lib/server/control/normalizer.ts](../src/lib/server/control/normalizer.ts) |
-| Wie bauen Experiences den Client? | [src/lib/client](../src/lib/client), [docs/client-api.md](client-api.md) |
-| Wie debugge ich M5? | [docs/debugging.md](debugging.md), [docs/m5-pairing-solution.md](m5-pairing-solution.md) |
-| Wie debugge ich Quest/HTTPS? | [docs/quest-https-launch-routing.md](quest-https-launch-routing.md) |
+| Wie bauen Experiences den Client? | [src/lib/client](../src/lib/client), [client-api.md](client-api.md) |
+| Wie debugge ich M5? | [debugging.md](debugging.md), [m5-pairing-solution.md](m5-pairing-solution.md) |
+| Wie debugge ich Quest/HTTPS? | [quest-https-launch-routing.md](quest-https-launch-routing.md) |
 
 ## 16. Der Ablauf in kurz
 

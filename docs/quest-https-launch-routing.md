@@ -53,12 +53,14 @@ the Host origin.
 Run the Host from this repository:
 
 ```sh
+bun run build
 bun start
 ```
 
-`bun start` is the normal friendly Host bootstrap. It verifies TLS, builds the
-app, starts the runtime server, and may move only default ports when they are
-busy. Use fixed station ports with:
+`bun run build` creates the SvelteKit production artifact. `bun start` runs that
+artifact, verifies TLS, and keeps the configured ports fixed. The station URL is
+therefore stable instead of silently moving when a stale process occupies a
+default port. The strict alias uses the same fixed start path:
 
 ```sh
 bun run start:strict
@@ -131,8 +133,10 @@ Restart both servers after certificate changes.
 | State | Result |
 | --- | --- |
 | No selected runtime client | Clear `409` response. |
-| Selected client is no longer online | Clear stale-client response. |
-| Selected client registered a non-HTTPS URL | Clear configuration response. |
+| Selected client becomes unavailable before the request resolves | Clear not-online response. |
+| Selected client disconnects or becomes stale during normal gateway checks | Host clears the selection; later `/launch` requests usually see no selected client. |
+| Client attempts to register a non-HTTPS URL | Registration is rejected with `client.rejected`. |
+| A non-HTTPS URL somehow reaches launch routing | Defensive configuration response. |
 | Selected online client has an HTTPS URL | `307 Temporary Redirect` to that URL. |
 
 The Host console should show only Quest-safe launch URLs:
@@ -179,13 +183,17 @@ with `bun start` and confirm the process logs a LAN URL.
 `/launch` does not redirect. Open the Host console and confirm one online
 runtime client is selected.
 
-`/launch` reports a stale selected client. Reload the experience client, wait
-for it to send `client.hello`, then select the fresh online client in the Host
-console.
+`/launch` reports no selected client after a client was previously selected.
+The selected runtime client may have disconnected or gone stale, which clears
+the selection. Reload the experience client, wait for it to send `client.hello`,
+then select the fresh online client in the Host console.
 
-`/launch` rejects the target URL. The experience registered a URL that does not
-start with `https://`. Serve the client over HTTPS and make sure its
-`client.hello` payload advertises the HTTPS page URL.
+The runtime socket replies with `client.rejected`. Check the reason, then make
+sure `client.hello` advertises a valid HTTPS page URL.
+
+`/launch` rejects the target URL. This should be rare because non-HTTPS client
+URLs are rejected during registration. If it happens, serve the client over
+HTTPS and make sure its `client.hello` payload advertises the HTTPS page URL.
 
 The Quest opens the experience but WebXR or WSS fails. Install the mkcert root
 CA on the headset and use certificates that include the exact LAN IP or

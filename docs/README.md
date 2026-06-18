@@ -23,6 +23,23 @@ close to the code while the top-level README stays short.
 - [M5 Pairing Solution](m5-pairing-solution.md): confirmed root cause, fix,
   verification matrix, and best practices for the USB/WLAN/WebSocket pairing.
 
+## Document Ownership
+
+Use the narrowest canonical source for each question:
+
+| Document | Owns | Does not own |
+| --- | --- | --- |
+| [client-api.md](client-api.md) | Public experience-client wire contract and browser helper behavior. | Quest certificate setup or M5 pairing. |
+| [quest-https-launch-routing.md](quest-https-launch-routing.md) | LAN origins, HTTPS/WSS setup, `/launch` operations, and headset troubleshooting. | Runtime payload shape details. |
+| [architecture.md](architecture.md) | Boundaries, ownership, and data flow. | Step-by-step operation. |
+| [host-lifecycle.md](host-lifecycle.md) | Guided codebase tour for humans and agents. | Canonical protocol or deployment decisions. |
+| [PLAN.md](PLAN.md) | Current MVP decisions, acceptance criteria, and remaining implementation checks. | Operational runbook details. |
+| [debugging.md](debugging.md) | Current M5 diagnostics workflow for console, CLI, and bounded debug snapshots. | Historical incident narrative. |
+| [m5-pairing-solution.md](m5-pairing-solution.md) | Historical M5 pairing fix report and reproducible verification commands. | Current live station state. |
+
+When docs overlap, keep the detailed behavior in the owning document and link
+to it from the other pages.
+
 ## Current MVP Rules
 
 - The host is the station router, gateway, and translator.

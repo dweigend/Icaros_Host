@@ -130,8 +130,9 @@ troubleshooting live in
   origin.
 - Verify that `https://<host-lan-ip-or-name>:5183/launch` returns a `307`
   redirect to the selected runtime client's registered HTTPS URL.
-- Verify that `/launch` fails clearly when no client is selected, the selected
-  client is stale, or the selected client registered a non-HTTPS URL.
+- Verify that non-HTTPS client URLs are rejected during `client.hello`.
+- Verify that `/launch` fails clearly when no client is selected or when a
+  previously selected client becomes unavailable before the request resolves.
 - Open the launch URL on the Quest and confirm the WebXR experience connects to
   `wss://<host-lan-ip-or-name>:5183/ws/runtime`.
 - Add or keep automated coverage for selected-client launch routing, stale
@@ -143,10 +144,10 @@ troubleshooting live in
 2. Operator opens `/`.
 3. Console shows station state and runtime connection URLs.
 4. Runtime clients connect with `client.hello` and appear in the console.
-5. The Meta Quest opens `/launch` and is redirected to the selected WebXR
+5. Operator selects the concrete Launch Client.
+6. The Meta Quest opens `/launch` and is redirected to the selected WebXR
    client's registered HTTPS URL.
-6. M5 connects to `/ws/device`.
-7. Operator selects the concrete Launch Client.
+7. M5 connects to `/ws/device`.
 8. Host forwards `station.state` and `runtime.clients` to runtime clients.
 9. Host publishes `control.orientation` on `/ws/control/main`.
 10. Stale, disconnected, or unsafe M5 state produces neutral controls.

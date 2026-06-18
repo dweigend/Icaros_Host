@@ -7,7 +7,8 @@ checklist student projects should follow. Device pairing, Quest certificate
 setup, and `/launch` operations live in
 [Quest HTTPS Launch Routing](quest-https-launch-routing.md).
 
-If another prompt or document disagrees with this page, use this page.
+If another prompt or document disagrees with this page, use this page for the
+experience-client contract.
 
 ## Boundary
 
@@ -60,8 +61,10 @@ const source = {
 ```
 
 `timestamp` is a millisecond Unix timestamp from `Date.now()`. Student clients
-should ignore messages with unknown `protocol`, `stationId`, `type`, or payload
-shape.
+should send the full envelope for forward compatibility and should ignore
+messages with unknown `protocol`, `stationId`, `type`, or payload shape. The
+current Host gateway validates the external `type` and `payload` before data
+enters runtime state.
 
 ## Client Library
 
@@ -75,7 +78,8 @@ import { createIcarosExperienceClient } from '$lib';
 onMount(() => {
 	const client = createIcarosExperienceClient({
 		experienceId: 'mountain-flight',
-		title: 'Mountain Flight'
+		title: 'Mountain Flight',
+		hostOrigin: 'https://<host-lan-ip-or-name>:5183'
 	});
 
 	const unsubscribe = client.onOrientation((control) => {
@@ -98,9 +102,38 @@ Options:
 | `experienceId` | `string` | yes | none | Stable slug for the experience, for example `mountain-flight`. |
 | `clientId` | `string` | no | stable `localStorage["icaros.clientId"]` id | Concrete browser or headset instance id. Most experiences should leave this unset. |
 | `title` | `string` | no | `document.title` or `experienceId` | Human-readable title shown in the Host console. |
+| `hostOrigin` | `string` | no | current page origin | HTTPS Host origin used for both control and runtime sockets. External clients should set this for LAN or Quest sessions. |
+| `runtimeOrigin` | `string` | no | current page origin | Runtime socket origin for advanced split setups. Use either `hostOrigin` or `runtimeOrigin`, not both. |
 | `streamId` | `string` | no | `main` | Public control stream id used for `/ws/control/:streamId`. |
 | `controlPath` | `string` | no | `/ws/control/main` | Explicit Host control stream path. Most experiences should leave this unset. |
 | `runtimePath` | `string` | no | `/ws/runtime` | Host runtime WebSocket path. Most experiences should leave this unset. |
+
+For control-only clients, `createIcarosControlStreamClient(...)` also accepts
+`controlOrigin` as the explicit control socket origin. Use either `hostOrigin`
+or `controlOrigin`, not both.
+
+### Helper Behavior
+
+The browser helpers derive WebSocket URLs from HTTPS origins. For example,
+`hostOrigin: 'https://host.local:5183'` becomes
+`wss://host.local:5183/ws/control/main` and
+`wss://host.local:5183/ws/runtime`.
+
+If no origin is provided, helpers fall back to the current page origin. That is
+useful only when the experience page is served by the Host or by a same-origin
+test harness. Standalone WebXR clients normally run on their own HTTPS origin,
+so they should pass the Host LAN HTTPS origin explicitly.
+
+`createIcarosLaunchRegistrationClient(...)` registers `window.location.href` as
+the launch `url`. Make sure the page URL is the HTTPS URL the Quest can open.
+
+`createIcarosExperienceClient(...)` is a compatibility facade. It composes the
+control stream and launch registration clients, and it also listens for
+`station.state`. If the selected `experienceId` does not match this client, the
+facade navigates back to the Host console URL. New standalone clients that do
+not want that navigation behavior can compose
+`createIcarosControlStreamClient(...)` and
+`createIcarosLaunchRegistrationClient(...)` explicitly.
 
 The compatibility helper starts in browser lifecycle code, opens the public
 control stream, registers for launch selection on `/ws/runtime`, sends
@@ -185,6 +218,8 @@ Rules:
 - `experienceId` is the stable experience slug.
 - `clientId` identifies this concrete browser or headset instance.
 - `url` must be the HTTPS page URL that `/launch` may redirect to.
+- Non-HTTPS URLs are rejected during registration. `/launch` keeps an additional
+  defensive HTTPS guard but normally never sees a non-HTTPS registered client.
 
 The Host responds with `client.registered` or `client.rejected`.
 
