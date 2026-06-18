@@ -1,24 +1,18 @@
 <!--
-	Purpose: host console block for selected launch client status and launch controls.
+	Purpose: route-private panel for selecting and opening the active launch
+	client. Form actions remain owned by the route server module.
 -->
 <script lang="ts">
 	import { CircleStop, ExternalLink, Save } from '@lucide/svelte';
+
 	import { Button, Kbd, Select, StatusDot } from '$lib/components';
-	import type { HostConsoleState } from '../types';
+	import type { HostConsoleLaunchState } from '../types';
 
 	type Props = Readonly<{
-		state: HostConsoleState;
+		state: HostConsoleLaunchState;
 	}>;
 
 	let { state }: Props = $props();
-
-	const launchClientOptions = $derived(
-		state.runtimeClients.map((client) => ({
-			disabled: client.status !== 'online',
-			label: `${client.title} - ${client.experienceId}`,
-			value: client.clientId
-		}))
-	);
 </script>
 
 <h2 id="launch-selection-title">Launch Selection</h2>
@@ -47,10 +41,10 @@
 			name="clientId"
 			placeholder="Select launch client"
 			value={state.selectedLaunchClientId ?? ''}
-			items={launchClientOptions}
-			disabled={launchClientOptions.length === 0}
+			items={state.launchClientOptions}
+			disabled={state.launchClientOptions.length === 0}
 		/>
-		<Button type="submit" variant="primary" disabled={launchClientOptions.length === 0}>
+		<Button type="submit" variant="primary" disabled={state.launchClientOptions.length === 0}>
 			<Save size={16} aria-hidden="true" />
 			Save Launch
 		</Button>

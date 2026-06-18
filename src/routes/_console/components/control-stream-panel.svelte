@@ -1,15 +1,16 @@
 <!--
-	Purpose: host console block for live normalized controller telemetry.
+	Purpose: route-private panel for live normalized controller telemetry from
+	the public control stream.
 -->
 <script lang="ts">
 	import { Gauge } from '@lucide/svelte';
 
-	import { Kbd, ScrollArea, StatusDot } from '$lib/components';
+	import { ScrollArea, StatusDot } from '$lib/components';
 	import { formatAge, formatSignedUnit, toQualityPercent } from '../format';
-	import type { HostConsoleState } from '../types';
+	import type { HostConsoleControlStreamPanelState } from '../types';
 
 	type Props = Readonly<{
-		state: HostConsoleState;
+		state: HostConsoleControlStreamPanelState;
 	}>;
 
 	let { state }: Props = $props();
@@ -29,9 +30,7 @@
 			<h2>last control</h2>
 			<div class="readout">
 				<strong>
-					{state.debugLastControl === null
-						? 'no frame'
-						: formatSignedUnit(state.debugLastControl.pitch)}
+					{state.debugLastControl === null ? 'no frame' : formatSignedUnit(state.debugLastControl.pitch)}
 				</strong>
 				<span>pitch</span>
 			</div>
@@ -44,9 +43,7 @@
 			<h2>roll</h2>
 			<div class="readout">
 				<strong>
-					{state.debugLastControl === null
-						? 'no frame'
-						: formatSignedUnit(state.debugLastControl.roll)}
+					{state.debugLastControl === null ? 'no frame' : formatSignedUnit(state.debugLastControl.roll)}
 				</strong>
 				<span>roll</span>
 			</div>

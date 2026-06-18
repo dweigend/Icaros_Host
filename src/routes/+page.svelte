@@ -1,19 +1,17 @@
 <!--
-	Purpose: single-page Icaros Host operator console composed from reusable
-	host console blocks. Route data stays in +page.server.ts.
+	Purpose: single-page Icaros Host operator console. Route-private panels and
+	state live under _console so this route stays a compact composition boundary.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
 
-	import {
-		HostConsoleConnectionAddressesBlock,
-		HostConsoleControllerSetupBlock,
-		HostConsoleLaunchSelectionBlock,
-		HostConsoleLiveControllerDataBlock,
-		HostConsoleRuntimeClientsBlock
-	} from '$lib/blocks/host-console';
+	import ConnectionAddressesPanel from './_console/components/connection-addresses-panel.svelte';
+	import ControlStreamPanel from './_console/components/control-stream-panel.svelte';
+	import ControllerSetupPanel from './_console/components/controller-setup-panel.svelte';
+	import LaunchSelectionPanel from './_console/components/launch-selection-panel.svelte';
+	import RuntimeClientsPanel from './_console/components/runtime-clients-panel.svelte';
+	import { createConsolePageState } from './_console';
 	import type { PageProps } from './$types';
-	import { createConsolePageState } from './console-state.svelte';
 
 	let { data }: PageProps = $props();
 
@@ -30,9 +28,10 @@
 	<header class="top">
 		<h1>Icaros Host</h1>
 	</header>
-	<HostConsoleConnectionAddressesBlock urls={consoleState.connectionUrls} />
-	<HostConsoleLaunchSelectionBlock state={consoleState} />
-	<HostConsoleRuntimeClientsBlock state={consoleState} />
-	<HostConsoleControllerSetupBlock state={consoleState} />
-	<HostConsoleLiveControllerDataBlock state={consoleState} />
+
+	<ConnectionAddressesPanel urls={consoleState.connectionUrls} />
+	<LaunchSelectionPanel state={consoleState.launch} />
+	<RuntimeClientsPanel state={consoleState.registry} />
+	<ControllerSetupPanel state={consoleState.controller} />
+	<ControlStreamPanel state={consoleState.controlStream} />
 </main>

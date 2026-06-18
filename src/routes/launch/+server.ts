@@ -4,18 +4,11 @@
  */
 import { error, redirect } from '@sveltejs/kit';
 
-import { resolveLaunchClientUrl } from '$lib/server/launch';
-import { stationStateStore } from '$lib/server/station/state';
-import { runtimeClientRegistry } from '$lib/server/ws/runtime-clients';
+import { resolveSelectedLaunchClientUrl } from '$lib/server/launch';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = () => {
-	const station = stationStateStore.getState();
-	const selectedClient =
-		station.selectedLaunchClientId === null
-			? null
-			: runtimeClientRegistry.findSelectableClient(station.selectedLaunchClientId);
-	const result = resolveLaunchClientUrl(station.selectedLaunchClientId, selectedClient);
+	const result = resolveSelectedLaunchClientUrl();
 
 	if (!result.ok) {
 		error(result.status, result.message);

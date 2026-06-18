@@ -222,6 +222,7 @@ bun run smoke:runtime
 | [docs/m5-pairing-solution.md](docs/m5-pairing-solution.md) | M5-Setup, Pairing und Firmware |
 | [docs/debugging.md](docs/debugging.md) | Debugging und Diagnose |
 | [docs/PLAN.md](docs/PLAN.md) | Aktueller Implementierungsplan |
+| [docs/CODINGSTANDARDS.md](docs/CODINGSTANDARDS.md) | Engineering-Standards und Arbeitsweise |
 | [AGENTS.md](AGENTS.md) | Arbeitsregeln für Coding Agents |
 
 ## Checks

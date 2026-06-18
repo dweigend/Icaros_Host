@@ -108,21 +108,22 @@ derselben Datei sind die Bedienhandlungen: Launch-Auswahl setzen, USB-Pairing
 starten, Controller prüfen, Firmware flashen, Workflow abbrechen und Debug
 umschalten.
 
-Die sichtbaren Teile sind bewusst in kleine Host-Console-Blocks zerlegt:
+Die sichtbaren Teile sind bewusst route-lokal unter
+[src/routes/_console](../src/routes/_console) zerlegt:
 
-- [src/lib/blocks/host-console/components/connection-addresses-block.svelte](../src/lib/blocks/host-console/components/connection-addresses-block.svelte)
-  zeigt Host-, Runtime-, Launch- und M5-Adressen.
-- [src/lib/blocks/host-console/components/controller-setup-block.svelte](../src/lib/blocks/host-console/components/controller-setup-block.svelte)
-  zeigt den M5-Setup-Status und die USB/Firmware-Aktionen.
-- [src/lib/blocks/host-console/components/launch-selection-block.svelte](../src/lib/blocks/host-console/components/launch-selection-block.svelte)
-  zeigt die separate Launch-Auswahl für `/launch`.
-- [src/lib/blocks/host-console/components/runtime-clients-block.svelte](../src/lib/blocks/host-console/components/runtime-clients-block.svelte)
-  zeigt die registrierten Runtime Clients ohne Control-Delivery-Besitz.
-- [src/lib/blocks/host-console/components/live-controller-data-block.svelte](../src/lib/blocks/host-console/components/live-controller-data-block.svelte)
-  zeigt Live-Diagnose für den öffentlichen Control Stream.
-- [src/routes/console-state.svelte.ts](../src/routes/console-state.svelte.ts)
-  komponiert den Browser-State. Launch Registry und Control Stream haben
-  eigene kleine State-Module.
+- `components/connection-addresses-panel.svelte` zeigt Host-, Runtime-, Launch-
+  und M5-Adressen.
+- `components/controller-setup-panel.svelte` komponiert den M5-Setup-Status,
+  die USB/Firmware-Aktionen und die Pairing-Diagnose.
+- `components/launch-selection-panel.svelte` zeigt die separate Launch-Auswahl
+  für `/launch`.
+- `components/runtime-clients-panel.svelte` zeigt registrierte Runtime Clients
+  ohne Control-Delivery-Besitz.
+- `components/control-stream-panel.svelte` zeigt Live-Diagnose für den
+  öffentlichen Control Stream.
+- `page-state.svelte.ts`, `launch-registry-state.svelte.ts` und
+  `control-stream-state.svelte.ts` komponieren den Browser-State mit expliziter
+  WebSocket-Lifecycle-Cleanup.
 
 Die Konsole bleibt absichtlich eine einzige Seite. So musst du nicht zwischen
 mehreren UI-Routen unterscheiden. Es gibt eine Station, einen

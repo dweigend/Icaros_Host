@@ -1,9 +1,10 @@
 /**
- * Purpose: structural data contract consumed by Host console blocks. The route
- * owns state creation; blocks only declare the view data they need.
+ * Purpose: route-private Host console contracts shared by the page, panels, and
+ * browser-side state modules. These types are not a reusable library API.
  */
 import type { StatusDotTone } from '$lib/components/status-dot';
 import type { ControlOrientation, RuntimeClientSummary } from '$lib/protocol';
+import type { PageData } from '../$types';
 
 export type HostConsoleConnectionUrls = Readonly<{
 	consoleUrl: string;
@@ -32,6 +33,12 @@ export type HostConsoleControllerIndicator = Readonly<{
 	detail: string;
 }>;
 
+export type HostConsoleLaunchClientOption = Readonly<{
+	value: string;
+	label: string;
+	disabled?: boolean;
+}>;
+
 export type HostConsoleUsbForm = {
 	ssid: string;
 	password: string;
@@ -42,35 +49,33 @@ export type HostConsoleUsbForm = {
 	dns: string;
 };
 
-export type HostConsoleState = Readonly<{
-	mountConsoleLiveSockets(): () => void;
+export type HostConsoleUsbSetup = PageData['usbSetup'];
+export type HostConsoleUsbSetupState = PageData['usbSetup']['state'];
+
+export type HostConsoleLaunchState = Readonly<{
+	selectedLaunchClientId: string | null;
+	launchClientOptions: readonly HostConsoleLaunchClientOption[];
+	connectionUrls: HostConsoleConnectionUrls;
+}>;
+
+export type HostConsoleRuntimeRegistryState = Readonly<{
 	selectedLaunchClientId: string | null;
 	runtimeClients: readonly RuntimeClientSummary[];
-	connectionUrls: HostConsoleConnectionUrls;
+	now: number;
+}>;
+
+export type HostConsoleControllerSetupState = Readonly<{
 	usbForm: HostConsoleUsbForm;
-	usbSetup: {
-		state: string;
-		debugEnabled: boolean;
-		exitCode: number | null;
-		canFlashFirmware: boolean;
-		usbConnected: boolean;
-		canConfigure: boolean;
-		progress: number;
-		step: string;
-		error: string | null;
-		message: string;
-		debugLines: readonly {
-			id: number;
-			timestamp: number;
-			source: string;
-			message: string;
-		}[];
-	};
+	usbSetup: HostConsoleUsbSetup;
 	usbSetupTone: StatusDotTone;
 	usbSetupDuration: string;
 	usbSetupBusy: boolean;
 	usbLastFrameAge: string;
 	controllerIndicators: readonly HostConsoleControllerIndicator[];
+}>;
+
+export type HostConsoleControlStreamPanelState = Readonly<{
+	connectionUrls: HostConsoleConnectionUrls;
 	debugStatus: HostConsoleDebugStatus;
 	debugStatusTone: StatusDotTone;
 	debugLastControl: ControlOrientation | null;
@@ -81,4 +86,13 @@ export type HostConsoleState = Readonly<{
 	debugPitchPercent: number;
 	debugRollPercent: number;
 	debugQualityPercent: number;
+}>;
+
+export type HostConsoleState = Readonly<{
+	mountConsoleLiveSockets(): () => void;
+	connectionUrls: HostConsoleConnectionUrls;
+	launch: HostConsoleLaunchState;
+	registry: HostConsoleRuntimeRegistryState;
+	controller: HostConsoleControllerSetupState;
+	controlStream: HostConsoleControlStreamPanelState;
 }>;

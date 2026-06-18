@@ -14,7 +14,7 @@
 
 	type SelectProps = Readonly<{
 		disabled?: boolean;
-		items: SelectOption[];
+		items: readonly SelectOption[];
 		label: string;
 		name?: string;
 		placeholder?: string;
@@ -29,6 +29,8 @@
 		placeholder = 'Select',
 		value = $bindable('')
 	}: SelectProps = $props();
+
+	const selectItems = $derived([...items]);
 </script>
 
 <SelectPrimitive.Root
@@ -36,7 +38,7 @@
 	bind:value
 	{name}
 	{disabled}
-	items={items}
+	items={selectItems}
 	allowDeselect={false}
 >
 	<SelectPrimitive.Trigger class="ui-select__trigger" aria-label={label}>
@@ -46,7 +48,7 @@
 	<SelectPrimitive.Portal>
 		<SelectPrimitive.Content class="ui-select__content" sideOffset={4}>
 			<SelectPrimitive.Viewport class="ui-select__viewport">
-				{#each items as item (item.value)}
+				{#each selectItems as item (item.value)}
 					<SelectPrimitive.Item
 						class="ui-select__item"
 						value={item.value}

@@ -18,7 +18,7 @@ Before changing code:
 1. Read `AGENTS.md`.
 2. Read `README.md`.
 3. Read `docs/PLAN.md`.
-4. Read `CODINGSTANDARDS.md`.
+4. Read `docs/CODINGSTANDARDS.md`.
 5. Inspect relevant `docs/**` and local folder `README.md` files.
 6. Check the current worktree state.
 7. Identify existing patterns before adding new ones.

@@ -4,31 +4,32 @@ Purpose: this document defines the public normalized control stream naming
 contract. The Host owns controller hardware and exposes device-agnostic control
 streams to experience clients.
 
-## M1 Default
+## V1 Default
 
-M1 has one controller input and one public stream:
+V1 has one controller input and one public stream:
 
 ```txt
 /ws/control/main
 ```
 
-`main` is the default stream id when no local control-stream config exists. The
-server-owned default mapping is:
+`main` is the default stream id. The server-owned V1 mapping is intentionally
+static:
 
 ```json
 {
   "streams": [
     {
       "streamId": "main",
-      "label": "ICAROS_1_M5",
-      "inputId": "station-a-m5"
+      "controllerId": "m5"
     }
   ]
 }
 ```
 
-The public stream name is stable for clients. Hardware-specific details such as
-M5, joystick, keyboard, firmware timestamps, or device ids remain Host-private.
+The array shape is reserved as a future multi-stream extension point. V1 does not
+load local stream config files yet. The public stream name is stable for clients,
+and hardware-specific details such as M5 field aliases, firmware timestamps, or
+device ids remain Host-private.
 
 ## Public Payload
 
@@ -50,6 +51,6 @@ state.
 
 ## Non-Goals
 
-- This M1 slice does not implement multi-controller routing.
+- This V1 slice does not implement multi-controller routing.
 - Clients must not branch on controller hardware type.
 - Clients must not read `/ws/device` or parse raw M5 frames.

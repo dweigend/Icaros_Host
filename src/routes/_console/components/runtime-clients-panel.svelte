@@ -1,29 +1,17 @@
 <!--
-	Purpose: host console block for runtime client presence.
+	Purpose: route-private panel for runtime client presence and selected launch
+	client visibility.
 -->
 <script lang="ts">
 	import { Kbd, StatusDot } from '$lib/components';
-	import type { RuntimeClientSummary } from '$lib/protocol';
-	import { formatAge } from '../format';
-	import type { HostConsoleState } from '../types';
+	import { formatRuntimeClientId, formatRuntimeClientSeen } from '../format';
+	import type { HostConsoleRuntimeRegistryState } from '../types';
 
 	type Props = Readonly<{
-		state: HostConsoleState;
+		state: HostConsoleRuntimeRegistryState;
 	}>;
 
 	let { state }: Props = $props();
-
-	function isSelectedForLaunch(client: RuntimeClientSummary): boolean {
-		return state.selectedLaunchClientId === client.clientId;
-	}
-
-	function formatClientId(clientId: string): string {
-		return clientId.length <= 12 ? clientId : `${clientId.slice(0, 8)}...${clientId.slice(-4)}`;
-	}
-
-	function formatSeen(client: RuntimeClientSummary): string {
-		return formatAge(state.debugNow - client.lastSeenAt);
-	}
 </script>
 
 <section class="card" aria-labelledby="runtime-clients-title">
@@ -40,7 +28,7 @@
 
 	<div class="runtime-clients">
 		{#each state.runtimeClients as client (client.clientId)}
-			<article class="runtime-client" data-active={isSelectedForLaunch(client)}>
+			<article class="runtime-client" data-active={state.selectedLaunchClientId === client.clientId}>
 				<div class="row">
 					<div class="stack">
 						<strong>{client.title}</strong>
@@ -53,27 +41,15 @@
 				</div>
 
 				<dl class="client-facts">
-					<div>
-						<dt>client</dt>
-						<dd><Kbd>{formatClientId(client.clientId)}</Kbd></dd>
-					</div>
-					<div>
-						<dt>last seen</dt>
-						<dd>{formatSeen(client)}</dd>
-					</div>
-					<div>
-						<dt>url</dt>
-						<dd><Kbd>{client.url}</Kbd></dd>
-					</div>
+					<div><dt>client</dt><dd><Kbd>{formatRuntimeClientId(client.clientId)}</Kbd></dd></div>
+					<div><dt>last seen</dt><dd>{formatRuntimeClientSeen(client, state.now)}</dd></div>
+					<div><dt>url</dt><dd><Kbd>{client.url}</Kbd></dd></div>
 					{#if client.userAgent}
-						<div>
-							<dt>agent</dt>
-							<dd>{client.userAgent}</dd>
-						</div>
+						<div><dt>agent</dt><dd>{client.userAgent}</dd></div>
 					{/if}
 				</dl>
 
-				{#if isSelectedForLaunch(client)}
+				{#if state.selectedLaunchClientId === client.clientId}
 					<div class="status">
 						<StatusDot tone="success" label="Selected launch client" />
 						<span>selected launch client</span>
