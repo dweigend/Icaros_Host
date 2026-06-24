@@ -11,7 +11,6 @@
 	type PairingField = Readonly<{
 		name: keyof HostConsoleUsbForm;
 		label: string;
-		type?: 'password';
 		inputmode?: 'decimal';
 		placeholder?: string;
 	}>;
@@ -24,7 +23,7 @@
 
 	const pairingFields: readonly PairingField[] = [
 		{ name: 'ssid', label: 'SSID' },
-		{ name: 'password', label: 'WiFi Passwort', type: 'password' },
+		{ name: 'password', label: 'WiFi Passwort' },
 		{ name: 'deviceId', label: 'Device ID' },
 		{ name: 'staticIp', label: 'Statische IP', inputmode: 'decimal', placeholder: 'optional' },
 		{ name: 'gateway', label: 'Gateway', inputmode: 'decimal', placeholder: 'optional' },
@@ -40,7 +39,7 @@
 				<span>{field.label}</span>
 				<input
 					name={field.name}
-					type={field.type ?? 'text'}
+					type="text"
 					bind:value={state.usbForm[field.name]}
 					autocomplete="off"
 					inputmode={field.inputmode}
