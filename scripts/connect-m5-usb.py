@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["pyserial>=3.5"]
+# ///
 """Pair, probe, or flash an attached M5 controller over USB serial for Icaros Host.
 
 The script discovers a likely USB serial port, can send one newline-delimited
@@ -16,11 +20,14 @@ import os
 import select
 import subprocess
 import sys
-import termios
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+if os.name != "nt":
+    import termios
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(line_buffering=True)
@@ -36,7 +43,7 @@ REQUIRED_FIRMWARE_VERSION = os.environ.get(
     "ICAROS_REQUIRED_M5_FIRMWARE", "0.2.2-icaros-ws-reconnect"
 )
 DEFAULT_FIRMWARE_DIR = Path("firmware/m5-controller")
-M5_PORT_PATTERNS = (
+POSIX_M5_PORT_PATTERNS = (
     "/dev/cu.usbserial*",
     "/dev/cu.wchusbserial*",
     "/dev/cu.usbmodem*",
@@ -59,15 +66,108 @@ FRAME_TYPES_THAT_PROVE_DATA = {
     "heartbeat",
     "register",
 }
-BAUD_CONSTANTS = {
-    9600: termios.B9600,
-    19200: termios.B19200,
-    38400: termios.B38400,
-    57600: termios.B57600,
-    115200: termios.B115200,
-    230400: getattr(termios, "B230400", None),
-    1500000: getattr(termios, "B1500000", None),
-}
+POSIX_BAUD_CONSTANTS = (
+    {}
+    if os.name == "nt"
+    else {
+        9600: termios.B9600,
+        19200: termios.B19200,
+        38400: termios.B38400,
+        57600: termios.B57600,
+        115200: termios.B115200,
+        230400: getattr(termios, "B230400", None),
+        1500000: getattr(termios, "B1500000", None),
+    }
+)
+WINDOWS_SERIAL_KEYWORDS = (
+    "cp210",
+    "ch340",
+    "esp32",
+    "m5",
+    "silicon labs",
+    "usb serial",
+    "usb-serial",
+    "usb to uart",
+    "wch",
+)
+WINDOWS_POLL_INTERVAL_SECONDS = 0.02
+
+
+class SerialConnection(Protocol):
+    def read(self, size: int) -> bytes: ...
+
+    def write(self, data: bytes) -> None: ...
+
+    def flush_input(self) -> None: ...
+
+    def wait_for_data(self, timeout_seconds: float) -> bool: ...
+
+    def close(self) -> None: ...
+
+
+class PySerialPort(Protocol):
+    in_waiting: int
+
+    def read(self, size: int = 1) -> bytes: ...
+
+    def write(self, data: bytes) -> int | None: ...
+
+    def flush(self) -> None: ...
+
+    def reset_input_buffer(self) -> None: ...
+
+    def close(self) -> None: ...
+
+
+@dataclass(frozen=True)
+class PosixSerialConnection:
+    fd: int
+
+    def read(self, size: int) -> bytes:
+        return os.read(self.fd, size)
+
+    def write(self, data: bytes) -> None:
+        os.write(self.fd, data)
+
+    def flush_input(self) -> None:
+        try:
+            termios.tcflush(self.fd, termios.TCIFLUSH)
+        except termios.error:
+            pass
+
+    def wait_for_data(self, timeout_seconds: float) -> bool:
+        readable, _, _ = select.select([self.fd], [], [], timeout_seconds)
+        return bool(readable)
+
+    def close(self) -> None:
+        os.close(self.fd)
+
+
+@dataclass(frozen=True)
+class WindowsSerialConnection:
+    serial_port: PySerialPort
+
+    def read(self, size: int) -> bytes:
+        return self.serial_port.read(size)
+
+    def write(self, data: bytes) -> None:
+        self.serial_port.write(data)
+        self.serial_port.flush()
+
+    def flush_input(self) -> None:
+        self.serial_port.reset_input_buffer()
+
+    def wait_for_data(self, timeout_seconds: float) -> bool:
+        # Windows-specific: pyserial COM handles cannot be used with select().
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            if self.serial_port.in_waiting > 0:
+                return True
+            time.sleep(min(WINDOWS_POLL_INTERVAL_SECONDS, max(0.0, deadline - time.monotonic())))
+        return self.serial_port.in_waiting > 0
+
+    def close(self) -> None:
+        self.serial_port.close()
 
 
 @dataclass
@@ -101,7 +201,7 @@ def main() -> int:
         default="configure",
         help="USB workflow to run. Configure preserves the existing pairing behavior.",
     )
-    parser.add_argument("--port", help="Serial device path, for example /dev/cu.usbserial-...")
+    parser.add_argument("--port", help="Serial device path, for example /dev/cu.usbserial-... or COM3.")
     parser.add_argument("--baud", type=int, default=DEFAULT_BAUD_RATE)
     parser.add_argument("--seconds", type=float, default=DEFAULT_SECONDS)
     parser.add_argument(
@@ -230,7 +330,10 @@ def main() -> int:
 
 
 def choose_default_port() -> str | None:
-    for pattern in M5_PORT_PATTERNS:
+    if os.name == "nt":
+        return choose_default_windows_port()
+
+    for pattern in POSIX_M5_PORT_PATTERNS:
         matches = sorted(glob.glob(pattern))
         if matches:
             return matches[0]
@@ -238,10 +341,55 @@ def choose_default_port() -> str | None:
 
 
 def find_all_serial_ports() -> list[str]:
+    if os.name == "nt":
+        return find_all_windows_serial_ports()
+
     ports: set[str] = set()
     for pattern in ("/dev/cu.*", "/dev/tty.*"):
         ports.update(glob.glob(pattern))
     return sorted(ports)
+
+
+def choose_default_windows_port() -> str | None:
+    # Windows-specific: pyserial exposes COM ports and USB metadata through list_ports.
+    ports = list_windows_serial_port_infos()
+    if not ports:
+        return None
+
+    for port_info in ports:
+        searchable = " ".join(
+            str(part).lower()
+            for part in (
+                getattr(port_info, "device", ""),
+                getattr(port_info, "description", ""),
+                getattr(port_info, "hwid", ""),
+                getattr(port_info, "manufacturer", ""),
+                getattr(port_info, "product", ""),
+            )
+        )
+        if any(keyword in searchable for keyword in WINDOWS_SERIAL_KEYWORDS):
+            return str(port_info.device)
+
+    return str(ports[0].device)
+
+
+def find_all_windows_serial_ports() -> list[str]:
+    # Windows-specific: COM port names are the values users can pass back via --port.
+    return [str(port_info.device) for port_info in list_windows_serial_port_infos()]
+
+
+def list_windows_serial_port_infos() -> list[object]:
+    try:
+        from serial.tools import list_ports
+    except ImportError as error:
+        raise SystemExit(
+            "Windows USB setup requires pyserial. Run this script with `uv run "
+            "scripts/connect-m5-usb.py ...` or install pyserial in the active Python environment."
+        ) from error
+
+    ports = list(list_ports.comports())
+    ports.sort()
+    return ports
 
 
 def read_configure_input(args: argparse.Namespace) -> ConfigureInput | None:
@@ -374,7 +522,7 @@ def flash_firmware(*, port: str) -> str:
 
 def read_firmware_version(*, port: str, baud_rate: int) -> str | None:
     try:
-        fd = open_serial_port(port, baud_rate)
+        connection = open_serial_port(port, baud_rate)
     except OSError:
         return None
 
@@ -382,11 +530,10 @@ def read_firmware_version(*, port: str, baud_rate: int) -> str | None:
     buffer = b""
     try:
         while time.monotonic() < deadline:
-            readable, _, _ = select.select([fd], [], [], 0.2)
-            if not readable:
+            if not connection.wait_for_data(0.2):
                 continue
 
-            chunk = os.read(fd, 4096)
+            chunk = connection.read(4096)
             if not chunk:
                 continue
 
@@ -400,7 +547,7 @@ def read_firmware_version(*, port: str, baud_rate: int) -> str | None:
                 if isinstance(version, str) and version:
                     return version
     finally:
-        os.close(fd)
+        connection.close()
 
     return None
 
@@ -447,7 +594,7 @@ def probe_port(
     buffer = b""
 
     try:
-        fd = open_serial_port(port, baud_rate)
+        connection = open_serial_port(port, baud_rate)
     except OSError as error:
         explain_open_error(port, error)
         return stats
@@ -462,13 +609,13 @@ def probe_port(
                 firmwareVersion=firmware_version,
                 message="Writing paired WLAN/WebSocket configuration over USB.",
             )
-            send_configure_request(fd, configure_input)
+            send_configure_request(connection, configure_input)
             stats.configure_saved = True
             if reboot_after_configure:
-                send_reboot_request(fd)
+                send_reboot_request(connection)
                 stats.reboot_sent = True
         if write_probes:
-            buffer = write_probe_messages(fd, stats)
+            buffer = write_probe_messages(connection, stats)
         emit_event(
             state="usb_test",
             step="USB-Daten prüfen",
@@ -478,11 +625,10 @@ def probe_port(
             message="Checking USB telemetry frames.",
         )
         while time.monotonic() < deadline:
-            readable, _, _ = select.select([fd], [], [], 0.2)
-            if not readable:
+            if not connection.wait_for_data(0.2):
                 continue
 
-            chunk = os.read(fd, 4096)
+            chunk = connection.read(4096)
             if not chunk:
                 continue
 
@@ -496,12 +642,12 @@ def probe_port(
         if buffer:
             handle_line(buffer.rstrip(b"\r"), stats)
     finally:
-        os.close(fd)
+        connection.close()
 
     return stats
 
 
-def send_configure_request(fd: int, configure_input: ConfigureInput) -> None:
+def send_configure_request(connection: SerialConnection, configure_input: ConfigureInput) -> None:
     request = build_configure_request(configure_input)
     safe_request = {
         key: value for key, value in request.items() if key not in {"password", "ssid"}
@@ -517,15 +663,14 @@ def send_configure_request(fd: int, configure_input: ConfigureInput) -> None:
     while time.monotonic() - started_at < CONFIGURE_RESULT_TIMEOUT_SECONDS:
         now = time.monotonic()
         if last_sent_at == 0.0 or now - last_sent_at >= CONFIGURE_RETRY_INTERVAL_SECONDS:
-            flush_serial_input(fd)
-            os.write(fd, configure_line)
+            connection.flush_input()
+            connection.write(configure_line)
             last_sent_at = now
 
-        readable, _, _ = select.select([fd], [], [], 0.2)
-        if not readable:
+        if not connection.wait_for_data(0.2):
             continue
 
-        chunk = os.read(fd, 4096)
+        chunk = connection.read(4096)
         if not chunk:
             continue
 
@@ -553,16 +698,9 @@ def send_configure_request(fd: int, configure_input: ConfigureInput) -> None:
     raise SystemExit("Timed out waiting for configureResult.")
 
 
-def flush_serial_input(fd: int) -> None:
-    try:
-        termios.tcflush(fd, termios.TCIFLUSH)
-    except termios.error:
-        pass
-
-
-def send_reboot_request(fd: int) -> None:
+def send_reboot_request(connection: SerialConnection) -> None:
     request = {"type": "reboot"}
-    os.write(fd, json.dumps(request, separators=(",", ":")).encode("utf-8") + b"\n")
+    connection.write(json.dumps(request, separators=(",", ":")).encode("utf-8") + b"\n")
     print("Sent USB command: reboot")
     emit_event(
         state="configure",
@@ -597,7 +735,10 @@ def build_configure_request(configure_input: ConfigureInput) -> dict[str, str]:
     return request
 
 
-def open_serial_port(port: str, baud_rate: int) -> int:
+def open_serial_port(port: str, baud_rate: int) -> SerialConnection:
+    if os.name == "nt":
+        return open_windows_serial_port(port, baud_rate)
+
     fd = os.open(port, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
     try:
         configure_serial_fd(fd, baud_rate)
@@ -605,14 +746,43 @@ def open_serial_port(port: str, baud_rate: int) -> int:
             os.set_blocking(fd, False)
         except AttributeError:
             pass
-        return fd
+        return PosixSerialConnection(fd)
     except Exception:
         os.close(fd)
         raise
 
 
+def open_windows_serial_port(port: str, baud_rate: int) -> SerialConnection:
+    # Windows-specific: COM ports are opened through pyserial instead of POSIX fd APIs.
+    try:
+        from serial import EIGHTBITS, PARITY_NONE, STOPBITS_ONE, Serial
+    except ImportError as error:
+        raise SystemExit(
+            "Windows USB setup requires pyserial. Run this script with `uv run "
+            "scripts/connect-m5-usb.py ...` or install pyserial in the active Python environment."
+        ) from error
+
+    try:
+        serial_port = Serial(
+            port=port,
+            baudrate=baud_rate,
+            bytesize=EIGHTBITS,
+            parity=PARITY_NONE,
+            stopbits=STOPBITS_ONE,
+            timeout=0,
+            write_timeout=2,
+            xonxoff=False,
+            rtscts=False,
+            dsrdtr=False,
+        )
+    except Exception as error:
+        raise OSError(errno.EIO, str(error)) from error
+
+    return WindowsSerialConnection(cast(PySerialPort, serial_port))
+
+
 def configure_serial_fd(fd: int, baud_rate: int) -> None:
-    baud_constant = BAUD_CONSTANTS.get(baud_rate)
+    baud_constant = POSIX_BAUD_CONSTANTS.get(baud_rate)
     if baud_constant is None:
         raise OSError(errno.EINVAL, f"Unsupported baud rate: {baud_rate}")
 
@@ -628,34 +798,35 @@ def configure_serial_fd(fd: int, baud_rate: int) -> None:
     termios.tcsetattr(fd, termios.TCSANOW, attrs)
 
 
-def write_probe_messages(fd: int, stats: ProbeStats) -> bytes:
-    flush_serial_input(fd)
-    send_probe_message(fd, DIAGNOSE_PROBE_MESSAGE)
-    buffer = read_until_frame_type(fd, stats, "diagnoseResult")
+def write_probe_messages(connection: SerialConnection, stats: ProbeStats) -> bytes:
+    connection.flush_input()
+    send_probe_message(connection, DIAGNOSE_PROBE_MESSAGE)
+    buffer = read_until_frame_type(connection, stats, "diagnoseResult")
 
     for message in LEGACY_PROBE_MESSAGES:
-        send_probe_message(fd, message)
+        send_probe_message(connection, message)
         time.sleep(0.15)
 
     return buffer
 
 
-def send_probe_message(fd: int, message: dict[str, str]) -> None:
+def send_probe_message(connection: SerialConnection, message: dict[str, str]) -> None:
     line = json.dumps(message, separators=(",", ":")).encode("utf-8") + b"\n"
-    os.write(fd, line)
+    connection.write(line)
     print(f"Sent USB probe: {message['type']}")
 
 
-def read_until_frame_type(fd: int, stats: ProbeStats, expected_type: str) -> bytes:
+def read_until_frame_type(
+    connection: SerialConnection, stats: ProbeStats, expected_type: str
+) -> bytes:
     deadline = time.monotonic() + DIAGNOSE_RESULT_TIMEOUT_SECONDS
     buffer = b""
 
     while time.monotonic() < deadline:
-        readable, _, _ = select.select([fd], [], [], 0.2)
-        if not readable:
+        if not connection.wait_for_data(0.2):
             continue
 
-        chunk = os.read(fd, 4096)
+        chunk = connection.read(4096)
         if not chunk:
             continue
 

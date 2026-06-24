@@ -29,6 +29,12 @@ For LAN or Quest sessions, use one stable HTTPS Host origin:
 export ICAROS_M5_HOST_ORIGIN=https://<host-lan-ip-or-name>:5183
 ```
 
+PowerShell:
+
+```powershell
+$env:ICAROS_M5_HOST_ORIGIN = "https://<host-lan-ip-or-name>:5183"
+```
+
 Then inspect:
 
 ```sh
@@ -45,6 +51,17 @@ bun run m5:pairing -- probe --host-origin "$ICAROS_M5_HOST_ORIGIN"
 bun run m5:pairing -- flash --host-origin "$ICAROS_M5_HOST_ORIGIN"
 bun run m5:pairing -- pair --host-origin "$ICAROS_M5_HOST_ORIGIN"
 bun run m5:pairing -- abort --host-origin "$ICAROS_M5_HOST_ORIGIN"
+```
+
+PowerShell uses `$env:ICAROS_M5_HOST_ORIGIN` in place of
+`$ICAROS_M5_HOST_ORIGIN`.
+
+On Windows, Host-triggered USB helpers run the Python script through `uv run`
+so the script-local `pyserial` dependency is available for COM ports. Manual
+USB probes can use:
+
+```powershell
+uv run scripts/connect-m5-usb.py --mode probe --port COM3
 ```
 
 Runtime contract smoke test:

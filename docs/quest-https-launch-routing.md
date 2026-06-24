@@ -45,6 +45,15 @@ bun run setup:https -- --host <client-lan-ip-or-name>
 ICAROS_HOST_ORIGIN=https://<host-lan-ip-or-name>:5183 bun run dev
 ```
 
+PowerShell:
+
+```powershell
+Set-Location C:\path\to\Icaros_VR_Client
+bun run setup:https -- --host <client-lan-ip-or-name>
+$env:ICAROS_HOST_ORIGIN = "https://<host-lan-ip-or-name>:5183"
+bun run dev
+```
+
 Quest entrypoint:
 
 ```txt
@@ -62,6 +71,18 @@ mkdir -p .certs
 mkcert \
   -key-file .certs/icaros-host-key.pem \
   -cert-file .certs/icaros-host.pem \
+  localhost 127.0.0.1 ::1 <host-lan-ip-or-name>
+```
+
+PowerShell:
+
+```powershell
+winget install FiloSottile.mkcert
+mkcert -install
+New-Item -ItemType Directory -Force .certs
+mkcert `
+  -key-file .certs/icaros-host-key.pem `
+  -cert-file .certs/icaros-host.pem `
   localhost 127.0.0.1 ::1 <host-lan-ip-or-name>
 ```
 

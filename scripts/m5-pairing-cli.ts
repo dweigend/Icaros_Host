@@ -7,6 +7,7 @@
  */
 import { execFile } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { createConnection } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -22,6 +23,7 @@ const DEFAULT_TIMEOUT_MS = 125_000;
 const DEFAULT_POLL_INTERVAL_MS = 1_000;
 const PAIRING_API_PATH = '/api/m5-pairing';
 const CONTROLLER_FRAME_FRESH_MS = 5_000;
+const TCP_PROBE_TIMEOUT_MS = 1_000;
 const execFileAsync = promisify(execFile);
 
 type Command =
@@ -751,12 +753,32 @@ async function isTcpPortListening(port: string): Promise<string> {
 		return 'unknown';
 	}
 
-	const result = await runCommand('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN']);
-	if (!result.ok || result.stdout.trim() === '') {
-		return 'no';
+	return probeLocalTcpPort(Number.parseInt(port, 10));
+}
+
+async function probeLocalTcpPort(port: number): Promise<string> {
+	if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+		return 'unknown';
 	}
 
-	return 'yes';
+	return new Promise((resolveProbe) => {
+		const socket = createConnection({ host: '127.0.0.1', port });
+		let settled = false;
+
+		const finish = (result: string): void => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			socket.destroy();
+			resolveProbe(result);
+		};
+
+		// Windows-specific: replace the old Unix-only lsof check with a Node TCP probe.
+		socket.setTimeout(TCP_PROBE_TIMEOUT_MS, () => finish('no'));
+		socket.once('connect', () => finish('yes'));
+		socket.once('error', () => finish('no'));
+	});
 }
 
 function printLocalIpv4Interfaces(): void {
@@ -809,11 +831,21 @@ async function printArpNeighbors(hostname: string): Promise<void> {
 
 	const neighbors = result.stdout
 		.split(/\r?\n/)
-		.map((line) => line.match(/\((\d+\.\d+\.\d+\.\d+)\)/)?.[1])
+		.map(readArpNeighborIp)
 		.filter((ip): ip is string => ip?.startsWith(prefix) ?? false);
 
 	console.log(`arpNeighbors=${neighbors.length}`);
 	console.log(`arpNeighborIps=${neighbors.slice(0, 24).join(',') || '<none>'}`);
+}
+
+function readArpNeighborIp(line: string): string | null {
+	const unixMatch = line.match(/\((\d+\.\d+\.\d+\.\d+)\)/);
+	if (unixMatch !== null) {
+		return unixMatch[1];
+	}
+
+	// Windows-specific: `arp -a` prints the IP address as the first column.
+	return line.trim().match(/^(\d+\.\d+\.\d+\.\d+)\s+/)?.[1] ?? null;
 }
 
 function ipv4Prefix(hostname: string): string | null {

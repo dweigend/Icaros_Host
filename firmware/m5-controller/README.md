@@ -30,10 +30,22 @@ controller firmware:
 pio run -d firmware/m5-controller -t upload --upload-port /dev/cu.usbserial-...
 ```
 
+Windows COM port example:
+
+```powershell
+pio run -d firmware/m5-controller -t upload --upload-port COM3
+```
+
 Then monitor serial output:
 
 ```sh
 pio device monitor -d firmware/m5-controller --baud 115200 --port /dev/cu.usbserial-...
+```
+
+Windows COM port example:
+
+```powershell
+pio device monitor -d firmware/m5-controller --baud 115200 --port COM3
 ```
 
 ## Display Diagnostics

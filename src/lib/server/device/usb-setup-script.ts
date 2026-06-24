@@ -17,7 +17,8 @@ export function startUsbScript(
 	onStdout: (chunk: string) => void,
 	onStderr: (chunk: string) => void
 ): ChildProcess {
-	const child = spawn('python3', buildScriptArgs(mode), {
+	const command = resolveUsbScriptCommand();
+	const child = spawn(command.executable, [...command.prefixArgs, ...buildScriptArgs(mode)], {
 		cwd: process.cwd(),
 		stdio: [stdin, 'pipe', 'pipe']
 	});
@@ -26,6 +27,22 @@ export function startUsbScript(
 	child.stdout?.on('data', onStdout);
 	child.stderr?.on('data', onStderr);
 	return child;
+}
+
+function resolveUsbScriptCommand(): Readonly<{
+	executable: string;
+	prefixArgs: readonly string[];
+}> {
+	if (process.env.ICAROS_USB_PYTHON !== undefined && process.env.ICAROS_USB_PYTHON.trim() !== '') {
+		return { executable: process.env.ICAROS_USB_PYTHON.trim(), prefixArgs: [] };
+	}
+
+	if (process.platform === 'win32') {
+		// Windows-specific: run through uv so the script-local pyserial dependency is installed.
+		return { executable: 'uv', prefixArgs: ['run'] };
+	}
+
+	return { executable: 'python3', prefixArgs: [] };
 }
 
 function buildScriptArgs(mode: UsbScriptMode): string[] {

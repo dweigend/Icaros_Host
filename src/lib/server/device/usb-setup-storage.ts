@@ -150,8 +150,13 @@ function readTomlEntry(line: string): Readonly<{ key: string; value: string }> |
 		return null;
 	}
 
-	const key = match[1]!.trim();
-	const value = match[2]!;
+	const [, rawKey, rawValue] = match;
+	if (rawKey === undefined || rawValue === undefined) {
+		return null;
+	}
+
+	const key = rawKey.trim();
+	const value = rawValue;
 	return { key, value: value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\') };
 }
 
