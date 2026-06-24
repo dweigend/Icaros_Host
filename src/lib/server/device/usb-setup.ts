@@ -4,24 +4,71 @@
  * requires a later WebSocket frame from the paired controller over WLAN/LAN.
  */
 
-import { type ChildProcess, spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import type { ChildProcess } from 'node:child_process';
+
 import {
 	type M5FirmwareStatus,
 	REQUIRED_M5_FIRMWARE_VERSION,
 	readM5FirmwareStatus
 } from './m5-firmware-version';
-import { readDevicePairingToken, redactDevicePairingToken } from './pairing';
+import { redactDevicePairingToken } from './pairing';
+import { startUsbScript as spawnUsbScript } from './usb-setup-script';
+import {
+	type ControllerPairingMetadata,
+	hashDevicePairingToken,
+	readSavedControllerConfig,
+	writeControllerConfig,
+	writeDebugSnapshot as writeDebugSnapshotFile
+} from './usb-setup-storage';
 
-const USB_SETUP_SCRIPT = resolve(process.cwd(), 'scripts/connect-m5-usb.py');
-const PAIRING_CONFIG_FILE = resolve(process.cwd(), '.icaros/m5-controller.toml');
-const DEBUG_SNAPSHOT_FILE = resolve(process.cwd(), '.icaros/debug/m5-pairing-debug.json');
 const PAIRING_EVENT_PREFIX = 'PAIRING_EVENT ';
 const WLAN_VERIFY_TIMEOUT_MS = 90_000;
 const MAX_DEBUG_LINES = 300;
 const USB_SETUP_RUNTIME_GLOBAL_KEY = Symbol.for('icaros.host.usbSetupRuntime');
+const PAIRING_STATES = new Set<string>([
+	'idle',
+	'usb_connected',
+	'usb_probe',
+	'firmware_check',
+	'firmware_update',
+	'configure',
+	'usb_test',
+	'wlan_test',
+	'ready',
+	'failed',
+	'aborted'
+]);
+const BUSY_PAIRING_STATES = new Set<PairingState>([
+	'usb_connected',
+	'usb_probe',
+	'firmware_check',
+	'firmware_update',
+	'configure',
+	'usb_test',
+	'wlan_test'
+]);
+const FLASH_STATES = new Set<string>(['idle', 'running', 'succeeded', 'failed']);
+const CONTROLLER_ISSUES: readonly Readonly<{
+	matches: (line: string) => boolean;
+	message: string;
+}>[] = [
+	{
+		matches: (line) => line.includes('NO_AP_FOUND'),
+		message: 'Controller findet die konfigurierte WLAN-SSID nicht.'
+	},
+	{
+		matches: (line) => line.includes('AUTH_FAIL') || line.includes('AUTH_EXPIRE'),
+		message: 'Controller lehnt die WLAN-Anmeldung ab. Passwort/SSID prüfen.'
+	},
+	{
+		matches: (line) => line.includes('Connection refused'),
+		message: 'Controller erreicht den WebSocket-Port, aber der Host lehnt die Verbindung ab.'
+	},
+	{
+		matches: (line) => line.includes('Connection reset by peer'),
+		message: 'Controller erreicht den Host, aber der WebSocket wird vor dem Pairing-Frame getrennt.'
+	}
+];
 
 type PairingState =
 	| 'idle'
@@ -56,6 +103,15 @@ type PairingStatusFields<TDebugLines> = {
 	debugLines: TDebugLines;
 };
 
+export type PairingDebugLine = Readonly<{
+	id: number;
+	timestamp: number;
+	source: 'system' | 'script' | 'stderr' | 'event' | 'websocket';
+	message: string;
+}>;
+
+type FlashState = 'idle' | 'running' | 'succeeded' | 'failed';
+
 export type UsbSetupSnapshot = Readonly<
 	PairingStatusFields<readonly PairingDebugLine[]> & {
 		usbConnected: boolean;
@@ -64,17 +120,9 @@ export type UsbSetupSnapshot = Readonly<
 		currentFirmwareVersion: string | null;
 		requiredFirmwareVersion: string;
 		flashState: FlashState;
-		canFlashFirmware: boolean;
 		canConfigure: boolean;
 	}
 >;
-
-export type PairingDebugLine = Readonly<{
-	id: number;
-	timestamp: number;
-	source: 'system' | 'script' | 'stderr' | 'event' | 'websocket';
-	message: string;
-}>;
 
 export type UsbPairingInput = Readonly<{
 	ssid: string | null;
@@ -112,23 +160,6 @@ type PairingEvent = Readonly<{
 	error?: string;
 }>;
 
-export type FlashState = 'idle' | 'running' | 'succeeded' | 'failed';
-type UsbScriptMode = 'configure' | 'probe' | 'flash';
-type UsbScriptStdio = 'pipe' | 'ignore';
-
-type SavedControllerConfig = Readonly<{
-	deviceId: string | null;
-	firmwareVersion: string | null;
-	staticIp: string | null;
-	gateway: string | null;
-	subnet: string | null;
-	dns: string | null;
-	pairedUrl: string | null;
-	lastVerifiedAt: string | null;
-	lastFrameAt: string | null;
-	tokenSha256: string | null;
-}>;
-
 export type DeviceUpgradeDiagnostics = Readonly<{
 	remote: string | null;
 	path: string;
@@ -147,6 +178,8 @@ type UsbSetupRuntime = {
 	currentChild: ChildProcess | null;
 	nextDebugId: number;
 };
+type UsbScriptMode = Parameters<typeof spawnUsbScript>[0];
+type UsbScriptStdio = Parameters<typeof spawnUsbScript>[1];
 
 const runtime = readSharedRuntime();
 const status = runtime.status;
@@ -224,7 +257,6 @@ export function getUsbSetupSnapshot(): UsbSetupSnapshot {
 		currentFirmwareVersion: status.currentFirmwareVersion,
 		requiredFirmwareVersion: REQUIRED_M5_FIRMWARE_VERSION,
 		flashState: status.flashState,
-		canFlashFirmware: canFlashFirmware(),
 		canConfigure: canConfigureController()
 	};
 }
@@ -257,7 +289,7 @@ export function startUsbSetup(serverUrl: string, input: UsbPairingInput): UsbSet
 	}
 
 	resetStatus(serverUrl, input);
-	writeControllerToml();
+	writeControllerConfig(readControllerPairingMetadata());
 	appendDebug('system', `Pairing started for ${redactDevicePairingToken(serverUrl)}.`);
 
 	const child = startUsbScript('configure', 'pipe', 'Setup script error');
@@ -373,12 +405,6 @@ export function startFirmwareFlash(): UsbSetupSnapshot {
 		return getUsbSetupSnapshot();
 	}
 
-	if (!canFlashFirmware()) {
-		status.flashState = 'failed';
-		failPairing('Firmware update disabled. Set ICAROS_ALLOW_M5_FIRMWARE_UPDATE=true.');
-		return getUsbSetupSnapshot();
-	}
-
 	clearWlanTimeout();
 	status.state = 'firmware_update';
 	status.step = 'Firmware aktualisieren';
@@ -449,7 +475,7 @@ export function recordPairedDeviceFrame(frame: unknown, receivedAt: number = Dat
 	status.error = null;
 	status.usbOk = true;
 	clearWlanTimeout();
-	writeControllerToml();
+	writeControllerConfig(readControllerPairingMetadata());
 	writeDebugSnapshot();
 }
 
@@ -545,41 +571,18 @@ function resetStatus(serverUrl: string, input: UsbPairingInput): void {
 	status.usbPort = null;
 }
 
-function buildScriptArgs(mode: UsbScriptMode): string[] {
-	const args = [USB_SETUP_SCRIPT, '--mode', mode];
-	if (mode === 'configure') {
-		args.push('--config-stdin');
-	}
-
-	if (mode !== 'flash') {
-		args.push('--skip-firmware-update');
-	}
-
-	if (mode === 'flash') {
-		args.push('--allow-firmware-update');
-	}
-
-	if (process.env.ICAROS_M5_REBOOT_AFTER_CONFIGURE !== 'false') {
-		args.push('--reboot-after-configure');
-	}
-
-	return args;
-}
-
 function startUsbScript(
 	mode: UsbScriptMode,
 	stdin: UsbScriptStdio,
 	stderrFailurePrefix: string
 ): ChildProcess {
-	const child = spawn('python3', buildScriptArgs(mode), {
-		cwd: process.cwd(),
-		stdio: [stdin, 'pipe', 'pipe']
-	});
+	const child = spawnUsbScript(
+		mode,
+		stdin,
+		(chunk: string) => readScriptChunk(chunk),
+		(chunk: string) => readScriptErrorChunk(chunk, stderrFailurePrefix)
+	);
 	runtime.currentChild = child;
-	child.stdout?.setEncoding('utf8');
-	child.stderr?.setEncoding('utf8');
-	child.stdout?.on('data', (chunk: string) => readScriptChunk(chunk));
-	child.stderr?.on('data', (chunk: string) => readScriptErrorChunk(chunk, stderrFailurePrefix));
 	return child;
 }
 
@@ -614,22 +617,6 @@ function readScriptErrorChunk(chunk: string, failurePrefix: string): void {
 	failPairing(`${failurePrefix}: ${text}`);
 }
 
-function buildScriptConfig(
-	serverUrl: string,
-	input: UsbPairingInput
-): Record<string, string | null> {
-	return {
-		serverUrl,
-		deviceId: input.deviceId,
-		ssid: input.ssid,
-		password: input.password,
-		staticIp: input.staticIp,
-		gateway: input.gateway,
-		subnet: input.subnet,
-		dns: input.dns
-	};
-}
-
 function readScriptChunk(chunk: string): void {
 	for (const line of chunk.split(/\r?\n/)) {
 		const trimmed = line.trim();
@@ -648,31 +635,6 @@ function readScriptChunk(chunk: string): void {
 		if (event !== null) {
 			applyPairingEvent(event);
 		}
-	}
-}
-
-function parsePairingEvent(input: string): PairingEvent | null {
-	try {
-		const parsed: unknown = JSON.parse(input);
-		if (!isRecord(parsed)) {
-			return null;
-		}
-
-		return {
-			state: readPairingState(parsed.state),
-			step: readOptionalString(parsed.step),
-			progress: readOptionalNumber(parsed.progress),
-			deviceId: readOptionalString(parsed.deviceId),
-			firmwareVersion: readOptionalString(parsed.firmwareVersion),
-			usbConnected: readOptionalBoolean(parsed.usbConnected),
-			usbPort: readOptionalString(parsed.usbPort),
-			flashState: readFlashState(parsed.flashState),
-			usbOk: readOptionalBoolean(parsed.usbOk),
-			message: readOptionalString(parsed.message),
-			error: readOptionalString(parsed.error)
-		};
-	} catch {
-		return null;
 	}
 }
 
@@ -750,11 +712,6 @@ function clearWlanTimeout(): void {
 	}
 }
 
-function writeControllerToml(): void {
-	mkdirSync(dirname(PAIRING_CONFIG_FILE), { recursive: true });
-	writeFileSync(PAIRING_CONFIG_FILE, createControllerToml(), 'utf8');
-}
-
 function appendDebug(source: PairingDebugLine['source'], message: string): void {
 	if (!status.debugEnabled) {
 		return;
@@ -774,112 +731,84 @@ function appendDebug(source: PairingDebugLine['source'], message: string): void 
 }
 
 function writeDebugSnapshot(): void {
-	mkdirSync(dirname(DEBUG_SNAPSHOT_FILE), { recursive: true });
-	writeFileSync(
-		DEBUG_SNAPSHOT_FILE,
-		`${JSON.stringify(
-			{
-				purpose: 'Bounded M5 pairing debug snapshot for local operator and LLM inspection.',
-				updatedAt: new Date().toISOString(),
-				status: getUsbSetupSnapshot()
-			},
-			null,
-			2
-		)}\n`,
-		'utf8'
-	);
+	writeDebugSnapshotFile(getUsbSetupSnapshot());
 }
 
-function createControllerToml(): string {
-	const configuredAt = new Date(status.startedAt ?? Date.now()).toISOString();
-	const verifiedAt = status.finishedAt === null ? '' : new Date(status.finishedAt).toISOString();
-	const lastFrameAt = status.lastFrameAt === null ? '' : new Date(status.lastFrameAt).toISOString();
-	return [
-		'# Purpose: non-secret Icaros Host M5 controller pairing metadata.',
-		'# WiFi passwords and cleartext pairing tokens must not be stored here.',
-		'',
-		'[controller]',
-		`device_id = "${tomlEscape(status.deviceId ?? 'unknown')}"`,
-		`firmware_version = "${tomlEscape(status.firmwareVersion ?? '')}"`,
-		`static_ip = "${tomlEscape(status.staticIp ?? '')}"`,
-		`gateway = "${tomlEscape(status.gateway ?? '')}"`,
-		`subnet = "${tomlEscape(status.subnet ?? '')}"`,
-		`dns = "${tomlEscape(status.dns ?? '')}"`,
-		`paired_url = "${tomlEscape(status.serverUrl ?? '')}"`,
-		`configured_at = "${configuredAt}"`,
-		`last_verified_at = "${verifiedAt}"`,
-		`last_frame_at = "${lastFrameAt}"`,
-		'',
-		'[pairing]',
-		`token_sha256 = "${hashDevicePairingToken()}"`,
-		''
-	].join('\n');
-}
-
-function readSavedControllerConfig(): SavedControllerConfig | null {
-	if (!existsSync(PAIRING_CONFIG_FILE)) {
-		return null;
+function applyControllerSerialHint(line: string): void {
+	const issue = readControllerIssue(line);
+	if (issue === null) {
+		return;
 	}
 
-	const values = parseFlatToml(readFileSync(PAIRING_CONFIG_FILE, 'utf8'));
+	status.controllerIssue = issue;
+	if (status.state === 'usb_test' || status.state === 'wlan_test') {
+		status.message = issue;
+	}
+	writeDebugSnapshot();
+}
+
+function readControllerPairingMetadata(): ControllerPairingMetadata {
 	return {
-		deviceId: values.get('controller.device_id') ?? null,
-		firmwareVersion: emptyToNull(values.get('controller.firmware_version')),
-		staticIp: emptyToNull(values.get('controller.static_ip')),
-		gateway: emptyToNull(values.get('controller.gateway')),
-		subnet: emptyToNull(values.get('controller.subnet')),
-		dns: emptyToNull(values.get('controller.dns')),
-		pairedUrl: emptyToNull(values.get('controller.paired_url')),
-		lastVerifiedAt: emptyToNull(values.get('controller.last_verified_at')),
-		lastFrameAt: emptyToNull(values.get('controller.last_frame_at')),
-		tokenSha256: values.get('pairing.token_sha256') ?? null
+		deviceId: status.deviceId ?? 'unknown',
+		firmwareVersion: status.firmwareVersion,
+		staticIp: status.staticIp,
+		gateway: status.gateway,
+		subnet: status.subnet,
+		dns: status.dns,
+		pairedUrl: status.serverUrl,
+		configuredAt: readIsoTimestamp(status.startedAt, Date.now()),
+		lastVerifiedAt: readOptionalIsoTimestamp(status.finishedAt),
+		lastFrameAt: readOptionalIsoTimestamp(status.lastFrameAt)
 	};
 }
 
-function parseFlatToml(input: string): Map<string, string> {
-	const values = new Map<string, string>();
-	let section: string | null = null;
-
-	for (const line of input.split(/\r?\n/)) {
-		const trimmed = line.trim();
-		if (trimmed === '' || trimmed.startsWith('#')) {
-			continue;
-		}
-
-		if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-			section = trimmed.slice(1, -1).trim();
-			continue;
-		}
-
-		const separatorIndex = trimmed.indexOf('=');
-		if (separatorIndex < 0 || section === null) {
-			continue;
-		}
-
-		const key = trimmed.slice(0, separatorIndex).trim();
-		const value = parseTomlString(trimmed.slice(separatorIndex + 1).trim());
-		if (key !== '' && value !== null) {
-			values.set(`${section}.${key}`, value);
-		}
-	}
-
-	return values;
+function buildScriptConfig(
+	serverUrl: string,
+	input: UsbPairingInput
+): Record<string, string | null> {
+	return {
+		serverUrl,
+		deviceId: input.deviceId,
+		ssid: input.ssid,
+		password: input.password,
+		staticIp: input.staticIp,
+		gateway: input.gateway,
+		subnet: input.subnet,
+		dns: input.dns
+	};
 }
 
-function parseTomlString(value: string): string | null {
-	if (!value.startsWith('"') || !value.endsWith('"')) {
+function parsePairingEvent(input: string): PairingEvent | null {
+	try {
+		const parsed: unknown = JSON.parse(input);
+		if (!isRecord(parsed)) {
+			return null;
+		}
+
+		return {
+			state: readPairingState(parsed.state),
+			step: readOptionalString(parsed.step),
+			progress: readOptionalNumber(parsed.progress),
+			deviceId: readOptionalString(parsed.deviceId),
+			firmwareVersion: readOptionalString(parsed.firmwareVersion),
+			usbConnected: readOptionalBoolean(parsed.usbConnected),
+			usbPort: readOptionalString(parsed.usbPort),
+			flashState: readFlashState(parsed.flashState),
+			usbOk: readOptionalBoolean(parsed.usbOk),
+			message: readOptionalString(parsed.message),
+			error: readOptionalString(parsed.error)
+		};
+	} catch {
 		return null;
 	}
-
-	return value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
 }
 
-function hashDevicePairingToken(): string {
-	return createHash('sha256').update(readDevicePairingToken()).digest('hex');
-}
-
-function emptyToNull(value: string | undefined): string | null {
-	return value === undefined || value === '' ? null : value;
+function redactEvent(event: PairingEvent): PairingEvent {
+	return {
+		...event,
+		message: event.message === undefined ? undefined : redactDevicePairingToken(event.message),
+		error: event.error === undefined ? undefined : redactDevicePairingToken(event.error)
+	};
 }
 
 function readStringProperty(value: unknown, key: string): string | null {
@@ -907,37 +836,8 @@ function summarizeFrame(frame: unknown): string {
 	return JSON.stringify(summary);
 }
 
-function applyControllerSerialHint(line: string): void {
-	const issue = readControllerIssue(line);
-	if (issue === null) {
-		return;
-	}
-
-	status.controllerIssue = issue;
-	if (status.state === 'usb_test' || status.state === 'wlan_test') {
-		status.message = issue;
-	}
-	writeDebugSnapshot();
-}
-
 function readControllerIssue(line: string): string | null {
-	if (line.includes('NO_AP_FOUND')) {
-		return 'Controller findet die konfigurierte WLAN-SSID nicht.';
-	}
-
-	if (line.includes('AUTH_FAIL') || line.includes('AUTH_EXPIRE')) {
-		return 'Controller lehnt die WLAN-Anmeldung ab. Passwort/SSID prüfen.';
-	}
-
-	if (line.includes('Connection refused')) {
-		return 'Controller erreicht den WebSocket-Port, aber der Host lehnt die Verbindung ab.';
-	}
-
-	if (line.includes('Connection reset by peer')) {
-		return 'Controller erreicht den Host, aber der WebSocket wird vor dem Pairing-Frame getrennt.';
-	}
-
-	return null;
+	return CONTROLLER_ISSUES.find((issue) => issue.matches(line))?.message ?? null;
 }
 
 function formatDeviceUpgradeDiagnostics(details: DeviceUpgradeDiagnostics): string {
@@ -954,16 +854,12 @@ function formatDeviceUpgradeDiagnostics(details: DeviceUpgradeDiagnostics): stri
 	].join(' ');
 }
 
-function redactEvent(event: PairingEvent): PairingEvent {
-	return {
-		...event,
-		message: event.message === undefined ? undefined : redactDevicePairingToken(event.message),
-		error: event.error === undefined ? undefined : redactDevicePairingToken(event.error)
-	};
+function isPairingBusy(state: PairingState): boolean {
+	return BUSY_PAIRING_STATES.has(state);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null && !Array.isArray(value);
+function clampProgress(value: number): number {
+	return Math.max(0, Math.min(100, Math.round(value)));
 }
 
 function readPairingState(value: unknown): PairingState | undefined {
@@ -971,25 +867,11 @@ function readPairingState(value: unknown): PairingState | undefined {
 }
 
 function isPairingState(value: unknown): value is PairingState {
-	return (
-		value === 'idle' ||
-		value === 'usb_connected' ||
-		value === 'usb_probe' ||
-		value === 'firmware_check' ||
-		value === 'firmware_update' ||
-		value === 'configure' ||
-		value === 'usb_test' ||
-		value === 'wlan_test' ||
-		value === 'ready' ||
-		value === 'failed' ||
-		value === 'aborted'
-	);
+	return typeof value === 'string' && PAIRING_STATES.has(value);
 }
 
 function readFlashState(value: unknown): FlashState | undefined {
-	return value === 'idle' || value === 'running' || value === 'succeeded' || value === 'failed'
-		? value
-		: undefined;
+	return typeof value === 'string' && FLASH_STATES.has(value) ? (value as FlashState) : undefined;
 }
 
 function readOptionalString(value: unknown): string | undefined {
@@ -1004,16 +886,16 @@ function readOptionalBoolean(value: unknown): boolean | undefined {
 	return typeof value === 'boolean' ? value : undefined;
 }
 
-function isPairingBusy(state: PairingState): boolean {
-	return (
-		state === 'usb_connected' ||
-		state === 'usb_probe' ||
-		state === 'firmware_check' ||
-		state === 'firmware_update' ||
-		state === 'configure' ||
-		state === 'usb_test' ||
-		state === 'wlan_test'
-	);
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readIsoTimestamp(value: number | null, fallback: number): string {
+	return new Date(value ?? fallback).toISOString();
+}
+
+function readOptionalIsoTimestamp(value: number | null): string {
+	return value === null ? '' : new Date(value).toISOString();
 }
 
 function clearCurrentChild(child: ChildProcess): void {
@@ -1022,18 +904,6 @@ function clearCurrentChild(child: ChildProcess): void {
 	}
 }
 
-function canFlashFirmware(): boolean {
-	return process.env.ICAROS_ALLOW_M5_FIRMWARE_UPDATE === 'true';
-}
-
 function canConfigureController(): boolean {
 	return status.firmwareStatus === 'current';
-}
-
-function clampProgress(value: number): number {
-	return Math.max(0, Math.min(100, Math.round(value)));
-}
-
-function tomlEscape(value: string): string {
-	return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }

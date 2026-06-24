@@ -23,12 +23,7 @@
 		</Button>
 	</form>
 	<form method="POST" action="?/flashM5Firmware">
-		<Button
-			type="submit"
-			disabled={state.usbSetupBusy ||
-				!state.usbSetup.canFlashFirmware ||
-				!state.usbSetup.usbConnected}
-		>
+		<Button type="submit" disabled={state.usbSetupBusy}>
 			<Upload size={16} aria-hidden="true" />
 			Firmware aktualisieren
 		</Button>

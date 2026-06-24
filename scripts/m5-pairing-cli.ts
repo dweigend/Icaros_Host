@@ -478,7 +478,6 @@ function printSnapshot(view: M5PairingStatusView): void {
 	console.log(`usbConnected=${status.usbConnected}`);
 	console.log(`usbPort=${status.usbPort ?? '<none>'}`);
 	console.log(`requiredFirmware=${status.requiredFirmwareVersion}`);
-	console.log(`canFlashFirmware=${status.canFlashFirmware}`);
 	console.log(`canConfigure=${status.canConfigure}`);
 	console.log(`nextAction=${readNextAction(status)}`);
 	console.log(`debugLines=${status.debugLines.length}`);
@@ -511,9 +510,7 @@ function readChecklistItems(
 		{
 			key: 'flash',
 			ok: status.flashState === 'succeeded' || status.firmwareStatus === 'current',
-			detail: status.canFlashFirmware
-				? `flashState=${status.flashState}`
-				: 'disabled by ICAROS_ALLOW_M5_FIRMWARE_UPDATE'
+			detail: `flashState=${status.flashState}`
 		},
 		{
 			key: 'configure',
@@ -552,7 +549,7 @@ function readNextAction(status: UsbSetupSnapshot): string {
 	}
 
 	if (status.firmwareStatus !== 'current') {
-		return status.canFlashFirmware ? 'flash' : 'enable-flash-policy';
+		return 'flash';
 	}
 
 	if (!status.usbOk || status.serverUrl === null) {
@@ -584,7 +581,6 @@ function formatStatus(status: UsbSetupSnapshot): string {
 		`requiredFirmware=${status.requiredFirmwareVersion}`,
 		`firmwareStatus=${status.firmwareStatus}`,
 		`flash=${status.flashState}`,
-		`canFlash=${status.canFlashFirmware}`,
 		`canConfigure=${status.canConfigure}`,
 		`controllerIssue=${status.controllerIssue ?? '<none>'}`,
 		`nextAction=${readNextAction(status)}`,

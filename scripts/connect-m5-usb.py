@@ -110,16 +110,6 @@ def main() -> int:
         help="Read pairing config as JSON from stdin so secrets do not appear in process args.",
     )
     parser.add_argument(
-        "--skip-firmware-update",
-        action="store_true",
-        help="Probe firmware but do not build or upload controller firmware. This is the default.",
-    )
-    parser.add_argument(
-        "--allow-firmware-update",
-        action="store_true",
-        help="Allow building and uploading firmware from the configured adapter repo.",
-    )
-    parser.add_argument(
         "--reboot-after-configure",
         action="store_true",
         help="Send a reboot command after configureResult ok so saved WiFi config is applied cleanly.",
@@ -147,9 +137,6 @@ def main() -> int:
 
     server_url = configure_input.server_url if configure_input is not None else (args.server_url or "")
     device_id = configure_input.device_id if configure_input is not None else args.device_id
-    if args.mode == "flash" and (not args.allow_firmware_update or args.skip_firmware_update):
-        raise SystemExit("Firmware flash requires --allow-firmware-update without --skip-firmware-update.")
-
     print("Icaros Host USB controller setup")
     print(f"Mode: {args.mode}")
     if server_url:
@@ -363,7 +350,7 @@ def check_firmware(*, port: str, baud_rate: int) -> str | None:
         step="Firmware geprüft",
         progress=35,
         firmwareVersion=firmware_version,
-        message="Firmware update skipped by Host safety policy.",
+        message="Firmware update not requested in this USB workflow.",
     )
     return firmware_version
 

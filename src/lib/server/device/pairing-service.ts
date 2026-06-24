@@ -95,50 +95,25 @@ export function readUsbPairingInputFromForm(formData: FormData): UsbPairingInput
 
 export function runM5PairingCommand(url: URL, command: M5PairingCommand): M5PairingStartResult {
 	if (command.action === 'setDebug') {
-		return { ok: true, usbSetup: setM5PairingDebug(command.enabled) };
+		return { ok: true, usbSetup: setPairingDebugEnabled(command.enabled) };
 	}
 
 	if (command.action === 'probeUsb') {
-		return probeM5UsbController();
+		return { ok: true, usbSetup: startUsbProbe() };
 	}
 
 	if (command.action === 'flashFirmware') {
-		return flashM5Firmware();
+		return { ok: true, usbSetup: startFirmwareFlash() };
 	}
 
 	if (command.action === 'abortUsb') {
-		return { ok: true, usbSetup: abortM5UsbWorkflow() };
+		return { ok: true, usbSetup: abortUsbSetup() };
 	}
 
 	return startM5UsbPairing(url, command.input);
 }
 
-export function setM5PairingDebug(enabled: boolean): UsbSetupSnapshot {
-	return setPairingDebugEnabled(enabled);
-}
-
-export function probeM5UsbController(): M5PairingStartResult {
-	return { ok: true, usbSetup: startUsbProbe() };
-}
-
-export function flashM5Firmware(): M5PairingStartResult {
-	const currentSetup = getUsbSetupSnapshot();
-	if (!currentSetup.canFlashFirmware) {
-		return {
-			ok: false,
-			error: 'Firmware update disabled. Set ICAROS_ALLOW_M5_FIRMWARE_UPDATE=true.',
-			usbSetup: currentSetup
-		};
-	}
-
-	return { ok: true, usbSetup: startFirmwareFlash() };
-}
-
-export function abortM5UsbWorkflow(): UsbSetupSnapshot {
-	return abortUsbSetup();
-}
-
-export function startM5UsbPairing(url: URL, input: UsbPairingInput): M5PairingStartResult {
+function startM5UsbPairing(url: URL, input: UsbPairingInput): M5PairingStartResult {
 	if (input.ssid === null || input.password === null) {
 		return {
 			ok: false,

@@ -385,9 +385,9 @@ Wichtige Funktionen:
   redaktierte Device-URL.
 - `parseM5PairingCommand(value)` validiert JSON-Kommandos der Diagnose-API.
 - `runM5PairingCommand(url, command)` ist der gemeinsame Dispatcher.
-- `probeM5UsbController()` startet eine reine USB-Prüfung.
-- `flashM5Firmware()` startet Firmware-Flash nur, wenn er erlaubt ist.
-- `startM5UsbPairing(url, input)` schreibt WLAN- und Host-Daten auf den M5.
+- `startUsbProbe()` startet eine reine USB-Prüfung.
+- `startFirmwareFlash()` startet den expliziten Firmware-Flash.
+- `startUsbSetup(url, input)` schreibt WLAN- und Host-Daten auf den M5.
 
 Der eigentliche USB-Adapter ist:
 
@@ -406,14 +406,9 @@ bun run m5:pairing -- snapshot
 bun run m5:pairing -- checklist
 ```
 
-Ein Firmware-Update ist bewusst gesichert:
-
-```txt
-ICAROS_ALLOW_M5_FIRMWARE_UPDATE=true
-```
-
-Ohne diese Variable darf der Host prüfen und pairen, aber nicht versehentlich
-Firmware schreiben.
+Firmware-Uploads sind eine explizite Operator-Aktion. Der Host startet sie nur
+über den Firmware-Update-Workflow; Probe und Pairing prüfen Firmware, schreiben
+aber keine neue Firmware.
 
 ## 9. M5 Token Und Device-URL
 

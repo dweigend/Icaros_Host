@@ -106,10 +106,6 @@ function readFlashIndicator(usbSetup: HostConsoleUsbSetup): HostConsoleControlle
 		return createIndicator('Flash/Reset', 'ok', 'success', 'Upload und Reset abgeschlossen');
 	}
 
-	if (!usbSetup.canFlashFirmware) {
-		return createIndicator('Flash/Reset', 'gesperrt', 'danger', 'Policy deaktiviert');
-	}
-
 	if (usbSetup.flashState === 'failed') {
 		return createIndicator(
 			'Flash/Reset',
@@ -119,7 +115,7 @@ function readFlashIndicator(usbSetup: HostConsoleUsbSetup): HostConsoleControlle
 		);
 	}
 
-	return createIndicator('Flash/Reset', 'bereit', 'default', 'Explizite Aktion');
+	return createIndicator('Flash/Reset', 'bereit', 'default', 'USB-Aktion verfügbar');
 }
 
 function readConfigureIndicator(usbSetup: HostConsoleUsbSetup): HostConsoleControllerIndicator {
