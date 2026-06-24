@@ -116,52 +116,43 @@ function parseFlatToml(input: string): Map<string, string> {
 	let section: string | null = null;
 
 	for (const line of input.split(/\r?\n/)) {
-		const trimmed = line.trim();
-		if (trimmed === '' || trimmed.startsWith('#')) {
-			continue;
+		const parsedLine = readTomlLine(line, section);
+		section = parsedLine.section;
+		if (parsedLine.entry !== null) {
+			values.set(`${section}.${parsedLine.entry.key}`, parsedLine.entry.value);
 		}
-
-		if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-			section = trimmed.slice(1, -1).trim();
-			continue;
-		}
-
-		if (section === null) {
-			continue;
-		}
-
-		const entry = readTomlEntry(trimmed);
-		if (entry === null) {
-			continue;
-		}
-
-		values.set(`${section}.${entry.key}`, entry.value);
 	}
 
 	return values;
 }
 
-function readTomlEntry(line: string): Readonly<{ key: string; value: string }> | null {
-	const separatorIndex = line.indexOf('=');
-	if (separatorIndex < 0) {
-		return null;
-	}
-
-	const key = line.slice(0, separatorIndex).trim();
-	if (key === '') {
-		return null;
-	}
-
-	const value = parseTomlString(line.slice(separatorIndex + 1).trim());
-	return value === null ? null : { key, value };
+function readTomlLine(
+	line: string,
+	currentSection: string | null
+): Readonly<{ section: string | null; entry: Readonly<{ key: string; value: string }> | null }> {
+	const trimmed = line.trim();
+	const section = readTomlSection(trimmed) ?? currentSection;
+	const entry = section === currentSection && section !== null ? readTomlEntry(trimmed) : null;
+	return { section, entry };
 }
 
-function parseTomlString(value: string): string | null {
-	if (!value.startsWith('"') || !value.endsWith('"')) {
+function readTomlSection(line: string): string | null {
+	if (!line.startsWith('[') || !line.endsWith(']')) {
 		return null;
 	}
 
-	return value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+	return line.slice(1, -1).trim();
+}
+
+function readTomlEntry(line: string): Readonly<{ key: string; value: string }> | null {
+	const match = /^([^=\s][^=]*)=\s*("(?:\\.|[^"])*")\s*$/.exec(line);
+	if (match === null) {
+		return null;
+	}
+
+	const key = match[1]!.trim();
+	const value = match[2]!;
+	return { key, value: value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\') };
 }
 
 function emptyToNull(value: string | undefined): string | null {
