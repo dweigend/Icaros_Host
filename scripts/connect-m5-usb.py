@@ -23,7 +23,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, cast
+from typing import NoReturn, Protocol, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 if os.name != "nt":
@@ -119,6 +119,15 @@ class PySerialPort(Protocol):
     def close(self) -> None: ...
 
 
+def raise_windows_serial_error(action: str, error: Exception) -> NoReturn:
+    raise OSError(
+        errno.EACCES,
+        f"Could not {action} Windows serial port. "
+        "Close serial monitors, browser Web Serial sessions, or other tools, then retry. "
+        f"Details: {error}",
+    ) from error
+
+
 @dataclass(frozen=True)
 class PosixSerialConnection:
     fd: int
@@ -148,26 +157,42 @@ class WindowsSerialConnection:
     serial_port: PySerialPort
 
     def read(self, size: int) -> bytes:
-        return self.serial_port.read(size)
+        try:
+            return self.serial_port.read(size)
+        except Exception as error:
+            raise_windows_serial_error("read from", error)
 
     def write(self, data: bytes) -> None:
-        self.serial_port.write(data)
-        self.serial_port.flush()
+        try:
+            self.serial_port.write(data)
+            self.serial_port.flush()
+        except Exception as error:
+            raise_windows_serial_error("write to", error)
 
     def flush_input(self) -> None:
-        self.serial_port.reset_input_buffer()
+        try:
+            self.serial_port.reset_input_buffer()
+        except Exception as error:
+            raise_windows_serial_error("flush", error)
 
     def wait_for_data(self, timeout_seconds: float) -> bool:
         # Windows-specific: pyserial COM handles cannot be used with select().
         deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
-            if self.serial_port.in_waiting > 0:
+            if self.read_waiting_bytes() > 0:
                 return True
             time.sleep(min(WINDOWS_POLL_INTERVAL_SECONDS, max(0.0, deadline - time.monotonic())))
-        return self.serial_port.in_waiting > 0
+        return self.read_waiting_bytes() > 0
 
     def close(self) -> None:
         self.serial_port.close()
+
+    def read_waiting_bytes(self) -> int:
+        try:
+            return self.serial_port.in_waiting
+        except Exception as error:
+            # WINDOWS stability: surface transient COM access failures without a pyserial traceback.
+            raise_windows_serial_error("poll", error)
 
 
 @dataclass
@@ -546,6 +571,8 @@ def read_firmware_version(*, port: str, baud_rate: int) -> str | None:
                 version = parsed.get("firmwareVersion")
                 if isinstance(version, str) and version:
                     return version
+    except OSError:
+        return None
     finally:
         connection.close()
 
@@ -641,6 +668,8 @@ def probe_port(
 
         if buffer:
             handle_line(buffer.rstrip(b"\r"), stats)
+    except OSError as error:
+        explain_serial_error(port, error)
     finally:
         connection.close()
 
@@ -925,6 +954,12 @@ def summarize_json(parsed: dict[str, object]) -> str:
 def explain_open_error(port: str, error: OSError) -> None:
     print(f"Could not open {port}: {error}")
     if error.errno in (errno.EBUSY, errno.EACCES):
+        print("Close serial monitors, browser Web Serial sessions, or other tools, then retry.")
+
+
+def explain_serial_error(port: str, error: OSError) -> None:
+    print(f"Could not access {port}: {error}")
+    if error.errno in (errno.EBUSY, errno.EACCES, errno.EIO):
         print("Close serial monitors, browser Web Serial sessions, or other tools, then retry.")
 
 
