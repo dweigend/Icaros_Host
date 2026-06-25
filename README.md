@@ -1,47 +1,45 @@
-# Icaros Host ✈️
+# Icaros Host
 
-Icaros Host ist der Stationsserver für VR Experiences.
+Icaros Host is the local station server for VR experiences.
 
-Der Host ist nicht die Experience. Er verbindet M5-Controller, Operator-Konsole
-und externe WebXR/VR-Clients. Die Brille kennt eine feste Host-URL. Der Host
-entscheidet, welcher registrierte lokale Client gestartet wird, und stellt allen
-Experience Clients einen kleinen normierten Control-Stream bereit.
+The Host is not the experience. It connects the M5 controller, the operator
+console, and external WebXR/VR clients. The headset keeps one fixed Host URL.
+The Host decides which registered local client should launch and publishes a
+small normalized control stream for experience clients.
 
-Die wichtigsten Aufgaben sind:
+Core responsibilities:
 
-- Runtime Clients für die Launch-Auswahl registrieren
-- den konkreten Launch-Client auswählen
-- `/launch` auf die HTTPS-URL dieses Clients weiterleiten
-- Controller-Daten vom M5 empfangen
-- Rohdaten bereinigen, normalisieren, glätten und absichern
-- sichere Controller-Daten als öffentlichen normierten Stream bereitstellen
-- HTTPS/WSS für Quest- und Browser-Clients erzwingen
+- register runtime clients for launch selection
+- select one concrete launch client
+- redirect `/launch` to that client's HTTPS URL
+- receive raw controller data from the M5
+- clean, normalize, smooth, and protect controller input
+- publish safe controller values on a normalized public stream
+- keep Quest/browser surfaces on HTTPS/WSS
 
-## Architektur 🧭
+## Architecture
 
-![Skizze der Host-Runtime-Routing-Architektur](docs/assets/host-runtime-routing-sketch.png)
+![Host runtime routing sketch](docs/assets/host-runtime-routing-sketch.png)
 
-Das Kernmodell ist bewusst klein:
+The model is intentionally small:
 
-1. Der M5 sendet Rohdaten nur an den Host.
-2. Lokale Browser- oder WebXR-Clients laufen separat und können sich beim Host
-   registrieren.
-3. Die Operator-Konsole wählt einen konkreten online Runtime Client aus.
-4. Die Brille öffnet immer dieselbe Host-URL: `/launch`.
-5. Der Host leitet `/launch` per `307` auf die registrierte HTTPS-URL des
-   ausgewählten Clients weiter.
-6. Controller-Daten laufen davon getrennt über `/ws/control/main` zu den
-   Experience Clients.
+1. The M5 sends raw controller data only to the Host.
+2. Browser or WebXR clients run separately and may register with the Host.
+3. The operator console selects one online runtime client.
+4. The headset always opens the same Host URL: `/launch`.
+5. The Host redirects `/launch` with `307` to the selected client's registered
+   HTTPS URL.
+6. Controller data is published separately on `/ws/control/main`.
 
-Der Host streamt keine Website über WebSocket und startet keine Experience
-selbst. Experiences rendern ihre eigene WebXR-Welt und lesen nur den
-öffentlichen Control-Stream.
+The Host does not stream websites over WebSocket and does not start experience
+builds. Experiences render their own WebXR worlds and consume only the public
+control stream.
 
 ```txt
-M5-Rohdaten -> Host -> control.orientation -> Experience
+M5 raw data -> Host -> control.orientation -> Experience
 ```
 
-Der öffentliche Control-Payload ist klein und stabil:
+The public control payload is small and stable:
 
 ```ts
 type ControlOrientation = Readonly<{
@@ -52,163 +50,201 @@ type ControlOrientation = Readonly<{
 }>;
 ```
 
-`pitch` und `roll` liegen im Bereich `-1..1`. `quality` liegt im Bereich
-`0..1`. Wenn der Controller fehlt, veraltet ist oder unsichere Werte liefert,
-sendet der Host neutrale Werte mit `pitch: 0`, `roll: 0` und `quality: 0`.
+`pitch` and `roll` are normalized to `-1..1`. `quality` is `0..1`. Missing,
+stale, invalid, or unsafe controller input is published as neutral
+`pitch: 0`, `roll: 0`, `quality: 0`.
 
-## Client-Endpunkte
+## Client Endpoints
 
-| Endpunkt | Protokoll | Client | Zweck |
+| Endpoint | Protocol | Client | Purpose |
 | --- | --- | --- | --- |
-| `/` | HTTPS | Operator Browser | Technische Konsole, Launch-Auswahl, M5-Setup |
-| `/launch` | HTTPS | Quest/PICO Browser | Feste Brillen-URL; leitet per `307` zum ausgewählten HTTPS-Client weiter |
-| `/ws/control/main` | WSS | VR Experience Clients | Öffentlicher normierter Control-Stream |
-| `/ws/runtime` | WSS | VR Experience Clients | Launch-Registration, Client-Status und Präsenz |
-| `/ws/device` | WS | M5 Controller | Firmware-kompatibler Gerätesocket für rohe Controller-Frames |
-| `/health` | HTTPS | CLI, Monitoring | Einfache Erreichbarkeitsprüfung |
-| `/api/m5-pairing` | HTTPS JSON | CLI, Automation | Diagnose- und Pairing-Adapter für M5-Setup |
+| `/` | HTTPS | Operator browser | Technical console, launch selection, M5 setup |
+| `/launch` | HTTPS | Quest/PICO browser | Fixed headset URL; redirects to the selected HTTPS client |
+| `/ws/control/main` | WSS | VR experience clients | Public normalized control stream |
+| `/ws/runtime` | WSS | VR experience clients | Launch registration, client status, presence |
+| `/ws/device` | WS | M5 controller | Firmware-compatible raw controller socket |
+| `/health` | HTTPS | CLI, monitoring | Basic reachability check |
+| `/api/m5-pairing` | HTTPS JSON | CLI, automation | Diagnostic and pairing adapter for M5 setup |
 
-Experience Clients verwenden `/ws/control/main` für Steuerdaten. Sie verwenden
-`/ws/runtime`, wenn sie in der Launch-Auswahl erscheinen sollen. Sie verbinden
-sich nicht direkt mit dem M5 und lesen keine Rohdaten.
+Experience clients use `/ws/control/main` for controls. They use `/ws/runtime`
+only when they should appear in the launch selection. They never connect
+directly to the M5 and never parse raw M5 data.
 
-### Nachrichten für Experience Clients
+### Experience Client Messages
 
-Auf `/ws/runtime` senden registrierte Launch Clients:
+Registered launch clients send on `/ws/runtime`:
 
 - `client.hello`
 - `client.heartbeat`
 
-Auf `/ws/runtime` empfangen sie:
+They may receive on `/ws/runtime`:
 
 - `client.registered`
 - `client.rejected`
 - `station.state`
-- `runtime.clients` für Präsenz- und Operator-State; normale Experiences dürfen
-  diese Nachricht ignorieren
+- `runtime.clients` for presence and operator state; normal experiences may
+  ignore this message
 
-Auf `/ws/control/main` empfangen Control-Stream-Abonnenten:
+Control subscribers receive on `/ws/control/main`:
 
 - `control.orientation`
 
-Der vollständige Wire Contract steht in
-[docs/client-api.md](docs/client-api.md).
+The full wire contract is documented in [docs/client-api.md](docs/client-api.md).
 
 ## Installation
 
-Voraussetzung: Bun ist installiert.
+Requirement: Bun is installed.
 
 ```sh
 bun install
 ```
 
-Der Host braucht lokale TLS-Dateien:
+The Host requires local TLS files:
 
 ```txt
 .certs/icaros-host.pem
 .certs/icaros-host-key.pem
 ```
 
-Die Einrichtung ist in
-[docs/quest-https-launch-routing.md](docs/quest-https-launch-routing.md)
-beschrieben. Host und VR Client besitzen jeweils eigene Zertifikate.
+Setup is described in
+[docs/quest-https-launch-routing.md](docs/quest-https-launch-routing.md). Host
+and VR clients use separate certificates.
 
-## Server Starten
+## Start The Server
 
-Normaler Start für Entwicklung und Betrieb:
+Normal development and station start:
 
 ```sh
 bun run build
 bun start
 ```
 
-`bun run build` erzeugt das SvelteKit-Produktionsartefakt. `bun start` startet
-dieses Artefakt, prüft TLS und gibt die erreichbaren URLs aus. Es baut nicht
-erneut und weicht nicht still auf Ersatzports aus.
+`bun run build` creates the SvelteKit production output. `bun start` starts that
+output, checks TLS, and prints the relevant local, LAN, client, and device URLs.
+It does not build again. If the Host or M5 port is already in use, the CLI asks
+whether it may use a free replacement port.
+
+The startup summary is shaped like this:
 
 ```txt
-https://localhost:5183/
-https://<host-lan-ip-or-name>:5183/
-ws://<host-lan-ip-or-name>:5184/ws/device
+Icaros Host is running
+  Host HTTPS listener: https://0.0.0.0:5183
+
+Local operator UI:
+  Open Host locally: https://localhost:5183/
+
+Remote / LAN access:
+  Host URL: https://<host-lan-ip-or-name>:5183/
+  Headset launch URL: https://<host-lan-ip-or-name>:5183/launch
+
+Connect client via:
+  Host origin argument: bun start https://<host-lan-ip-or-name>:5183
+  Runtime registration: wss://<host-lan-ip-or-name>:5183/ws/runtime
+  Control stream: wss://<host-lan-ip-or-name>:5183/ws/control/main
+
+M5 controller WebSocket:
+  Device socket: ws://<host-lan-ip-or-name>:5184/ws/device
 ```
 
-Für feste Stations-Setups bleibt der Alias:
+For fixed station setups, the alias remains:
 
 ```sh
 bun run start:strict
 ```
 
-`start:strict` nutzt denselben festen Startpfad. Explizit gesetzte Ports wie
-`PORT` oder `ICAROS_DEVICE_WS_PORT` sind ein Vertrag und werden nicht still
-geändert.
+`start:strict` uses the same startup path. Explicit ports such as `PORT` or
+`ICAROS_DEVICE_WS_PORT` are not changed silently; if they are occupied, the CLI
+asks before using a replacement port.
 
-Der Host darf ohne konfigurierten Controller starten. M5-Pairing,
-Firmware-Updates, Diagnose und Controller-Setup laufen danach über die Konsole
-oder die CLI, nicht als Teil von `bun start`.
+The Host may start without a configured controller. M5 pairing, firmware
+updates, diagnostics, and controller setup run afterward through the console or
+CLI, not as part of `bun start`.
 
-Der Prozess bleibt im Terminal aktiv. Stoppen mit `Ctrl-C`.
+The process stays active in the terminal. Stop it with `Ctrl-C`.
 
-Für reine UI-Arbeit ohne Hardware:
+For isolated UI work without hardware:
 
 ```sh
 bun run dev:ui-only
 ```
 
-`dev:ui-only` ist nur für lokale Svelte-UI-Inspektion gedacht. Es ersetzt nicht
-den HTTPS/WSS-Host-Start für Quest, Runtime Clients oder M5-Geräte.
+`dev:ui-only` is only for local Svelte UI inspection. It does not replace the
+HTTPS/WSS Host start for Quest, runtime clients, or M5 devices.
 
-## Nutzung
+## Usage
 
-1. Host starten.
-2. Operator-Konsole im Browser öffnen:
+1. Start the Host.
+2. Open the operator console in a browser.
+
+   Local desktop checks:
+
+   ```txt
+   https://localhost:5183/
+   ```
+
+   Quest/LAN sessions should use a stable LAN origin:
 
    ```txt
    https://<host-lan-ip-or-name>:5183/
    ```
 
-   Für reine lokale Desktop-Checks kann `https://localhost:5183/` reichen. Für
-   Quest/LAN-Sessions sollte die Konsole während eines Laufs über eine stabile
-   LAN-Origin geöffnet bleiben, damit SvelteKit Form Actions und `/launch`
-   dieselbe Origin verwenden.
+3. Set up the M5 controller through the console or CLI.
+4. Start a VR experience client separately over HTTPS. The console shows the
+   Host origin to pass into the client. A generic client command looks like:
 
-3. M5-Controller über die Konsole oder CLI einrichten.
-4. Einen VR Experience Client separat über HTTPS starten.
-5. Der Client verbindet sich mit `/ws/control/main` und sendet optional
-   `client.hello` an `/ws/runtime`.
-6. In der Operator-Konsole den konkreten Runtime Client auswählen.
-7. Quest/PICO öffnet die feste Host-URL:
+   ```sh
+   bun start https://<host-lan-ip-or-name>:5183
+   ```
+
+   Client projects may expose a different command. The important part is that
+   they receive the Host HTTPS origin and derive WSS URLs from it.
+
+5. The client connects to `/ws/control/main` and optionally sends
+   `client.hello` to `/ws/runtime`.
+6. Select the concrete runtime client in the operator console.
+7. Quest/PICO opens the fixed Host URL:
 
    ```txt
    https://<host-lan-ip-or-name>:5183/launch
    ```
 
-8. Der Host leitet auf die HTTPS-URL des ausgewählten Clients weiter.
+8. The Host redirects to the selected client's registered HTTPS URL.
 
-Wenn kein Client ausgewählt ist, der Client stale ist oder seine registrierte
-URL kein HTTPS nutzt, scheitert `/launch` klar statt auf einen Default
-zurückzufallen.
+If no client is selected, the selected client is stale, or the registered URL is
+not HTTPS, `/launch` fails clearly instead of falling back to a default.
 
-## Neue Clients Einrichten
+The default 3D world is also an external runtime client. It is not rendered or
+started by the Host. It registers over `/ws/runtime` with the stable
+`experienceId` `icaros-default-world`. If no launch client is selected and
+exactly one online default-world client is registered, the Host may select that
+concrete client automatically. If it is not online, `/launch` still fails
+clearly without fallback.
 
-Ein neuer VR Client ist ein eigenständiges WebXR-Projekt. Er muss:
+## Creating New Clients
 
-- über HTTPS laufen
-- den Host über `wss://<host-origin>/ws/control/main` für Steuerdaten erreichen
-- optional `client.hello` und danach `client.heartbeat` an `/ws/runtime` senden
-- im `client.hello` eine konkrete HTTPS-URL für `/launch` registrieren
-- nur die öffentlichen `control.orientation`-Werte für die Steuerung verwenden
-- neutrale `pitch`/`roll`-Werte direkt anwenden und `quality` als Signalqualität behandeln
-- eigene TLS-Zertifikate verwenden
+A new VR client is a standalone WebXR project. It must:
 
-Als Referenz für Client-Projekte dienen:
+- run over HTTPS
+- connect to `wss://<host-origin>/ws/control/main` for controls
+- optionally send `client.hello` and then `client.heartbeat` on `/ws/runtime`
+- register one concrete HTTPS URL in `client.hello`
+- use only public `control.orientation` values for control input
+- apply neutral `pitch` and `roll` directly and treat `quality` as signal quality
+- use its own TLS certificates
+
+Start with the dedicated client integration reference:
+
+- [ICAROS Client Connection Guide](https://github.com/dweigend/ICAROS_Client_Erstellen/blob/main/Host_Verbindung_Anleitung.md) - minimal TypeScript handshake and control-stream examples for connecting a new external client to Icaros Host.
+
+Example client projects:
 
 - [Icaros VR Client](https://github.com/dweigend/Icaros_VR_Client)
 - [Neural Flight Template](https://github.com/dweigend/neural-flight-template)
 - [Neural Flight](https://github.com/dweigend/neural-flight)
 
-## Diagnose
+## Diagnostics
 
-M5- und Host-Diagnosen laufen über die CLI:
+M5 and Host diagnostics run through the CLI:
 
 ```sh
 bun run m5:pairing -- health
@@ -217,7 +253,7 @@ bun run m5:pairing -- snapshot
 bun run m5:pairing -- checklist
 ```
 
-USB- und Firmware-Funktionen:
+USB and firmware commands:
 
 ```sh
 bun run m5:pairing -- probe
@@ -226,23 +262,24 @@ bun run m5:pairing -- pair
 bun run m5:pairing -- abort
 ```
 
-Runtime-Smoke-Test bei laufendem Host:
+Runtime smoke test against a running Host:
 
 ```sh
 bun run smoke:runtime
 ```
 
-## Dokumentation
+## Documentation
 
-| Dokument | Inhalt |
+| Document | Content |
 | --- | --- |
-| [docs/host-lifecycle.md](docs/host-lifecycle.md) | Kurze Code-Tour durch Start, Gateway, Launch, M5 und Diagnose |
-| [docs/architecture.md](docs/architecture.md) | Architekturgrenzen und Ownership |
-| [docs/client-api.md](docs/client-api.md) | Schnittstelle für VR Experience Clients |
-| [docs/client-prompt.md](docs/client-prompt.md) | Checkliste und Prompt für neue Clients |
-| [docs/quest-https-launch-routing.md](docs/quest-https-launch-routing.md) | HTTPS, Quest/PICO Launch, Zertifikate und Troubleshooting |
-| [docs/debugging.md](docs/debugging.md) | Debugging und Diagnose |
-| [AGENTS.md](AGENTS.md) | Arbeitsregeln für Coding Agents |
+| [docs/host-lifecycle.md](docs/host-lifecycle.md) | Code tour through startup, gateway, launch, M5, and diagnostics |
+| [docs/architecture.md](docs/architecture.md) | Architecture boundaries and ownership |
+| [docs/client-api.md](docs/client-api.md) | Public contract for VR experience clients |
+| [docs/client-connection.md](docs/client-connection.md) | Short Host-side pointer to the external client integration guide |
+| [docs/client-prompt.md](docs/client-prompt.md) | Copyable prompt for integrating a new client |
+| [docs/quest-https-launch-routing.md](docs/quest-https-launch-routing.md) | HTTPS, Quest/PICO launch, certificates, and troubleshooting |
+| [docs/debugging.md](docs/debugging.md) | Debugging and diagnostics |
+| [AGENTS.md](AGENTS.md) | Working rules for coding agents |
 
 ## Checks
 

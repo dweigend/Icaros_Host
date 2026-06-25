@@ -3,9 +3,9 @@
 	the public control stream.
 -->
 <script lang="ts">
-	import { Gauge } from '@lucide/svelte';
+	import { Crosshair, Gauge, RotateCcw } from '@lucide/svelte';
 
-	import { ScrollArea, StatusDot } from '$lib/components';
+	import { Button, ScrollArea, StatusDot } from '$lib/components';
 	import { formatAge, formatSignedUnit, toQualityPercent } from '../format';
 	import type { HostConsoleControlStreamPanelState } from '../types';
 
@@ -74,6 +74,25 @@
 				{state.connectionUrls.controlSocketUrl}
 			</p>
 		</article>
+	</div>
+
+	<div class="actions">
+		<form method="POST" action="?/calibrateCurrentPose">
+			<Button type="submit" variant="primary" disabled={!state.canCalibrateCurrentPose}>
+				<Crosshair size={16} aria-hidden="true" />
+				Current pose as neutral
+			</Button>
+		</form>
+		<form method="POST" action="?/resetM5Calibration">
+			<Button type="submit" variant="ghost" disabled={!state.m5Calibration.isActive}>
+				<RotateCcw size={16} aria-hidden="true" />
+				Reset calibration
+			</Button>
+		</form>
+		<p>
+			offset pitch {formatSignedUnit(state.m5Calibration.pitchOffset)} / roll
+			{formatSignedUnit(state.m5Calibration.rollOffset)}
+		</p>
 	</div>
 
 	<ScrollArea class="log" aria-label="Recent control frames">

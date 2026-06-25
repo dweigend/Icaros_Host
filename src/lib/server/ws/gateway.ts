@@ -22,12 +22,16 @@ import {
 	createControlOrientationMessage,
 	createRuntimeClientsMessage,
 	createStationStateMessage,
+	DEFAULT_EXPERIENCE_ID,
 	validateClientHeartbeatPayload,
 	validateClientHelloPayload
 } from '$lib/protocol';
 import {
+	applyM5ControlCalibration,
+	createAutoNeutralizer,
 	createNeutralControl,
 	DEFAULT_CONTROL_STREAM_ID,
+	getM5ControlCalibrator,
 	isM5OrientationFrame,
 	normalizeM5Frame,
 	parseM5Frame,
@@ -71,13 +75,17 @@ class IcarosWebSocketGateway {
 	#controlServer = new WebSocketServer({ noServer: true });
 	#deviceServer = new WebSocketServer({ noServer: true });
 	#runtimeServer = new WebSocketServer({ noServer: true });
+	#autoNeutralizer = createAutoNeutralizer();
+	#controlCalibrator = getM5ControlCalibrator();
 	#controlStreamClients = createControlStreamClientRegistry();
 	#runtimeClients = runtimeClientRegistry;
 	#lastControl: ControlOrientation = createNeutralControl();
+	#lastNormalizedControl: ControlOrientation | null = null;
 	#lastDeviceFrameAt: number | null = null;
 	#staleTimer: ReturnType<typeof setInterval> | null = null;
 	#runtimePresenceTimer: ReturnType<typeof setInterval> | null = null;
 	#unsubscribeStation: (() => void) | null = null;
+	#unsubscribeCalibration: (() => void) | null = null;
 	#handlersRegistered = false;
 
 	attach(server: RuntimeHttpServer): void {
@@ -98,6 +106,7 @@ class IcarosWebSocketGateway {
 
 	dispose(): void {
 		this.#unsubscribeStation?.();
+		this.#unsubscribeCalibration?.();
 		if (this.#staleTimer !== null) {
 			clearInterval(this.#staleTimer);
 			this.#staleTimer = null;
@@ -129,6 +138,9 @@ class IcarosWebSocketGateway {
 		this.#unsubscribeStation = stationStateStore.subscribe((state) => {
 			this.#runtimeClients.sendStationState(createStationStateMessage(state));
 			this.#broadcastRuntimeClients();
+		});
+		this.#unsubscribeCalibration = this.#controlCalibrator.subscribe(() => {
+			this.#publishCurrentCalibratedControl();
 		});
 		this.#staleTimer = setInterval(
 			() => this.#publishStaleControlIfNeeded(),
@@ -205,6 +217,7 @@ class IcarosWebSocketGateway {
 			const frame = parseM5Frame(data.toString());
 
 			if (frame === null) {
+				this.#clearCurrentDevicePose();
 				this.#publishControl(createNeutralControl());
 				return;
 			}
@@ -215,17 +228,14 @@ class IcarosWebSocketGateway {
 				return;
 			}
 
-			this.#lastDeviceFrameAt = Date.now();
-			this.#publishControl(
-				smoothControlOrientation(
-					this.#lastControl,
-					protectControlOrientation(this.#lastControl, normalizeM5Frame(frame))
-				)
-			);
+			const now = Date.now();
+			this.#lastDeviceFrameAt = now;
+			this.#lastNormalizedControl = normalizeM5Frame(frame, now);
+			this.#publishLiveControl(this.#lastNormalizedControl, now, true);
 		});
 
 		socket.on('close', () => {
-			this.#lastDeviceFrameAt = null;
+			this.#clearCurrentDevicePose();
 			recordPairedDeviceSocketClose(formatRemoteAddress(request));
 			this.#publishControl(createNeutralControl());
 		});
@@ -277,6 +287,7 @@ class IcarosWebSocketGateway {
 			const removedClient = this.#runtimeClients.remove(client);
 			if (removedClient?.clientId === stationStateStore.getState().selectedLaunchClientId) {
 				stationStateStore.setLaunchSelection(null, null);
+				this.#selectDefaultLaunchClientIfClear();
 			}
 			this.#broadcastRuntimeClients();
 		});
@@ -284,6 +295,7 @@ class IcarosWebSocketGateway {
 
 	#registerRuntimeClient(client: RuntimeClient, payload: ClientHelloPayload): RuntimeClient {
 		const registeredClient = this.#runtimeClients.registerHello(client, payload, Date.now());
+		this.#selectDefaultLaunchClientIfClear();
 		const stationState = stationStateStore.getState();
 		const selectedLaunchClientId = stationState.selectedLaunchClientId;
 		const message = createClientRegisteredMessage({
@@ -308,7 +320,24 @@ class IcarosWebSocketGateway {
 			return;
 		}
 
+		this.#selectDefaultLaunchClientIfClear();
 		this.#broadcastRuntimeClients();
+	}
+
+	#publishLiveControl(
+		normalizedControl: ControlOrientation,
+		now: number,
+		smoothingEnabled: boolean
+	): void {
+		const calibratedControl = this.#controlCalibrator.recordNormalizedInput(normalizedControl);
+		const safeControl = protectControlOrientation(this.#lastControl, calibratedControl);
+		const neutralizerResult = this.#autoNeutralizer.process(safeControl, now);
+		const publicControl =
+			neutralizerResult.neutralized || !smoothingEnabled
+				? neutralizerResult.control
+				: smoothControlOrientation(this.#lastControl, neutralizerResult.control);
+
+		this.#publishControl(publicControl);
 	}
 
 	#publishControl(control: ControlOrientation): void {
@@ -328,8 +357,27 @@ class IcarosWebSocketGateway {
 			return;
 		}
 
-		this.#lastDeviceFrameAt = null;
+		this.#clearCurrentDevicePose();
 		this.#publishControl(createNeutralControl());
+	}
+
+	#clearCurrentDevicePose(): void {
+		this.#lastDeviceFrameAt = null;
+		this.#lastNormalizedControl = null;
+		this.#autoNeutralizer.reset();
+		this.#controlCalibrator.clearLivePose();
+	}
+
+	#publishCurrentCalibratedControl(): void {
+		if (this.#lastNormalizedControl === null) {
+			return;
+		}
+
+		const control = applyM5ControlCalibration(
+			this.#lastNormalizedControl,
+			this.#controlCalibrator.readCalibration()
+		);
+		this.#publishControl(protectControlOrientation(createNeutralControl(), control));
 	}
 
 	#markStaleRuntimeClients(): void {
@@ -344,12 +392,28 @@ class IcarosWebSocketGateway {
 			this.#runtimeClients.findSelectableClient(selectedLaunchClientId) === null
 		) {
 			stationStateStore.setLaunchSelection(null, null);
+			this.#selectDefaultLaunchClientIfClear();
 			return;
 		}
 
+		this.#selectDefaultLaunchClientIfClear();
 		if (changed) {
 			this.#broadcastRuntimeClients();
 		}
+	}
+
+	#selectDefaultLaunchClientIfClear(): void {
+		if (stationStateStore.getState().selectedLaunchClientId !== null) {
+			return;
+		}
+
+		const defaultClient =
+			this.#runtimeClients.findSingleOnlineClientByExperienceId(DEFAULT_EXPERIENCE_ID);
+		if (defaultClient === null) {
+			return;
+		}
+
+		stationStateStore.setLaunchSelection(defaultClient.clientId, defaultClient.experienceId);
 	}
 
 	#broadcastRuntimeClients(): void {

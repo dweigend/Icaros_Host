@@ -5,6 +5,7 @@
  */
 export const PROTOCOL_VERSION = 'neural-flight.v1';
 export const STATION_ID = 'station-a';
+export const DEFAULT_EXPERIENCE_ID = 'icaros-default-world';
 
 export type ProtocolVersion = typeof PROTOCOL_VERSION;
 export type StationId = typeof STATION_ID;

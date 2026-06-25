@@ -32,10 +32,24 @@ bun start
 Expected Host surfaces:
 
 ```txt
-https://localhost:5183/
-https://<host-lan-ip-or-name>:5183/
-ws://<host-lan-ip-or-name>:5184/ws/device
+Local operator UI:
+  Open Host locally: https://localhost:5183/
+
+Remote / LAN access:
+  Host URL: https://<host-lan-ip-or-name>:5183/
+  Headset launch URL: https://<host-lan-ip-or-name>:5183/launch
+
+Connect client via:
+  Host origin argument: bun start https://<host-lan-ip-or-name>:5183
+  Runtime registration: wss://<host-lan-ip-or-name>:5183/ws/runtime
+  Control stream: wss://<host-lan-ip-or-name>:5183/ws/control/main
+
+M5 controller WebSocket:
+  Device socket: ws://<host-lan-ip-or-name>:5184/ws/device
 ```
+
+For a minimal client integration reference, see
+[ICAROS Client Connection Guide](https://github.com/dweigend/ICAROS_Client_Erstellen/blob/main/Host_Verbindung_Anleitung.md).
 
 Standalone client, for example `Icaros_VR_Client`:
 

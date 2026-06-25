@@ -3,7 +3,10 @@
 	client visibility.
 -->
 <script lang="ts">
-	import { Kbd, StatusDot } from '$lib/components';
+	import { X } from '@lucide/svelte';
+
+	import { Button, StatusDot } from '$lib/components';
+	import { DEFAULT_EXPERIENCE_ID } from '$lib/protocol';
 	import { formatRuntimeClientId, formatRuntimeClientSeen } from '../format';
 	import type { HostConsoleRuntimeRegistryState } from '../types';
 
@@ -28,33 +31,37 @@
 
 	<div class="runtime-clients">
 		{#each state.runtimeClients as client (client.clientId)}
-			<article class="runtime-client" data-active={state.selectedLaunchClientId === client.clientId}>
+			{@const active = state.selectedLaunchClientId === client.clientId}
+			{@const isDefaultExperience = client.experienceId === DEFAULT_EXPERIENCE_ID}
+			<article class="runtime-client" data-active={active}>
 				<div class="row">
-					<div class="stack">
+					<div class="status">
+						<StatusDot
+							tone={client.status === 'online' ? 'success' : 'warning'}
+							label={`Runtime client ${client.status}`}
+						/>
 						<strong>{client.title}</strong>
-						<span>{client.experienceId}</span>
+						{#if isDefaultExperience}
+							<span>default</span>
+						{/if}
 					</div>
-					<StatusDot
-						tone={client.status === 'online' ? 'success' : 'warning'}
-						label={`Runtime client ${client.status}`}
-					/>
+
+					{#if active}
+						<form method="POST" action="?/setSelectedLaunchClient">
+							<input type="hidden" name="clientId" value="" />
+							<Button type="submit" variant="ghost" aria-label={`Clear launch client ${client.title}`}>
+								<X size={16} aria-hidden="true" />
+								Clear
+							</Button>
+						</form>
+					{/if}
 				</div>
 
 				<dl class="client-facts">
-					<div><dt>client</dt><dd><Kbd>{formatRuntimeClientId(client.clientId)}</Kbd></dd></div>
+					<div><dt>client</dt><dd>{formatRuntimeClientId(client.clientId)}</dd></div>
 					<div><dt>last seen</dt><dd>{formatRuntimeClientSeen(client, state.now)}</dd></div>
-					<div><dt>url</dt><dd><Kbd>{client.url}</Kbd></dd></div>
-					{#if client.userAgent}
-						<div><dt>agent</dt><dd>{client.userAgent}</dd></div>
-					{/if}
+					<div><dt>url</dt><dd>{client.url}</dd></div>
 				</dl>
-
-				{#if state.selectedLaunchClientId === client.clientId}
-					<div class="status">
-						<StatusDot tone="success" label="Selected launch client" />
-						<span>selected launch client</span>
-					</div>
-				{/if}
 			</article>
 		{:else}
 			<p>

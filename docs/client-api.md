@@ -123,6 +123,23 @@ Rules:
 - `url` must be the HTTPS page URL that `/launch` may redirect to.
 - Non-HTTPS URLs are rejected with `client.rejected`.
 
+### Default World Contract
+
+The default 3D world is still a normal external runtime client. The Host does
+not serve, start, bundle, or render it. A Default World client registers over
+`/ws/runtime` like every other launchable experience, but uses the stable
+experience id:
+
+```txt
+icaros-default-world
+```
+
+If no launch client is selected and exactly one online runtime client is
+registered with that `experienceId`, the Host may select that concrete client
+as the launch target. This is only a convenience selection. `/launch` still
+redirects only to the selected registered HTTPS client and fails clearly when
+no selected online client exists.
+
 After `client.registered`, send `client.heartbeat` every 3 to 5 seconds:
 
 ```json

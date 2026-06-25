@@ -6,6 +6,7 @@
 	import { onMount } from 'svelte';
 
 	import ConnectionAddressesPanel from './_console/components/connection-addresses-panel.svelte';
+	import ClientStartPanel from './_console/components/client-start-panel.svelte';
 	import ControlStreamPanel from './_console/components/control-stream-panel.svelte';
 	import ControllerSetupPanel from './_console/components/controller-setup-panel.svelte';
 	import LaunchSelectionPanel from './_console/components/launch-selection-panel.svelte';
@@ -29,6 +30,7 @@
 		<h1>Icaros Host</h1>
 	</header>
 
+	<ClientStartPanel urls={consoleState.connectionUrls} />
 	<ConnectionAddressesPanel urls={consoleState.connectionUrls} />
 	<LaunchSelectionPanel state={consoleState.launch} />
 	<RuntimeClientsPanel state={consoleState.registry} />

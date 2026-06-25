@@ -29,6 +29,7 @@ export function createConsolePageState(readData: () => PageData): HostConsoleSta
 
 	const connection = $derived(readData().connection);
 	const station = $derived(readData().station);
+	const m5Calibration = $derived(readData().m5Calibration);
 	const usbSetup = $derived(readData().usbSetup);
 	const selectedLaunchClientId = $derived(station.selectedLaunchClientId);
 	const launchRegistry = createConsoleLaunchRegistryState(() => selectedLaunchClientId);
@@ -39,6 +40,13 @@ export function createConsolePageState(readData: () => PageData): HostConsoleSta
 			label: `${client.title} - ${client.experienceId}`,
 			value: client.clientId
 		}))
+	);
+	const launchTargetUrl = $derived(
+		resolveCurrentLaunchTargetUrl(
+			launchRegistry.selectedLaunchClientId,
+			launchRegistry.runtimeClients,
+			connectionUrls.experienceTargetUrl
+		)
 	);
 	const usbSetupTone = $derived(readUsbSetupTone(usbSetup, usbNow));
 	const usbSetupDuration = $derived(
@@ -88,6 +96,9 @@ export function createConsolePageState(readData: () => PageData): HostConsoleSta
 		},
 		get launchClientOptions() {
 			return launchClientOptions;
+		},
+		get launchTargetUrl() {
+			return launchTargetUrl;
 		},
 		get connectionUrls() {
 			return connectionUrls;
@@ -161,6 +172,12 @@ export function createConsolePageState(readData: () => PageData): HostConsoleSta
 		},
 		get debugQualityPercent() {
 			return controlStream.debugQualityPercent;
+		},
+		get m5Calibration() {
+			return m5Calibration;
+		},
+		get canCalibrateCurrentPose() {
+			return (controlStream.debugLastControl?.quality ?? 0) > 0;
 		}
 	};
 
@@ -174,4 +191,32 @@ export function createConsolePageState(readData: () => PageData): HostConsoleSta
 			return connectionUrls;
 		}
 	};
+}
+
+function resolveCurrentLaunchTargetUrl(
+	selectedLaunchClientId: string | null,
+	runtimeClients: HostConsoleRuntimeRegistryState['runtimeClients'],
+	fallbackTargetUrl: string | null
+): string | null {
+	if (selectedLaunchClientId === null) {
+		return null;
+	}
+
+	const selectedClient = runtimeClients.find(
+		(client) => client.clientId === selectedLaunchClientId
+	);
+	if (selectedClient === undefined) {
+		return runtimeClients.length === 0 ? fallbackTargetUrl : null;
+	}
+
+	return selectedClient.status === 'online' ? readHttpsUrl(selectedClient.url) : null;
+}
+
+function readHttpsUrl(value: string): string | null {
+	try {
+		const url = new URL(value);
+		return url.protocol === 'https:' ? url.toString() : null;
+	} catch {
+		return null;
+	}
 }

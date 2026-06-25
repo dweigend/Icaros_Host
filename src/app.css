@@ -88,6 +88,46 @@ input {
 	gap: 0.75rem;
 }
 
+.start-panel {
+	gap: 1rem;
+	border-color: var(--color-border-strong);
+	background: var(--color-surface-raised);
+}
+
+.start-panel__header,
+.command-grid {
+	display: grid;
+	grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+	gap: 0.75rem;
+	align-items: start;
+}
+
+.command-grid > div {
+	display: grid;
+	gap: 0.45rem;
+	min-width: 0;
+}
+
+.command-grid code {
+	display: flex;
+	align-items: center;
+	gap: 0.55rem;
+	min-height: 2.5rem;
+	padding: 0.7rem 0.8rem;
+	border: 1px solid var(--color-border-strong);
+	color: var(--color-accent);
+	background: var(--color-background);
+	overflow-wrap: anywhere;
+}
+
+.start-panel__header span,
+.command-grid span {
+	color: var(--color-text-soft);
+	font-size: 0.72rem;
+	font-weight: 800;
+	text-transform: uppercase;
+}
+
 .overview {
 	grid-template-columns: minmax(16rem, 0.8fr) minmax(0, 1.2fr);
 }
@@ -284,7 +324,16 @@ input {
 }
 
 @media (max-width: 58rem) {
-	:where(.overview, .form-grid, .stats, .metrics, .log-row, .runtime-clients) {
+	:where(
+		.overview,
+		.form-grid,
+		.stats,
+		.metrics,
+		.log-row,
+		.runtime-clients,
+		.start-panel__header,
+		.command-grid
+	) {
 		grid-template-columns: 1fr;
 	}
 }

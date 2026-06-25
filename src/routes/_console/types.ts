@@ -7,9 +7,11 @@ import type { ControlOrientation, RuntimeClientSummary } from '$lib/protocol';
 import type { PageData } from '../$types';
 
 export type HostConsoleConnectionUrls = Readonly<{
+	localConsoleUrl: string;
 	consoleUrl: string;
 	questLaunchUrl: string;
 	experienceTargetUrl: string | null;
+	clientStartCommand: string;
 	m5SocketUrl: string;
 	controlSocketUrl: string;
 	runtimeSocketUrl: string;
@@ -51,10 +53,12 @@ export type HostConsoleUsbForm = {
 
 export type HostConsoleUsbSetup = PageData['usbSetup'];
 export type HostConsoleUsbSetupState = PageData['usbSetup']['state'];
+export type HostConsoleM5Calibration = PageData['m5Calibration'];
 
 export type HostConsoleLaunchState = Readonly<{
 	selectedLaunchClientId: string | null;
 	launchClientOptions: readonly HostConsoleLaunchClientOption[];
+	launchTargetUrl: string | null;
 	connectionUrls: HostConsoleConnectionUrls;
 }>;
 
@@ -86,6 +90,8 @@ export type HostConsoleControlStreamPanelState = Readonly<{
 	debugPitchPercent: number;
 	debugRollPercent: number;
 	debugQualityPercent: number;
+	m5Calibration: HostConsoleM5Calibration;
+	canCalibrateCurrentPose: boolean;
 }>;
 
 export type HostConsoleState = Readonly<{

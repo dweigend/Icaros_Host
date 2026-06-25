@@ -3,9 +3,6 @@
 	operator input; pairing execution belongs to route server actions.
 -->
 <script lang="ts">
-	import { PlugZap } from '@lucide/svelte';
-
-	import { Button } from '$lib/components';
 	import type { HostConsoleControllerSetupState, HostConsoleUsbForm } from '../types';
 
 	type PairingField = Readonly<{
@@ -22,17 +19,13 @@
 	let { state }: Props = $props();
 
 	const pairingFields: readonly PairingField[] = [
-		{ name: 'ssid', label: 'SSID' },
-		{ name: 'password', label: 'WiFi Passwort' },
-		{ name: 'deviceId', label: 'Device ID' },
-		{ name: 'staticIp', label: 'Statische IP', inputmode: 'decimal', placeholder: 'optional' },
-		{ name: 'gateway', label: 'Gateway', inputmode: 'decimal', placeholder: 'optional' },
-		{ name: 'subnet', label: 'Subnetz', inputmode: 'decimal', placeholder: '255.255.255.0' },
-		{ name: 'dns', label: 'DNS', inputmode: 'decimal', placeholder: 'optional' }
+		{ name: 'ssid', label: 'WiFi' },
+		{ name: 'password', label: 'Passwort' },
+		{ name: 'deviceId', label: 'Controller ID' }
 	];
 </script>
 
-<form class="stack" method="POST" action="?/connectUsb">
+<form id="controller-pairing-form" class="stack" method="POST" action="?/connectUsb">
 	<div class="form-grid">
 		{#each pairingFields as field (field.name)}
 			<label>
@@ -48,18 +41,8 @@
 			</label>
 		{/each}
 	</div>
-
-	<div class="actions">
-		<Button
-			type="submit"
-			variant="primary"
-			disabled={state.usbSetupBusy ||
-				!state.usbSetup.canConfigure ||
-				state.usbForm.ssid.trim() === '' ||
-				state.usbForm.password === ''}
-		>
-			<PlugZap size={16} aria-hidden="true" />
-			{state.usbSetupBusy ? 'Läuft' : 'Pairing einrichten'}
-		</Button>
-	</div>
+	<input type="hidden" name="staticIp" value={state.usbForm.staticIp} />
+	<input type="hidden" name="gateway" value={state.usbForm.gateway} />
+	<input type="hidden" name="subnet" value={state.usbForm.subnet} />
+	<input type="hidden" name="dns" value={state.usbForm.dns} />
 </form>

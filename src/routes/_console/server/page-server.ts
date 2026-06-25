@@ -4,6 +4,7 @@
  */
 import { fail } from '@sveltejs/kit';
 
+import { getM5ControlCalibrator } from '$lib/server/control';
 import {
 	getM5PairingStatus,
 	readUsbPairingInputFromForm,
@@ -26,6 +27,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			pairedDeviceUrl: pairingStatus.connection.pairedDeviceUrl
 		},
 		station: launchState.station,
+		m5Calibration: getM5ControlCalibrator().readSnapshot(),
 		usbSetup: pairingStatus.usbSetup
 	};
 };
@@ -39,6 +41,19 @@ export const actions: Actions = {
 			return fail(result.status, { message: result.message });
 		}
 
+		return { ok: true };
+	},
+	calibrateCurrentPose: async () => {
+		const result = getM5ControlCalibrator().calibrateCurrentPoseAsNeutral();
+
+		if (!result.ok) {
+			return fail(400, { message: result.message });
+		}
+
+		return { ok: true };
+	},
+	resetM5Calibration: async () => {
+		getM5ControlCalibrator().reset();
 		return { ok: true };
 	},
 	connectUsb: async ({ request, url }) => {

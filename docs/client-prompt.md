@@ -1,31 +1,26 @@
 # Experience Client Prompt
 
-Purpose: copyable implementation prompt for generating an external
-Three.js/WebXR experience client. The canonical runtime contract is
-[client-api.md](client-api.md); Quest, HTTPS, and launch operations are described
-in [quest-https-launch-routing.md](quest-https-launch-routing.md).
+Purpose: copyable implementation prompt for integrating Icaros Host
+communication into an external Three.js/WebXR experience client. The canonical
+runtime contract is [client-api.md](client-api.md); Quest, HTTPS, and launch
+operations are described in
+[quest-https-launch-routing.md](quest-https-launch-routing.md).
 
-Bitte baue eine externe Three.js/WebXR Experience für Icaros Host.
+Build an external Three.js/WebXR experience for Icaros Host.
 
-## Wichtigste Aufgabe
+## Goal
 
-Der Client stellt eine eigene HTTPS-Seite für den Icaros Flugsimulator zur
-Verfügung. Diese Seite zeigt die Experience, die später vom Host auf die
-3D-Brille geroutet wird.
+The client serves its own HTTPS page for the VR experience. It registers that
+HTTPS URL with the Host so the headset can open the fixed Host `/launch` URL and
+be redirected to the selected registered client.
 
-Das Launch-Denkmodell ist: `Client -> Host -> Brille`. Der Client stellt die
-Experience bereit und meldet seine HTTPS-URL beim Host. Der Host macht diese
-registrierte Experience anschließend für die Brille verfügbar.
-
-Die Steuerung läuft über WebSocket. Der Client muss sich mit dieser
-Schnittstelle verbinden:
+The client receives controls through WebSocket:
 
 ```txt
 wss://<host-lan-ip-or-name>:5183/ws/control/main
 ```
 
-Der Host sendet dort `control.orientation`. Das sind die Werte, die der Client
-bekommt:
+The Host sends `control.orientation` messages:
 
 ```ts
 type ControlOrientation = Readonly<{
@@ -36,66 +31,62 @@ type ControlOrientation = Readonly<{
 }>;
 ```
 
-`pitch` ist die Vorwärts- und Rückwärtsneigung. `roll` ist die seitliche
-Neigung. Beide Werte sind bereits bereinigt, geglättet und normalisiert. Sie
-liegen im Bereich `-1..1`. `quality` liegt im Bereich `0..1` und zeigt, ob die
-Steuerdaten zuverlässig sind.
+`pitch` is forward/backward tilt. `roll` is side tilt. Both values are already
+cleaned, smoothed, protected, and normalized to `-1..1`. `quality` is `0..1`
+and indicates whether the control data is reliable.
 
-## Beispielwerte
+## Example Values
 
 - `experienceId`: `mountain-flight`
-- Titel: `Mountain Flight`
-- Host-Origin: `https://<host-lan-ip-or-name>:5183`
-- Client-URL: `https://<client-lan-ip-or-name>:5174/`
-- Control-Socket: `wss://<host-lan-ip-or-name>:5183/ws/control/main`
-- Optionaler Runtime-Socket: `wss://<host-lan-ip-or-name>:5183/ws/runtime`
-- Quest-Einstieg: `https://<host-lan-ip-or-name>:5183/launch`
+- title: `Mountain Flight`
+- Host origin: `https://<host-lan-ip-or-name>:5183`
+- client URL: `https://<client-lan-ip-or-name>:5174/`
+- control socket: `wss://<host-lan-ip-or-name>:5183/ws/control/main`
+- optional runtime socket: `wss://<host-lan-ip-or-name>:5183/ws/runtime`
+- headset entrypoint: `https://<host-lan-ip-or-name>:5183/launch`
 
-Für lokale Desktop-Entwicklung darf der Client auf `https://localhost:5174/`
-laufen. Für Quest- oder LAN-Tests muss die in `client.hello` registrierte
-Client-URL aber vom Headset erreichbar sein, zum Beispiel
-`https://<client-lan-ip-or-name>:5174/`. `localhost` zeigt aus Sicht der Quest
-auf die Quest selbst, nicht auf den Entwicklungsrechner.
+For local desktop development, the client may run on
+`https://localhost:5174/`. For Quest or LAN tests, the URL registered in
+`client.hello` must be reachable from the headset, for example
+`https://<client-lan-ip-or-name>:5174/`. From the Quest's point of view,
+`localhost` is the headset itself, not the development machine.
 
-## Was der Client bauen muss
+## What The Client Must Build
 
-Der Client muss eine HTTPS-Seite bereitstellen, zum Beispiel:
+The client must serve an HTTPS page, for example:
 
 ```txt
 https://<client-lan-ip-or-name>:5174/
 ```
 
-Diese Seite zeigt die Experience, die später auf die 3D-Brille geroutet wird.
-Der Client registriert seine erreichbare HTTPS-URL beim Host. Der Host kann
-diese registrierte Experience dann für die Brille als Launch-Ziel anbieten.
+That page renders the experience that the headset eventually opens. The client
+registers its reachable HTTPS URL with the Host so the Host can offer it as a
+launch target.
 
-Der Client muss beim Start den Control-Socket öffnen:
+The client must open the control socket on startup:
 
 ```txt
 wss://<host-lan-ip-or-name>:5183/ws/control/main
 ```
 
-Der Client soll eingehende Nachrichten validieren und nur
-`control.orientation` für die Steuerung verwenden. Wenn `quality` den Wert `0`
-hat, soll die Experience die Bewegung neutral halten, ausblenden oder sicher
-stoppen.
+Validate incoming messages and use only `control.orientation` for controls. If
+`quality` is `0`, keep movement neutral, fade control input out, or stop safely.
 
-Wichtig: Der Host bereinigt, glättet und schützt die Steuerdaten bereits
-serverseitig. Die Safety-Logik liegt in
-[safety.ts](../src/lib/server/control/safety.ts). Der Client soll diese Logik
-nicht doppelt nachbauen, sondern die ausgegebenen `pitch`-, `roll`- und
-`quality`-Werte verwenden.
+Important: the Host already cleans, smooths, and protects controller data on the
+server side. The safety logic lives in
+[safety.ts](../src/lib/server/control/safety.ts). Do not rebuild that logic in
+the client. Use the emitted `pitch`, `roll`, and `quality` values.
 
-## Optionale Launch-Registrierung
+## Optional Launch Registration
 
-Wenn der Client in der Host-Konsole auswählbar sein soll, muss er sich zusätzlich
-über diesen WebSocket registrieren:
+If the client should appear in the Host console launch selection, it must also
+register over:
 
 ```txt
 wss://<host-lan-ip-or-name>:5183/ws/runtime
 ```
 
-Direkt nach dem Öffnen sendet der Client `client.hello`:
+Immediately after opening the socket, send `client.hello`:
 
 ```json
 {
@@ -115,7 +106,7 @@ Direkt nach dem Öffnen sendet der Client `client.hello`:
 }
 ```
 
-Danach sendet der Client alle 3 bis 5 Sekunden `client.heartbeat`:
+Then send `client.heartbeat` every 3 to 5 seconds:
 
 ```json
 {
@@ -128,40 +119,43 @@ Danach sendet der Client alle 3 bis 5 Sekunden `client.heartbeat`:
 }
 ```
 
-`clientId` identifiziert die konkrete Browser- oder Headset-Instanz.
-`experienceId` ist der stabile Name der Experience. `url` muss die HTTPS-URL der
-Client-Seite sein. HTTP-URLs werden vom Host abgelehnt.
+`clientId` identifies one concrete browser or headset instance. `experienceId`
+is the stable experience slug. `url` must be the HTTPS URL of the client page.
+HTTP URLs are rejected by the Host.
 
-## Launch-Regeln
+## Launch Rules
 
-Die Brille nutzt diese feste Host-URL als Einstieg:
+The headset uses this fixed Host URL:
 
 ```txt
 https://<host-lan-ip-or-name>:5183/launch
 ```
 
-Der Host nimmt den aktuell ausgewählten, online registrierten Client und macht
-dessen Experience für die Brille erreichbar. `/launch` gehört immer zum Host
-und niemals zum Client-Port.
+The Host takes the currently selected online runtime client and redirects the
+headset to that client's registered HTTPS URL. `/launch` always belongs to the
+Host, never to the client port.
 
-Wenn kein Client ausgewählt ist, der Client offline ist oder keine HTTPS-URL
-registriert hat, soll `/launch` klar scheitern. Baue keinen eigenen Fallback im
-Client.
+If no client is selected, the selected client is offline, or no HTTPS URL is
+registered, `/launch` must fail clearly. Do not build a client-side fallback for
+this.
 
-## Wichtige Grenzen
+## Boundaries
 
-- Der Client verbindet sich nicht direkt mit dem M5-Gerät.
-- Der Client öffnet nicht `/ws/device`.
-- Der Client ruft nicht `/api/m5-pairing` auf.
-- Der Client wertet keine rohen M5-Daten aus.
-- Der Client baut keine eigene Normalisierung für `pitch` oder `roll`.
-- Browser-, Quest- und WebXR-Verbindungen nutzen HTTPS und WSS.
-- Nur die M5-Geräteverbindung des Hosts darf plain `ws://` verwenden.
+- Do not connect directly to the M5 device.
+- Do not open `/ws/device`.
+- Do not call `/api/m5-pairing`.
+- Do not parse raw M5 data.
+- Do not rebuild pitch/roll normalization in the client.
+- Use HTTPS and WSS for browser, Quest, and WebXR surfaces.
+- Only the Host's M5 device boundary may use plain `ws://`.
 
-## Code-Erwartung
+## Code Expectations
 
-Baue nur, was der Client braucht: HTTPS-Seite, WebXR/Three.js-Experience,
-Control-WebSocket und optional die Runtime-Registrierung.
+Build only what the client needs: HTTPS page, WebXR/Three.js experience,
+control WebSocket, and optional runtime registration.
 
-Halte Host-Origin, Experience-ID, Titel und Client-URL leicht anpassbar. Räume
-WebSockets, Intervalle und Renderloops mit `dispose()` sauber auf.
+Keep Host origin, experience ID, title, and client URL easy to configure. Clean
+up WebSockets, intervals, event listeners, and render loops with `dispose()`.
+
+For minimal TypeScript examples, use the
+[ICAROS Client Connection Guide](https://github.com/dweigend/ICAROS_Client_Erstellen/blob/main/Host_Verbindung_Anleitung.md).

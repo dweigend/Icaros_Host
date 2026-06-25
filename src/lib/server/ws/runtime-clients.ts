@@ -118,6 +118,14 @@ export class RuntimeClientRegistry {
 		return presence;
 	}
 
+	findSingleOnlineClientByExperienceId(experienceId: string): RuntimeClientSummary | null {
+		const matchingClients = this.listRuntimeClients().filter(
+			(client) => client.status === 'online' && client.experienceId === experienceId
+		);
+
+		return matchingClients.length === 1 ? (matchingClients[0] ?? null) : null;
+	}
+
 	listRuntimeClients(): readonly RuntimeClientSummary[] {
 		return Array.from(this.#clients)
 			.map((client) => client.presence)
