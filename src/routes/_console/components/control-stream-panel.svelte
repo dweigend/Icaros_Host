@@ -5,7 +5,7 @@
 <script lang="ts">
 	import { Crosshair, Gauge, RotateCcw } from '@lucide/svelte';
 
-	import { Button, ScrollArea, StatusDot } from '$lib/components';
+	import { Button, ScrollArea, StatusDot, Switch } from '$lib/components';
 	import { formatAge, formatSignedUnit, toQualityPercent } from '../format';
 	import type { HostConsoleControlStreamPanelState } from '../types';
 
@@ -93,6 +93,51 @@
 			offset pitch {formatSignedUnit(state.m5Calibration.pitchOffset)} / roll
 			{formatSignedUnit(state.m5Calibration.rollOffset)}
 		</p>
+	</div>
+
+	<div class="actions">
+		<form method="POST" action="?/setOrientationMap">
+			<input type="hidden" name="field" value="swapPitchRoll" />
+			<input
+				type="hidden"
+				name="enabled"
+				value={state.m5OrientationMap.swapPitchRoll ? 'false' : 'true'}
+			/>
+			<Switch
+				checked={state.m5OrientationMap.swapPitchRoll}
+				label="Swap pitch/roll"
+				description={state.m5OrientationMap.swapPitchRoll ? 'Ein' : 'Aus'}
+				onclick={(event) => event.currentTarget.closest('form')?.requestSubmit()}
+			/>
+		</form>
+		<form method="POST" action="?/setOrientationMap">
+			<input type="hidden" name="field" value="invertPitch" />
+			<input
+				type="hidden"
+				name="enabled"
+				value={state.m5OrientationMap.invertPitch ? 'false' : 'true'}
+			/>
+			<Switch
+				checked={state.m5OrientationMap.invertPitch}
+				label="Invert pitch"
+				description={state.m5OrientationMap.invertPitch ? 'Ein' : 'Aus'}
+				onclick={(event) => event.currentTarget.closest('form')?.requestSubmit()}
+			/>
+		</form>
+		<form method="POST" action="?/setOrientationMap">
+			<input type="hidden" name="field" value="invertRoll" />
+			<input
+				type="hidden"
+				name="enabled"
+				value={state.m5OrientationMap.invertRoll ? 'false' : 'true'}
+			/>
+			<Switch
+				checked={state.m5OrientationMap.invertRoll}
+				label="Invert roll"
+				description={state.m5OrientationMap.invertRoll ? 'Ein' : 'Aus'}
+				onclick={(event) => event.currentTarget.closest('form')?.requestSubmit()}
+			/>
+		</form>
 	</div>
 
 	<ScrollArea class="log" aria-label="Recent control frames">

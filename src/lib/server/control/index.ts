@@ -5,4 +5,5 @@ export * from './auto-neutralizer';
 export * from './calibration';
 export * from './control-stream-config';
 export * from './normalizer';
+export * from './orientation-map';
 export * from './safety';
