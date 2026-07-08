@@ -16,6 +16,9 @@ const REST_CONTROL = {
 	pitch: DEFAULT_AUTO_NEUTRALIZER_CONFIG.restPitch,
 	roll: DEFAULT_AUTO_NEUTRALIZER_CONFIG.restRoll,
 	quality: 0.8,
+	buttonPressed: false,
+	buttonDown: false,
+	buttonUp: false,
 	controllerType: 'm5'
 } as const;
 

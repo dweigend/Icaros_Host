@@ -35,6 +35,9 @@ export type ControlOrientation = Readonly<{
 	pitch: number;
 	roll: number;
 	quality: number;
+	buttonPressed: boolean;
+	buttonDown: boolean;
+	buttonUp: boolean;
 	controllerType: 'm5';
 }>;
 

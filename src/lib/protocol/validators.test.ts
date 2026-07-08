@@ -116,6 +116,9 @@ describe('runtime client validators', () => {
 				pitch: 0.25,
 				roll: -0.5,
 				quality: 0.8,
+				buttonPressed: true,
+				buttonDown: true,
+				buttonUp: false,
 				controllerType: 'm5'
 			})
 		).toEqual({
@@ -124,6 +127,31 @@ describe('runtime client validators', () => {
 				pitch: 0.25,
 				roll: -0.5,
 				quality: 0.8,
+				buttonPressed: true,
+				buttonDown: true,
+				buttonUp: false,
+				controllerType: 'm5'
+			}
+		});
+	});
+
+	it('keeps old public control orientation payloads compatible', () => {
+		expect(
+			validateControlOrientation({
+				pitch: 0,
+				roll: 0,
+				quality: 1,
+				controllerType: 'm5'
+			})
+		).toEqual({
+			ok: true,
+			value: {
+				pitch: 0,
+				roll: 0,
+				quality: 1,
+				buttonPressed: false,
+				buttonDown: false,
+				buttonUp: false,
 				controllerType: 'm5'
 			}
 		});

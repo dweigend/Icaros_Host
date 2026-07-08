@@ -37,6 +37,7 @@ constexpr uint32_t SerialCommandQuietMs = 1000;
 constexpr uint32_t SerialBufferLimit = 768;
 constexpr uint16_t DefaultWebSocketPort = 80;
 constexpr uint16_t TcpProbeTimeoutMs = 1500;
+constexpr uint8_t ButtonPin = 26;
 
 struct DeviceConfig {
   String ssid;
@@ -87,6 +88,7 @@ uint32_t serialQuietUntilMs = 0;
 bool hasConfig = false;
 bool webSocketConfigured = false;
 bool webSocketConnected = false;
+bool lastButtonPressed = false;
 
 ParseResult okResult() {
   return {true, ""};
@@ -277,6 +279,7 @@ void sendRegisterFrame() {
   JsonArray capabilities = document["capabilities"].to<JsonArray>();
   capabilities.add("imu");
   capabilities.add("orientation");
+  capabilities.add("button");
   sendWebSocketJson(document, true);
 }
 
@@ -289,12 +292,20 @@ void sendHeartbeatFrame() {
   sendWebSocketJson(document, true);
 }
 
-void sendOrientationFrame(const ImuSample &sample, bool mirrorSerial) {
+void sendOrientationFrame(
+    const ImuSample &sample,
+    bool buttonPressed,
+    bool buttonDown,
+    bool buttonUp,
+    bool mirrorSerial) {
   JsonDocument document;
   addBaseFrame(document, "orientation");
   document["pitch"] = sample.pitch;
   document["roll"] = sample.roll;
   document["quality"] = 1;
+  document["buttonPressed"] = buttonPressed;
+  document["buttonDown"] = buttonDown;
+  document["buttonUp"] = buttonUp;
   sendWebSocketJson(document, mirrorSerial);
 }
 
@@ -538,6 +549,10 @@ bool readImuSample(ImuSample &sample) {
   return true;
 }
 
+bool readButtonPressed() {
+  return digitalRead(ButtonPin) == LOW;
+}
+
 void sendTelemetry(uint32_t nowMs) {
   if (nowMs - lastHeartbeatMs >= HeartbeatIntervalMs) {
     lastHeartbeatMs = nowMs;
@@ -552,6 +567,10 @@ void sendTelemetry(uint32_t nowMs) {
   ImuSample sample = lastSample;
   readImuSample(sample);
   lastSample = sample;
+  const bool buttonPressed = readButtonPressed();
+  const bool buttonDown = buttonPressed && !lastButtonPressed;
+  const bool buttonUp = !buttonPressed && lastButtonPressed;
+  lastButtonPressed = buttonPressed;
 
   const bool serialQuiet = nowMs < serialQuietUntilMs;
   const bool serialMirrorDue =
@@ -561,7 +580,7 @@ void sendTelemetry(uint32_t nowMs) {
   if (mirrorSerial) {
     lastSerialOrientationMirrorMs = nowMs;
   }
-  sendOrientationFrame(lastSample, mirrorSerial);
+  sendOrientationFrame(lastSample, buttonPressed, buttonDown, buttonUp, mirrorSerial);
 }
 
 void sendPeriodicStatus(uint32_t nowMs) {
@@ -613,6 +632,7 @@ void setup() {
   m5Config.clear_display = true;
   m5Config.internal_imu = true;
   M5.begin(m5Config);
+  pinMode(ButtonPin, INPUT_PULLUP);
   beginControllerDisplay();
 
   WiFi.mode(WIFI_STA);

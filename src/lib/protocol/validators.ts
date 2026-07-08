@@ -236,6 +236,9 @@ export function validateControlOrientation(input: unknown): ValidationResult<Con
 		pitch: pitch.value,
 		roll: roll.value,
 		quality: quality.value,
+		buttonPressed: input.buttonPressed === true,
+		buttonDown: input.buttonDown === true,
+		buttonUp: input.buttonUp === true,
 		controllerType: input.controllerType
 	});
 }
