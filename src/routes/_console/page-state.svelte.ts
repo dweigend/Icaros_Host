@@ -30,6 +30,7 @@ export function createConsolePageState(readData: () => PageData): HostConsoleSta
 	const connection = $derived(readData().connection);
 	const station = $derived(readData().station);
 	const m5Calibration = $derived(readData().m5Calibration);
+	const m5OrientationMap = $derived(readData().m5OrientationMap);
 	const usbSetup = $derived(readData().usbSetup);
 	const selectedLaunchClientId = $derived(station.selectedLaunchClientId);
 	const launchRegistry = createConsoleLaunchRegistryState(() => selectedLaunchClientId);
@@ -175,6 +176,9 @@ export function createConsolePageState(readData: () => PageData): HostConsoleSta
 		},
 		get m5Calibration() {
 			return m5Calibration;
+		},
+		get m5OrientationMap() {
+			return m5OrientationMap;
 		},
 		get canCalibrateCurrentPose() {
 			return (controlStream.debugLastControl?.quality ?? 0) > 0;

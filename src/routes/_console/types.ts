@@ -54,6 +54,7 @@ export type HostConsoleUsbForm = {
 export type HostConsoleUsbSetup = PageData['usbSetup'];
 export type HostConsoleUsbSetupState = PageData['usbSetup']['state'];
 export type HostConsoleM5Calibration = PageData['m5Calibration'];
+export type HostConsoleM5OrientationMap = PageData['m5OrientationMap'];
 
 export type HostConsoleLaunchState = Readonly<{
 	selectedLaunchClientId: string | null;
@@ -91,6 +92,7 @@ export type HostConsoleControlStreamPanelState = Readonly<{
 	debugRollPercent: number;
 	debugQualityPercent: number;
 	m5Calibration: HostConsoleM5Calibration;
+	m5OrientationMap: HostConsoleM5OrientationMap;
 	canCalibrateCurrentPose: boolean;
 }>;
 

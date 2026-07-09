@@ -28,10 +28,12 @@ import {
 } from '$lib/protocol';
 import {
 	applyM5ControlCalibration,
+	applyM5OrientationMap,
 	createAutoNeutralizer,
 	createNeutralControl,
 	DEFAULT_CONTROL_STREAM_ID,
 	getM5ControlCalibrator,
+	getM5OrientationMapper,
 	isM5OrientationFrame,
 	normalizeM5Frame,
 	parseM5Frame,
@@ -77,6 +79,7 @@ class IcarosWebSocketGateway {
 	#runtimeServer = new WebSocketServer({ noServer: true });
 	#autoNeutralizer = createAutoNeutralizer();
 	#controlCalibrator = getM5ControlCalibrator();
+	#orientationMapper = getM5OrientationMapper();
 	#controlStreamClients = createControlStreamClientRegistry();
 	#runtimeClients = runtimeClientRegistry;
 	#lastControl: ControlOrientation = createNeutralControl();
@@ -86,6 +89,7 @@ class IcarosWebSocketGateway {
 	#runtimePresenceTimer: ReturnType<typeof setInterval> | null = null;
 	#unsubscribeStation: (() => void) | null = null;
 	#unsubscribeCalibration: (() => void) | null = null;
+	#unsubscribeOrientationMap: (() => void) | null = null;
 	#handlersRegistered = false;
 
 	attach(server: RuntimeHttpServer): void {
@@ -107,6 +111,7 @@ class IcarosWebSocketGateway {
 	dispose(): void {
 		this.#unsubscribeStation?.();
 		this.#unsubscribeCalibration?.();
+		this.#unsubscribeOrientationMap?.();
 		if (this.#staleTimer !== null) {
 			clearInterval(this.#staleTimer);
 			this.#staleTimer = null;
@@ -140,6 +145,9 @@ class IcarosWebSocketGateway {
 			this.#broadcastRuntimeClients();
 		});
 		this.#unsubscribeCalibration = this.#controlCalibrator.subscribe(() => {
+			this.#publishCurrentCalibratedControl();
+		});
+		this.#unsubscribeOrientationMap = this.#orientationMapper.subscribe(() => {
 			this.#publishCurrentCalibratedControl();
 		});
 		this.#staleTimer = setInterval(
@@ -329,7 +337,11 @@ class IcarosWebSocketGateway {
 		now: number,
 		smoothingEnabled: boolean
 	): void {
-		const calibratedControl = this.#controlCalibrator.recordNormalizedInput(normalizedControl);
+		const remappedControl = applyM5OrientationMap(
+			normalizedControl,
+			this.#orientationMapper.readMap()
+		);
+		const calibratedControl = this.#controlCalibrator.recordNormalizedInput(remappedControl);
 		const safeControl = protectControlOrientation(this.#lastControl, calibratedControl);
 		const neutralizerResult = this.#autoNeutralizer.process(safeControl, now);
 		const publicControl =
@@ -373,8 +385,12 @@ class IcarosWebSocketGateway {
 			return;
 		}
 
-		const control = applyM5ControlCalibration(
+		const remappedControl = applyM5OrientationMap(
 			this.#lastNormalizedControl,
+			this.#orientationMapper.readMap()
+		);
+		const control = applyM5ControlCalibration(
+			remappedControl,
 			this.#controlCalibrator.readCalibration()
 		);
 		this.#publishControl(protectControlOrientation(createNeutralControl(), control));

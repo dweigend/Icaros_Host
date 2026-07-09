@@ -4,7 +4,11 @@
  */
 import { fail } from '@sveltejs/kit';
 
-import { getM5ControlCalibrator } from '$lib/server/control';
+import {
+	getM5ControlCalibrator,
+	getM5OrientationMapper,
+	isM5OrientationMapField
+} from '$lib/server/control';
 import {
 	getM5PairingStatus,
 	readUsbPairingInputFromForm,
@@ -28,6 +32,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		},
 		station: launchState.station,
 		m5Calibration: getM5ControlCalibrator().readSnapshot(),
+		m5OrientationMap: getM5OrientationMapper().readSnapshot(),
 		usbSetup: pairingStatus.usbSetup
 	};
 };
@@ -54,6 +59,16 @@ export const actions: Actions = {
 	},
 	resetM5Calibration: async () => {
 		getM5ControlCalibrator().reset();
+		return { ok: true };
+	},
+	setOrientationMap: async ({ request }) => {
+		const formData = await request.formData();
+		const field = formData.get('field');
+		if (!isM5OrientationMapField(field)) {
+			return fail(400, { message: 'Unknown orientation field.' });
+		}
+
+		getM5OrientationMapper().setField(field, formData.get('enabled') === 'true');
 		return { ok: true };
 	},
 	connectUsb: async ({ request, url }) => {
