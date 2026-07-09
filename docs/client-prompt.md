@@ -27,6 +27,9 @@ type ControlOrientation = Readonly<{
 	pitch: number;
 	roll: number;
 	quality: number;
+	buttonPressed: boolean;
+	buttonDown: boolean;
+	buttonUp: boolean;
 	controllerType: 'm5';
 }>;
 ```
@@ -75,7 +78,7 @@ Validate incoming messages and use only `control.orientation` for controls. If
 Important: the Host already cleans, smooths, and protects controller data on the
 server side. The safety logic lives in
 [safety.ts](../src/lib/server/control/safety.ts). Do not rebuild that logic in
-the client. Use the emitted `pitch`, `roll`, and `quality` values.
+the client. Use the emitted `pitch`, `roll`, `quality`, and button values.
 
 ## Optional Launch Registration
 

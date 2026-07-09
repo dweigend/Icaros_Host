@@ -46,13 +46,17 @@ type ControlOrientation = Readonly<{
 	pitch: number;
 	roll: number;
 	quality: number;
+	buttonPressed: boolean;
+	buttonDown: boolean;
+	buttonUp: boolean;
 	controllerType: 'm5';
 }>;
 ```
 
 `pitch` and `roll` are normalized to `-1..1`. `quality` is `0..1`. Missing,
 stale, invalid, or unsafe controller input is published as neutral
-`pitch: 0`, `roll: 0`, `quality: 0`.
+`pitch: 0`, `roll: 0`, `quality: 0`. Missing button fields default to `false`
+for backward compatibility.
 
 ## Client Endpoints
 

@@ -17,6 +17,29 @@ describe('control normalization', () => {
 			pitch: 0.5,
 			roll: -0.25,
 			quality: 0.8,
+			buttonPressed: false,
+			buttonDown: false,
+			buttonUp: false,
+			controllerType: 'm5'
+		});
+	});
+
+	it('publishes button state and edge flags from M5 frames', () => {
+		expect(
+			normalizeM5Frame({
+				pitch: 0,
+				roll: 0,
+				buttonPressed: true,
+				buttonDown: true,
+				buttonUp: false
+			})
+		).toEqual({
+			pitch: 0,
+			roll: 0,
+			quality: 1,
+			buttonPressed: true,
+			buttonDown: true,
+			buttonUp: false,
 			controllerType: 'm5'
 		});
 	});
@@ -35,6 +58,9 @@ describe('control normalization', () => {
 			pitch: 0.1,
 			roll: 0,
 			quality: 1,
+			buttonPressed: false,
+			buttonDown: false,
+			buttonUp: false,
 			controllerType: 'm5'
 		});
 	});
@@ -49,8 +75,11 @@ describe('control safety', () => {
 
 	it('keeps abrupt outlier steps server-side by returning neutral controls', () => {
 		const previous = normalizeM5Frame({ pitch: 0, roll: 0, quality: 1 });
-		const next = normalizeM5Frame({ pitch: 45, roll: 0, quality: 1 });
+		const next = normalizeM5Frame({ pitch: 45, roll: 0, quality: 1, buttonDown: true });
 
-		expect(protectControlOrientation(previous, next)).toEqual(createNeutralControl());
+		expect(protectControlOrientation(previous, next)).toEqual({
+			...createNeutralControl(),
+			buttonDown: true
+		});
 	});
 });

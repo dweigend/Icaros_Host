@@ -15,6 +15,9 @@ const LIVE_CONTROL: ControlOrientation = {
 	pitch: 0.35,
 	roll: -0.2,
 	quality: 1,
+	buttonPressed: false,
+	buttonDown: false,
+	buttonUp: false,
 	controllerType: 'm5'
 };
 
@@ -35,13 +38,16 @@ describe('M5 control calibration', () => {
 	it('clamps calibrated output to the public -1..1 range', () => {
 		expect(
 			applyM5ControlCalibration(
-				{ pitch: 0.8, roll: -0.8, quality: 1, controllerType: 'm5' },
+				{ ...LIVE_CONTROL, pitch: 0.8, roll: -0.8 },
 				{ pitchOffset: -0.8, rollOffset: 0.8, calibratedAt: null }
 			)
 		).toEqual({
 			pitch: 1,
 			roll: -1,
 			quality: 1,
+			buttonPressed: false,
+			buttonDown: false,
+			buttonUp: false,
 			controllerType: 'm5'
 		});
 	});
@@ -64,6 +70,9 @@ describe('M5 control calibration', () => {
 			pitch: 0,
 			roll: 0,
 			quality: 1,
+			buttonPressed: false,
+			buttonDown: false,
+			buttonUp: false,
 			controllerType: 'm5'
 		});
 	});

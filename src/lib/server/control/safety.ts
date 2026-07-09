@@ -21,18 +21,27 @@ export function protectControlOrientation(
 	next: ControlOrientation
 ): ControlOrientation {
 	if (next.quality <= 0) {
-		return createNeutralControl();
+		return createNeutralControlWithButton(next);
 	}
 
 	if (previous.quality <= 0 && isExtreme(next)) {
-		return createNeutralControl();
+		return createNeutralControlWithButton(next);
 	}
 
 	if (previous.quality > 0 && hasAbruptStep(previous, next)) {
-		return createNeutralControl();
+		return createNeutralControlWithButton(next);
 	}
 
 	return next;
+}
+
+function createNeutralControlWithButton(control: ControlOrientation): ControlOrientation {
+	return {
+		...createNeutralControl(),
+		buttonPressed: control.buttonPressed,
+		buttonDown: control.buttonDown,
+		buttonUp: control.buttonUp
+	};
 }
 
 function isExtreme(control: ControlOrientation): boolean {

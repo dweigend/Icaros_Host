@@ -28,6 +28,9 @@ export type M5RawFrame = Readonly<{
 	timestamp?: number;
 	timeMs?: number;
 	quality?: number;
+	buttonPressed?: boolean;
+	buttonDown?: boolean;
+	buttonUp?: boolean;
 }>;
 
 type OrientationDegrees = Readonly<{
@@ -40,6 +43,9 @@ export function createNeutralControl(): ControlOrientation {
 		pitch: 0,
 		roll: 0,
 		quality: 0,
+		buttonPressed: false,
+		buttonDown: false,
+		buttonUp: false,
 		controllerType: 'm5'
 	};
 }
@@ -59,6 +65,9 @@ export function normalizeM5Frame(frame: M5RawFrame, now: number = Date.now()): C
 		pitch: clamp(orientation.pitch / MAX_ANGLE_DEGREES, -1, 1),
 		roll: clamp(orientation.roll / MAX_ANGLE_DEGREES, -1, 1),
 		quality: readQuality(frame.quality),
+		buttonPressed: frame.buttonPressed === true,
+		buttonDown: frame.buttonDown === true,
+		buttonUp: frame.buttonUp === true,
 		controllerType: 'm5'
 	};
 }
