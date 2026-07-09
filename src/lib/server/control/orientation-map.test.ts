@@ -12,6 +12,9 @@ const LIVE_CONTROL: ControlOrientation = {
 	pitch: 0.35,
 	roll: -0.2,
 	quality: 1,
+	buttonPressed: false,
+	buttonDown: false,
+	buttonUp: false,
 	controllerType: 'm5'
 };
 
