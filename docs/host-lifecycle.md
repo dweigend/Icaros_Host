@@ -70,6 +70,9 @@ type ControlOrientation = Readonly<{
 	pitch: number;
 	roll: number;
 	quality: number;
+	buttonPressed: boolean;
+	buttonDown: boolean;
+	buttonUp: boolean;
 	controllerType: 'm5';
 }>;
 ```
@@ -82,6 +85,9 @@ type ControlOrientation = Readonly<{
 	pitch: 0,
 	roll: 0,
 	quality: 0,
+	buttonPressed: false,
+	buttonDown: false,
+	buttonUp: false,
 	controllerType: 'm5'
 }
 ```
